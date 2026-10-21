@@ -13,4 +13,5 @@ backend/internal/webui/dist/*
 coverage.out
 .DS_Store
 *.exe
+*.syso
 test-results/

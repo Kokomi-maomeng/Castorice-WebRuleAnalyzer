@@ -120,7 +120,7 @@ func (m *Manager) fetch(ctx context.Context, address string, maxBytes int64) ([]
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "Castorice-WebRuleAnalyzer/v1.0")
+	req.Header.Set("User-Agent", "Castorice-WebRuleAnalyzer/v1.1")
 	req.Header.Set("Accept", "application/vnd.github+json")
 	resp, err := m.client.Do(req)
 	if err != nil {

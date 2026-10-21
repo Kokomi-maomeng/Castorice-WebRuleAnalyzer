@@ -1,27 +1,40 @@
-# Castorice-WebRuleAnalyzer v1.0
+# Castorice-WebRuleAnalyzer v1.1
 
 **Web分流规则分析器**。输入网站 URL，通过独立 Chrome / Edge / Chromium 会话观察 HTTP(S)、XHR/Fetch、WebSocket 请求，提取真实出现的域名，按需结合公开分类规则，生成 Clash/Mihomo 或 sing-box 规则文件。
 
-这是可运行的本地 Go 服务与 React Web GUI。Windows x64 运行包内嵌全部前端资源；普通用户无需安装开发工具。首次运行不包含虚构规则、演示历史或预置扫描结果。
+这是 Windows 原生桌面窗口软件，使用 Go + WebView2 嵌入 React 界面。Windows x64 EXE 内嵌全部前端资源；双击后没有命令行窗口，也不打开外部浏览器作为主界面。普通用户无需安装开发工具。首次运行不包含虚构规则、演示历史或预置扫描结果。
 
 ## 快速运行（Windows 10/11 x64）
 
-1. 安装 Google Chrome、Microsoft Edge 或 Chromium 中任意一种。
-2. 解压 `dist/Castorice-WebRuleAnalyzer-v1.0-windows-amd64.zip`。
-3. 双击 `Castorice-WebRuleAnalyzer.exe`，浏览器自动打开 `http://127.0.0.1:19110`。
+1. 本机需要 Microsoft Edge WebView2 Runtime，以及用于采集的 Chrome、Edge 或 Chromium。本次 Windows 11 环境已具备；缺少 Runtime 时按启动提示安装微软官方组件。
+2. 解压 `dist/Castorice-WebRuleAnalyzer-v1.1-windows-amd64.zip`。
+3. 双击 `Castorice-WebRuleAnalyzer.exe`，直接打开独立桌面窗口。
 4. 输入 `example.com` 或完整 HTTP(S) URL，点击“开始分析”。没有协议时补全 HTTPS。
 5. 在左侧选择观察到的域名，点击“预览与导出规则”。默认精确 `DOMAIN`，默认策略组 `dibao` 可修改。
-6. 按 Ctrl+C 退出控制台服务。关闭 GUI 标签页不会关闭服务。
+6. 点击窗口右上角 × 退出；正在运行的扫描会取消，所属浏览器、WebView2 和本地服务一同退出。
 
-默认数据目录：Windows `%APPDATA%\Castorice-WebRuleAnalyzer`；其他系统使用 Go `os.UserConfigDir()` 的对应应用目录。SQLite 文件为 `castorice.db`，浏览器会话在 `sessions/` 下创建并在任务结束后删除。可以指定 `--data-dir` 使用便携数据目录。
+默认以 **EXE 所在文件夹** 为基准，与启动时工作目录无关：
 
-```powershell
-.\Castorice-WebRuleAnalyzer.exe --listen 127.0.0.1:19112 --data-dir .\data
-.\Castorice-WebRuleAnalyzer.exe --no-open
-.\Castorice-WebRuleAnalyzer.exe --version
+```text
+Castorice-WebRuleAnalyzer.exe
+data/
+  castorice.db       历史、设置、规则缓存
+  webview2/          独立桌面界面 Profile 与缓存
+  sessions/         独立扫描浏览器 Profile，结束后清理
+  tmp/              应用及子进程临时目录，退出后清理
+  logs/             应用日志、last-exit.json 退出清理报告
+exports/            实际导出文件；重名自动编号，不覆盖
 ```
 
-默认及当前版本只允许回环监听。服务启动即限制单任务，不连接或读取用户日常浏览器 Profile。
+请先解压到可写文件夹，勿直接在压缩包内运行。目录不可写时明确报错，不自动改用 AppData。移动整个软件目录即可携带设置与历史；v1.1 不自动迁移旧 AppData 数据。关闭后保留历史、规则缓存及桌面界面缓存，临时扫描会话和 tmp 内容清理。Windows 自身的事件日志、预取记录及已安装 Runtime 的系统更新记录由操作系统管理，不属于软件可重定向的数据。
+
+Windows 进程监督使用专属 Job Object；只管理本次创建的子进程，不按 `chrome.exe` 等进程名全局结束程序。单目录仅允许一个实例。内部 API 使用随机回环端口，关闭窗口会取消扫描、关闭监听和数据库。异常终止后，再次打开会标记中断历史并清理有所有权标记的临时 Profile。
+
+开发时可显式启动独立服务（桌面运行不需要这些命令）：
+
+```powershell
+.\Castorice-WebRuleAnalyzer.exe --server --no-open --listen 127.0.0.1:19112 --data-dir .\data
+```
 
 ## 主要功能
 
@@ -39,7 +52,7 @@
 
 ## 规则库
 
-| 来源 | 获取与缓存策略 | v1.0 支持 |
+| 来源 | 获取与缓存策略 | v1.1 支持 |
 | --- | --- | --- |
 | [blackmatrix7/ios_rule_script](https://github.com/blackmatrix7/ios_rule_script) | GitHub 当前 Commit + 实际 Clash 子树索引；首批 12 个常用应用，其余分类按需下载；固定 Commit 原始文件 | classical YAML / 列表中的 DOMAIN、DOMAIN-SUFFIX、DOMAIN-KEYWORD |
 | [v2fly/domain-list-community](https://github.com/v2fly/domain-list-community) | 当前 Commit 的受限 tar.gz 源码快照，只读取 `data/` 常规文件；解析结果存 SQLite | full、domain、裸域名、keyword、递归 include、属性与负属性过滤、`&target` affiliation |
@@ -64,7 +77,7 @@
 
 ## 开发环境与构建
 
-本次验证环境为 Windows x64、Go 1.26.2、Node.js 24.13.0 / npm 11.6.2。建议 Go 1.26+ 与 Node 24 LTS+。使用纯 Go SQLite，正式编译 `CGO_ENABLED=0`；无需 Rust、C 编译器或完整 Chromium 下载。
+本次验证环境为 Windows x64、Go 1.26.2、Node.js 24.13.0 / npm 11.6.2。建议 Go 1.26+ 与 Node 24 LTS+。使用纯 Go SQLite，正式编译 `CGO_ENABLED=0`；无需 Rust、C 编译器或完整 Chromium 下载。构建脚本使用固定版本 go-winres 生成图标、版本与 Windows DPI 资源。
 
 ```powershell
 # 源码根目录：安装锁定依赖、前端测试/构建、Go 测试/vet、内嵌前端、编译和打包
@@ -86,10 +99,10 @@ npm ci
 npm run build
 cd ..\backend
 go test ./...
-go run ./cmd/castorice
+go run ./cmd/castorice --server --data-dir ../.runtime/dev
 # 单独编译：前端构建后
 $env:CGO_ENABLED='0'
-go build -trimpath -ldflags='-s -w' -o ..\dist\Castorice-WebRuleAnalyzer.exe ./cmd/castorice
+go build -trimpath -ldflags='-H windowsgui -s -w' -o ..\dist\Castorice-WebRuleAnalyzer.exe ./cmd/castorice
 ```
 
 前端生产构建直接输出 `backend/internal/webui/dist/`，Go Embed 在编译时内嵌。直接运行 `go run` 前应先构建前端；未构建会显示明确提示，不展示假界面。`config.example.json` 为设置 API 的示例结构，正常用户在 GUI 设置即可；程序不会自动读取该示例文件。
@@ -106,6 +119,16 @@ go build -trimpath -ldflags='-s -w' -o ..\dist\Castorice-WebRuleAnalyzer.exe ./c
 .\scripts\smoke.ps1
 ```
 
+桌面成品生命周期验收（在源码根目录运行；normal / active-close 提示 READY 后关闭原生主窗口）：
+
+```powershell
+.\scripts\verify-desktop.ps1 -PackageDirectory .\dist\Castorice-WebRuleAnalyzer-v1.1-windows-amd64 -Scenario normal -SyncRules -WaitForCloseSeconds 600
+.\scripts\verify-desktop.ps1 -PackageDirectory .\dist\Castorice-WebRuleAnalyzer-v1.1-windows-amd64 -Scenario active-close
+.\scripts\verify-desktop.ps1 -PackageDirectory .\dist\Castorice-WebRuleAnalyzer-v1.1-windows-amd64 -Scenario force-crash
+```
+
+脚本使用真实发布 EXE 的副本，生成含中文空格的测试目录；不会运行或结束其他用户浏览器。结果保存在 `.runtime/桌面验收 空格/`。最终发布验收见 [测试报告](docs/TEST-REPORT.md) 和 [机器可读结果](docs/v1.1-acceptance.json)。
+
 直接命令：在 `backend` 执行 `go test ./...`；浏览器测试显式设置 `CASTORICE_BROWSER_TEST=1`，真实规则源测试设置 `CASTORICE_RULES_LIVE=1`。在 `frontend` 执行 `npm test`。默认跳过真实浏览器和在线规则测试，并会明确标记 skip。`-race` 需要本机 Go race 所需 C 工具链，见 [测试报告](docs/TEST-REPORT.md)。
 
 浏览器测试通过内存注入的精确 `.test:port → loopback` 白名单访问独立 `httptest` 网站，不改变正常策略、hosts、DNS 或系统代理。静态字体为原创测试字体；正常测试不需要 Python。另有 `scripts/local-test.ps1` 可手工验收测试站。测试启动参数 `--test-map-loopback` / `--test-allow-loopback` 只在显式使用时生效，不保存到用户设置；**日常运行不要使用这些测试参数**。
@@ -120,8 +143,11 @@ frontend/                    React + TypeScript + Material UI + Vite
   src/hooks/                 SSE、状态恢复、请求分页
   src/services/              统一 API / 下载 / 剪贴板
 backend/
-  cmd/castorice/             本地服务入口与自动打开 GUI
+  cmd/castorice/             原生桌面与显式独立服务入口
   cmd/testsite/              仅开发/测试站入口
+  internal/desktop/          Windows 原生窗口与 Job 进程监督
+  internal/portable/         EXE 目录数据、临时文件与导出
+  internal/app/              共用服务启动与关闭
   internal/api/              HTTP API、SSE、Host/Origin/CSRF
   internal/browser/          跨平台浏览器路径检测
   internal/scanner/          chromedp、CDP 记录器、任务生命周期
@@ -154,7 +180,7 @@ API 与数据流、安全设计及匹配评分说明见 [ARCHITECTURE.md](docs/A
 - **探索保持保守。** 不自动点击控件、不提交表单、跳过查询导航与已知操作路径。无法证明任意站点的所有 GET 都无副作用，针对敏感业务建议快速或手动辅助采集。
 - **本机安全保护范围。** 默认拦截回环、私网、链路本地、常见元数据/保留地址，拒绝混合 DNS 答案，逐 TCP 连接固定已验证 IP，禁用 QUIC/非代理 WebRTC UDP；仍依赖未被篡改的 Chrome 代理实现和浏览器沙箱，不是恶意网站的操作系统级隔离环境。
 - **网络环境**：保护代理直接连接经过校验的目标 IP，不自动继承系统 HTTP/SOCKS 代理。系统已有 TUN/VPN 仍可能影响连接。自动 DNS 模式仅在系统答案全部属于已知 Fake-IP 网段（198.18.0.0/15、fdfe:dcba:9876::/64）时，经固定 1.1.1.1 端点的标准 HTTPS DNS 重新解析，并再次校验全部地址；设置中可选择仅系统 DNS。此时被查询域名会发送给 Cloudflare，缓存最多 60 秒。不修改系统代理、DNS 或网络设置。自定义其他 Fake-IP 网段或需要额外上游代理链的环境目前可能不可达。
-- **构建与桌面封装**：Windows x64 控制台启动器 + 自动打开 Web GUI 已提供；未制作代码签名、安装器和 Tauri 原生窗口。Win10/Linux/macOS 的实际运行与第三方登录/上传/视频流业务流程，不能等同于本机 Chrome 测试通过。
-- **端口/实时断开**：查看控制台错误，换一个回环端口；SSE 会自动重连，GUI 每 3 秒补取断线任务状态。服务异常退出后的任务会标记中断，可再次创建扫描。
+- **构建与桌面封装**：Windows x64 原生 WebView2 窗口与进程监督已提供；未制作代码签名、安装器和 Tauri 封装。Win10/Linux/macOS 的实际运行与第三方登录/上传/视频流业务流程，不能等同于本机 Chrome 测试通过。
+- **端口/实时断开**：桌面启动错误通过原生弹窗显示，详情查看 data/logs；开发服务可另选回环端口；SSE 会自动重连，GUI 每 3 秒补取断线任务状态。服务异常退出后的任务会标记中断，可再次创建扫描。
 
 后续优先补充多标签页/Worker 采集、可选安全上游代理、旧规则快照重现、Tauri 2 + Go sidecar、平台实机验证与签名分发。Android、Docker 远程多用户服务、系统流量采集未实现；架构保留独立服务入口与平台适配位置。

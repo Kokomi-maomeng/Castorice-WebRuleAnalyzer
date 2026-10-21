@@ -3,7 +3,7 @@ param([switch]$SkipTests, [switch]$BrowserTests)
 $ErrorActionPreference = 'Stop'
 $projectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $outputRoot = Join-Path $projectRoot 'dist'
-$packageName = 'Castorice-WebRuleAnalyzer-v1.0-windows-amd64'
+$packageName = 'Castorice-WebRuleAnalyzer-v1.1-windows-amd64'
 $packageDir = Join-Path $outputRoot $packageName
 function Invoke-Checked { param([string]$File, [string[]]$Arguments) & $File @Arguments; if ($LASTEXITCODE -ne 0) { throw "$File failed ($LASTEXITCODE)" } }
 $npmCommand = (Get-Command npm.cmd -ErrorAction Stop).Source
@@ -18,10 +18,11 @@ $oldCGO = $env:CGO_ENABLED; $oldGOOS = $env:GOOS; $oldGOARCH = $env:GOARCH; $old
 Push-Location (Join-Path $projectRoot 'backend')
 try {
     $env:CGO_ENABLED = '0'; $env:GOOS = 'windows'; $env:GOARCH = 'amd64'
+    Invoke-Checked $goCommand @('run','github.com/tc-hib/go-winres@v0.3.3','make','--in','cmd/castorice/winres/winres.json','--out','cmd/castorice/rsrc','--arch','amd64')
     if ($BrowserTests) { $env:CASTORICE_BROWSER_TEST = '1' }
     if (-not $SkipTests) { Invoke-Checked $goCommand @('test', './...', '-count=1', '-timeout=180s'); Invoke-Checked $goCommand @('vet', './...') }
     New-Item -ItemType Directory -Path $packageDir -Force | Out-Null
-    Invoke-Checked $goCommand @('build', '-trimpath', '-ldflags=-s -w', '-o', (Join-Path $packageDir 'Castorice-WebRuleAnalyzer.exe'), './cmd/castorice')
+    Invoke-Checked $goCommand @('build', '-trimpath', '-ldflags=-H windowsgui -s -w', '-o', (Join-Path $packageDir 'Castorice-WebRuleAnalyzer.exe'), './cmd/castorice')
 } finally {
     Pop-Location
     $env:CGO_ENABLED=$oldCGO; $env:GOOS=$oldGOOS; $env:GOARCH=$oldGOARCH; $env:CASTORICE_BROWSER_TEST=$oldBrowserTest

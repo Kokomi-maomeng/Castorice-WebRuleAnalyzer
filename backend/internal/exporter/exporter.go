@@ -151,7 +151,7 @@ func Build(job model.ExportJob, observed []model.DomainRecord, categories []mode
 		return result, errors.New("没有可导出的已选择域名规则（IP 地址不作为普通域名导出）")
 	}
 	result.FinalRules = len(final)
-	provenance := []string{"Castorice-WebRuleAnalyzer v1.0 · 规则来源与许可证", "观察数据来自扫描任务 " + job.TaskID + "；有限扫描不代表完整覆盖。"}
+	provenance := []string{"Castorice-WebRuleAnalyzer v1.1 · 规则来源与许可证", "观察数据来自扫描任务 " + job.TaskID + "；有限扫描不代表完整覆盖。"}
 	seenOrigins := map[string]bool{}
 	for _, r := range final {
 		for _, o := range r.Origins {
@@ -249,7 +249,7 @@ func Serialize(entries []model.RuleEntry, job model.ExportJob) (string, string, 
 	if err != nil {
 		return "", "", "", err
 	}
-	attribution := []string{"# Castorice-WebRuleAnalyzer v1.0 · 浏览器观察结果，覆盖有限"}
+	attribution := []string{"# Castorice-WebRuleAnalyzer v1.1 · 浏览器观察结果，覆盖有限"}
 	origins := map[string]bool{}
 	for _, r := range entries {
 		for _, o := range r.Origins {

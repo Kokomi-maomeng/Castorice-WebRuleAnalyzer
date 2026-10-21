@@ -18,5 +18,5 @@ try {
         Write-Host '前端热更新：http://127.0.0.1:5173 （后台 Vite，退出脚本自动停止）'
     }
     Push-Location (Join-Path $projectRoot 'backend')
-    try { & go run ./cmd/castorice --no-open --listen 127.0.0.1:19110 --dev-origin http://127.0.0.1:5173 --data-dir (Join-Path $projectRoot '.runtime/dev'); if($LASTEXITCODE -ne 0){throw '后端退出'} } finally { Pop-Location }
+    try { & go run ./cmd/castorice --server --no-open --listen 127.0.0.1:19110 --dev-origin http://127.0.0.1:5173 --data-dir (Join-Path $projectRoot '.runtime/dev'); if($LASTEXITCODE -ne 0){throw '后端退出'} } finally { Pop-Location }
 } finally { if($viteProcess -and -not $viteProcess.HasExited){ Stop-Process -Id $viteProcess.Id -ErrorAction SilentlyContinue } }

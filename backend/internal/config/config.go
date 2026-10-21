@@ -10,11 +10,11 @@ import (
 )
 
 func DataDir() (string, error) {
-	root, err := os.UserConfigDir()
+	executable, err := os.Executable()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(root, "Castorice-WebRuleAnalyzer"), nil
+	return filepath.Join(filepath.Dir(executable), "data"), nil
 }
 func Validate(s model.Settings) error {
 	if err := scanner.ValidateOptions(s.Scan); err != nil {

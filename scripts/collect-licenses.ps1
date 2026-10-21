@@ -3,7 +3,7 @@ param([Parameter(Mandatory=$true)][string]$OutputFile)
 $ErrorActionPreference='Stop'
 $projectRoot=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $text=[Text.StringBuilder]::new()
-[void]$text.AppendLine('Castorice-WebRuleAnalyzer v1.0 - bundled third-party license texts')
+[void]$text.AppendLine('Castorice-WebRuleAnalyzer v1.1 - bundled third-party license texts')
 [void]$text.AppendLine('External rule datasets are downloaded separately and retain their own licenses.')
 function Add-LicenseDirectory([string]$Component,[string]$Directory) {
     if(-not (Test-Path -LiteralPath $Directory)){return}
@@ -21,7 +21,7 @@ Push-Location (Join-Path $projectRoot 'backend')
 try {
     $moduleRows=& go list -m -f '{{.Path}}|{{.Version}}|{{.Dir}}' all
     if($LASTEXITCODE -ne 0){throw 'Go module inventory failed'}
-    foreach($row in $moduleRows){$fields=$row -split '\|',3;if($fields.Length -eq 3 -and $fields[1]){Add-LicenseDirectory ($fields[0]+' '+$fields[1]) $fields[2]}}
+    foreach($row in $moduleRows){$fields=$row -split '\|',3;if($fields.Length -eq 3 -and $fields[1]){Add-LicenseDirectory ($fields[0]+' '+$fields[1]) $fields[2];if($fields[0] -eq 'github.com/jchv/go-webview2'){Add-LicenseDirectory 'Microsoft WebView2 SDK (embedded Loader)' (Join-Path $fields[2] 'webviewloader/sdk')}}}
 } finally{Pop-Location}
 Push-Location (Join-Path $projectRoot 'frontend')
 try {

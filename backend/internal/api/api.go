@@ -29,12 +29,13 @@ import (
 )
 
 type Server struct {
-	Store     *storage.Store
-	Scans     *scanner.Manager
-	Rules     *rules.Manager
-	BaseURL   string
-	DevOrigin string
-	Token     string
+	Store      *storage.Store
+	Scans      *scanner.Manager
+	Rules      *rules.Manager
+	BaseURL    string
+	DevOrigin  string
+	Token      string
+	SaveExport func(string, string) (string, error)
 }
 type envelope struct {
 	Data  any       `json:"data,omitempty"`
@@ -50,7 +51,7 @@ func New(store *storage.Store, scans *scanner.Manager, rules *rules.Manager, bas
 	if _, err := rand.Read(b); err != nil {
 		return nil, err
 	}
-	return &Server{store, scans, rules, base, dev, hex.EncodeToString(b)}, nil
+	return &Server{Store: store, Scans: scans, Rules: rules, BaseURL: base, DevOrigin: dev, Token: hex.EncodeToString(b)}, nil
 }
 
 func (s *Server) Handler() http.Handler {
@@ -155,6 +156,26 @@ func (s *Server) Handler() http.Handler {
 		respond(w, 200, map[string]bool{"cleared": true})
 	})
 	mux.HandleFunc("POST /api/export", s.export)
+	mux.HandleFunc("POST /api/desktop/export", func(w http.ResponseWriter, r *http.Request) {
+		if s.SaveExport == nil {
+			fail(w, 404, "not_desktop", "此接口仅在桌面模式启用")
+			return
+		}
+		var body struct {
+			Filename string `json:"filename"`
+			Content  string `json:"content"`
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, 17<<20)
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			fail(w, 400, "invalid_export", "导出内容不合法或过大")
+			return
+		}
+		path, err := s.SaveExport(body.Filename, body.Content)
+		if handleError(w, err) {
+			return
+		}
+		respond(w, 200, map[string]string{"path": path})
+	})
 	mux.HandleFunc("GET /api/settings", func(w http.ResponseWriter, r *http.Request) {
 		settings, err := s.Store.Settings()
 		if handleError(w, err) {

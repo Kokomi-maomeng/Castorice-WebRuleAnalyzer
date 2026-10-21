@@ -1,4 +1,4 @@
-# v1.0 技术设计与接口
+# v1.1 技术设计与接口
 
 ## 数据流
 
@@ -94,3 +94,17 @@ SQLite WAL、busy_timeout、单连接事务；任务、请求、域名、事件�
 ## 后续平台
 
 Go 核心、SQLite、规则逻辑不依赖 Windows；浏览器发现和打开 GUI 单独按 GOOS 适配。未来 Docker 必须由容器服务端浏览器扫描，并增加远程认证、持久化/沙箱及部署约束；页面不能抓取访问者设备全系统流量。Tauri 2 可将本机 Go 二进制作为 sidecar 并显示同源 GUI，但当前未交付或声称已验证 Tauri 安装包。
+
+## v1.1 Windows 桌面生命周期
+
+`cmd/castorice` 默认启动原生桌面；`--server` 显式保留独立 HTTP 开发模式。桌面不依赖 Rust/CGo，不执行 Node.js 开发服务器。
+
+1. 监督进程解析 EXE 所在目录，检查便携目录可写并取得单实例锁，将本进程 TEMP/TMP/SQLITE_TMPDIR 定向到 data/tmp。
+2. 新建带 KILL_ON_JOB_CLOSE 的 Windows Job；相同 EXE 的窗口进程先等待继承管道，只有成功加入 Job 后才放行。因此 WebView2/采集浏览器启动前已有生命周期所有权。
+3. 窗口进程在固定 OS 线程初始化 WebView2，独立 UDF 为 data/webview2；同进程启动随机回环端口的 Go API 和 SQLite。
+4. 导出经本地 Host/Origin/CSRF 保护接口保存，仅限 exports 内 YAML/JSON/TXT、最大 16 MiB、独占创建自动编号。没有任意文件路径或原生命令执行接口。
+5. 窗口关闭：取消请求和扫描、释放 chromedp、关闭 HTTP 监听及 SQLite。监督进程等候 Runtime 正常退出；仍有所属进程时仅终止该 Job。
+6. 确认 Job 无活动进程后，清理有标记的 scan-* 会话和 data/tmp，记录 data/logs/last-exit.json，释放实例锁并退出。
+7. 强制结束监督进程时 Windows 自动关闭 Job 句柄并回收所属进程；没有机会执行的磁盘清理在下次启动时完成，SQLite 标记异常中断的扫描。
+
+不以进程名全局结束 Chrome/Edge/WebView2。系统自身的事件记录、Prefetch 及共享 Runtime 的系统更新不属于应用可重定向的数据。未签名的便携包不包含静默安装器。

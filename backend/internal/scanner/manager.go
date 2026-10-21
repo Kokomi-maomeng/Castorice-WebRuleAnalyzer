@@ -353,9 +353,15 @@ func (m *Manager) ClearSessions() error {
 	if m.active != nil {
 		return ErrBusy
 	}
+	return CleanSessions(m.engine.SessionDir)
+}
+
+// CleanSessions is also used by the desktop supervisor after its entire job
+// has stopped. Unmarked directories and symbolic links are never followed.
+func CleanSessions(sessionDir string) error {
 	// Resolve and verify ownership before removing anything. Never accept paths
 	// from the API, and only remove scan-* direct children of our session folder.
-	root, err := filepath.Abs(m.engine.SessionDir)
+	root, err := filepath.Abs(sessionDir)
 	if err != nil {
 		return err
 	}

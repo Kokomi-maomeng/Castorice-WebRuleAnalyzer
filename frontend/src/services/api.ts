@@ -14,7 +14,8 @@ export async function api<T>(path: string, method = 'GET', body?: unknown): Prom
  if (!response.ok) { if (response.status === 403) { token = ''; session = undefined; } throw new APIError(result.error?.message || '操作失败', response.status, result.error?.code || 'unknown'); }
  return result.data as T;
 }
-export function download(content: string, filename: string, mime: string) {
+export async function download(content: string, filename: string, mime: string): Promise<string | undefined> {
+ if (window.castoriceDesktop) return (await api<{ path: string }>('/desktop/export', 'POST', { filename, content })).path;
  const url = URL.createObjectURL(new Blob([content], { type: mime })); const a = document.createElement('a'); a.href = url; a.download = filename; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 export async function copy(content: string) { if (!navigator.clipboard) throw new Error('当前浏览器不支持剪贴板，请使用文件下载。'); await navigator.clipboard.writeText(content); }

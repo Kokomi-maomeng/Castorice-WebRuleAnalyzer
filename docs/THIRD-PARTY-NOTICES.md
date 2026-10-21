@@ -6,6 +6,8 @@ Castorice-WebRuleAnalyzer 自身代码为 MIT。以下为本次锁定依赖的�
 | --- | --- | --- |
 | Go / 标准库 | BSD-3-Clause | https://go.dev/LICENSE |
 | chromedp / cdproto / sysutil | MIT | https://github.com/chromedp/chromedp |
+| jchv/go-webview2 / go-winloader | MIT | https://github.com/jchv/go-webview2 |
+| Microsoft WebView2 Loader（内嵌 SDK 组件） | Microsoft WebView2 SDK 许可，原文随运行包附带 | https://developer.microsoft.com/microsoft-edge/webview2/ |
 | modernc.org/sqlite / libc | BSD-3-Clause（底层 SQLite 公有领域） | https://pkg.go.dev/modernc.org/sqlite |
 | golang.org/x/net / x/text / x/sys | BSD-3-Clause | https://go.googlesource.com/net |
 | go.yaml.in/yaml/v3 | MIT / Apache-2.0 | https://github.com/yaml/go-yaml |
@@ -17,6 +19,8 @@ Castorice-WebRuleAnalyzer 自身代码为 MIT。以下为本次锁定依赖的�
 | TypeScript（构建） | Apache-2.0 | https://github.com/microsoft/TypeScript |
 
 正式运行包由构建脚本附带 `THIRD-PARTY-LICENSES.txt`：收集实际 Go 模块与 npm 生产依赖的上游许可证原文。字体仅使用系统字体，不包含用户的字体文件；测试站的微型矩形字体是本项目原创测试数据、MIT 授权，正常产物不包含测试站。
+
+v1.1 使用本机已安装的 WebView2 Evergreen Runtime，不捆绑整个 Runtime 安装包，不静默安装系统组件。内嵌 WebView2Loader.dll 由 go-webview2 通过内存加载；对应 SDK LICENSE 原文纳入运行包。程序图标由项目自己的脚本绘制，不使用 go-winres 默认图标。
 
 ## 下载的外部规则
 

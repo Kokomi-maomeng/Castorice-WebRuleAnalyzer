@@ -1,0 +1,72 @@
+{
+  "unsigned": true,
+  "pe_subsystem": "Windows GUI",
+  "rule_sources": [
+    {
+      "id": "blackmatrix7",
+      "version": "f9e403a75bbc4bee939c6d8dd766cf78f1b512f3",
+      "category_count": 679,
+      "loaded_count": 12,
+      "status": "ready"
+    },
+    {
+      "id": "v2fly",
+      "version": "e8f6d1e5c4a01cda943c0784ffa834340eeab5ae",
+      "category_count": 1538,
+      "loaded_count": 1538,
+      "status": "ready"
+    }
+  ],
+  "portable_directories": [
+    "data",
+    "exports"
+  ],
+  "lifecycle": [
+    {
+      "owned_processes_before": 8,
+      "scenario": "normal",
+      "remaining_processes": 0,
+      "listener_closed": true,
+      "passed": true
+    },
+    {
+      "owned_processes_before": 18,
+      "scenario": "active-close",
+      "remaining_processes": 0,
+      "listener_closed": true,
+      "passed": true
+    },
+    {
+      "owned_processes_before": 18,
+      "scenario": "force-crash",
+      "remaining_processes": 0,
+      "listener_closed": true,
+      "passed": true
+    }
+  ],
+  "frontend_tests": {
+    "files": 4,
+    "passed": 8
+  },
+  "go_tests": "passed",
+  "executable_bytes": 15652352,
+  "file_version": "1.1.0.0",
+  "executable_sha256": "9f2ee8fb18e3999780cf11aff1eb85386dcf6a724170f906ad04bea1c1842e64",
+  "real_chrome_integration": "passed",
+  "crash_recovery": {
+    "version": "v1.1",
+    "interrupted_status": "failed",
+    "new_scan_passed": true,
+    "passed": true,
+    "interrupted_reason": "service_interrupted",
+    "profiles_cleaned": true
+  },
+  "version": "v1.1",
+  "platform": "Windows 11 x64",
+  "go_vet": "passed",
+  "unverified": [
+    "Windows 10 physical runtime",
+    "Runtime absent on a clean Windows install",
+    "Go race detector (no C toolchain)"
+  ]
+}
