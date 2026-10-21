@@ -1,0 +1,16 @@
+node_modules/
+frontend/dist/
+backend/internal/webui/dist/*
+!backend/internal/webui/dist/.keep
+/dist/
+.runtime/
+*.db
+*.db-shm
+*.db-wal
+*.log
+*.tsbuildinfo
+*.test
+coverage.out
+.DS_Store
+*.exe
+test-results/

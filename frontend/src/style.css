@@ -1,0 +1,11 @@
+:root { font-synthesis: none; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+code, pre, .mono { font-family: Consolas, "Cascadia Code", monospace; }
+pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }
+::-webkit-scrollbar { width: 7px; height: 7px; }
+::-webkit-scrollbar-thumb { background: #aca4b455; border-radius: 12px; }
+::-webkit-scrollbar-track { background: transparent; }
+.domain-name { font-family: Consolas, "Cascadia Code", monospace; font-size: 13px; overflow-wrap: anywhere; }
+@keyframes pulse { 50% { opacity: .4; } }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; scroll-behavior: auto !important; } }

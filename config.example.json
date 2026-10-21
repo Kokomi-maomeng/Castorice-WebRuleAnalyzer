@@ -1,0 +1,19 @@
+{
+  "scan": {
+    "dns_mode": "auto",
+    "mode": "quick",
+    "max_seconds": 180,
+    "max_depth": 2,
+    "max_pages": 20,
+    "navigation_seconds": 30,
+    "quiet_millis": 1500,
+    "interval_millis": 500,
+    "observe_seconds": 10,
+    "visible": false,
+    "browser_path": ""
+  },
+  "theme": "light",
+  "log_level": "INFO",
+  "export_format": "clash",
+  "policy": "dibao"
+}

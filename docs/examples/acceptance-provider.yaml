@@ -1,0 +1,3 @@
+# Castorice-WebRuleAnalyzer v1.0 · 浏览器观察结果，覆盖有限
+payload:
+    - DOMAIN,example.com
