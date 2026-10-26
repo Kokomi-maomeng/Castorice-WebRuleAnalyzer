@@ -21,6 +21,9 @@ $launcher = '#!/bin/sh' + "`n" + 'set -eu' + "`n" + 'cd -- "$(dirname -- "$0")"'
 [IO.File]::WriteAllText((Join-Path $packageDir 'start.sh'),$launcher,[Text.UTF8Encoding]::new($false))
 $dockerfile=Join-Path $projectRoot 'deploy/Dockerfile.runtime'
 Copy-Item -LiteralPath $dockerfile -Destination (Join-Path $packageDir 'Dockerfile') -Force
+Copy-Item -LiteralPath (Join-Path $projectRoot 'compose.yaml') -Destination $packageDir -Force
+New-Item -ItemType Directory -Path (Join-Path $packageDir 'deploy') -Force | Out-Null
+Copy-Item -LiteralPath (Join-Path $projectRoot 'deploy/castorice-browser.apparmor') -Destination (Join-Path $packageDir 'deploy') -Force
 & (Join-Path $PSScriptRoot 'collect-licenses.ps1') -OutputFile (Join-Path $packageDir 'THIRD-PARTY-LICENSES.txt')
 $hash=(Get-FileHash -LiteralPath (Join-Path $packageDir 'castorice') -Algorithm SHA256).Hash.ToLowerInvariant()
 [IO.File]::WriteAllText((Join-Path $packageDir 'SHA256SUMS.txt'),$hash+'  castorice'+"`n")
