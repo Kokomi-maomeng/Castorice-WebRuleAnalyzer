@@ -24,8 +24,9 @@ type dnsCache struct {
 	until time.Time
 }
 
-// AutoResolver only falls back when every system answer is a benchmarking
-// Fake-IP address. Genuine private/mixed answers are never reinterpreted. The
+// AutoResolver falls back when a known synthetic Fake-IP is present and all
+// remaining answers are public. Genuine private/mixed answers are never
+// reinterpreted; the independently resolved result is revalidated by Policy. The
 // TLS endpoint is pinned to 1.1.1.1 with normal hostname/certificate checks.
 type AutoResolver struct {
 	OnFallback func(string)
@@ -50,14 +51,15 @@ func (r *AutoResolver) LookupNetIP(ctx context.Context, network, host string) ([
 	if err != nil || len(ips) == 0 {
 		return ips, err
 	}
-	allFake := true
+	hasFake := false
 	for _, ip := range ips {
-		if !fakeIPPrefix.Contains(ip.Unmap()) && !fakeIPv6Prefix.Contains(ip) {
-			allFake = false
-			break
+		if fakeIPPrefix.Contains(ip.Unmap()) || fakeIPv6Prefix.Contains(ip) {
+			hasFake = true
+		} else if !PublicIP(ip) {
+			return ips, nil
 		}
 	}
-	if !allFake {
+	if !hasFake {
 		return ips, nil
 	}
 	r.mu.Lock()

@@ -10,7 +10,7 @@ services:
     # Allows Chromium to create its own user-namespace sandbox as non-root.
     security_opt:
       - seccomp:unconfined
-      - apparmor:unconfined
+      - apparmor:${CASTORICE_APPARMOR_PROFILE:-unconfined}
     restart: unless-stopped
 volumes:
   analyzer-data:

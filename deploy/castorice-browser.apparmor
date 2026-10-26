@@ -1,0 +1,6 @@
+# Optional host profile for Ubuntu's restricted unprivileged user namespaces.
+# Attach only to the analyzer container; does not change global AppArmor policy.
+abi <abi/4.0>,
+profile castorice-browser flags=(unconfined) {
+  userns,
+}

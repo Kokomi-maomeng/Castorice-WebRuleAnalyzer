@@ -64,6 +64,15 @@ Compose 默认仅绑定宿主回环地址，使用持久卷保存数据。Chromi
 
 Linux 发布目录也附带 `Dockerfile`，可在该目录 `docker build -t castorice:1.2 .`，使用已编译的同版二进制构建运行镜像。仓库根 Dockerfile 可从源码完整构建。
 
+Ubuntu 23.10+ 等限制无特权用户命名空间的宿主机，还需加载仅供本容器使用的 AppArmor 配置，然后指定它启动：
+
+```sh
+sudo apparmor_parser -r deploy/castorice-browser.apparmor
+CASTORICE_APPARMOR_PROFILE=castorice-browser docker compose up -d --build
+```
+
+这不会关闭宿主机全局保护，也不使用 `--no-sandbox`。镜像显式安装 `chromium-sandbox`。配置依据见 [Chromium 官方说明](https://chromium.googlesource.com/chromium/src/+/main/docs/security/apparmor-userns-restrictions.md)。
+
 ## 开发与验证
 
 需要 Go 1.26+、Node 24+；依赖版本锁定。
@@ -87,7 +96,7 @@ python scripts/audit-release.py --zip ./dist/Castorice-WebRuleAnalyzer-v1.2-wind
 - 这是受控标签页的 CDP 网络事件采集，不是系统 PCAP；失败请求也会记录。新标签页、独立 Worker、登录后功能和未操作流程的覆盖有限。扫描通过不证明整个应用完整覆盖。
 - 不保存请求头、Cookie、认证信息或正文；URL 查询值脱敏。任意业务路径仍可能敏感，请妥善保管自己的历史与导出文件。
 - 默认禁用 QUIC，保护代理支持 HTTP(S)/WebSocket；没有声称采集原生 HTTP/3。
-- 系统 DNS 全部属于已知 Fake-IP 时，自动模式使用固定 Cloudflare HTTPS DNS 重新验证公网地址；混合/私网答案继续拒绝。不修改系统网络配置。
+- 系统 DNS 含已知 Fake-IP 且其余均为公网地址时，自动模式使用固定 Cloudflare HTTPS DNS 重新验证公网地址；混合/私网答案继续拒绝。不修改系统网络配置。
 - Windows 包没有代码签名。未在全新无 WebView2 的 Windows 10/11 安装上实测；第三方登录、支付等流程未执行。
 - 历史保存当时的匹配，重新匹配使用当前缓存。缓存清理后需重新下载；外部仓库、网络及规则本身不由本项目保证。
 

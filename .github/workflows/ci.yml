@@ -41,8 +41,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: docker build -t castorice-webruleanalyzer:ci .
-      - run: docker run -d --name castorice-ci -p 127.0.0.1:19110:19110 --security-opt seccomp=unconfined --security-opt apparmor=unconfined --shm-size=256m castorice-webruleanalyzer:ci
+      - run: sudo apparmor_parser -r deploy/castorice-browser.apparmor
+      - run: docker compose up -d --build
+        env:
+          CASTORICE_APPARMOR_PROFILE: castorice-browser
       - run: python scripts/smoke.py --base-url http://127.0.0.1:19110
       - if: failure()
-        run: docker logs castorice-ci
+        run: docker compose logs analyzer
