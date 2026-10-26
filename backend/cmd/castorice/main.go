@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 
@@ -29,6 +30,7 @@ func main() {
 	dataDir := flag.String("data-dir", "", "仅独立服务模式可指定；桌面模式固定在 EXE 旁 data")
 	noOpen := flag.Bool("no-open", false, "服务模式不打开外部浏览器")
 	devOrigin := flag.String("dev-origin", "", "Vite 开发来源")
+	publicURL := flag.String("public-url", "", "容器/反向代理的精确界面来源，例如 http://127.0.0.1:19110")
 	testAllow := flag.String("test-allow-loopback", "", "仅测试：精确回环 IP:端口")
 	testMap := flag.String("test-map-loopback", "", "仅测试：精确 *.test:端口=回环IP")
 	version := flag.Bool("version", false, "显示版本")
@@ -40,8 +42,8 @@ func main() {
 	var err error
 	if *worker != "" {
 		err = desktop.Worker(*worker)
-	} else if *serverMode {
-		err = runServer(*address, *dataDir, *devOrigin, *testAllow, *testMap, *noOpen)
+	} else if *serverMode || runtime.GOOS != "windows" {
+		err = runServer(*address, *dataDir, *devOrigin, *publicURL, *testAllow, *testMap, *noOpen)
 	} else {
 		err = desktop.Supervisor()
 	}
@@ -57,7 +59,7 @@ func main() {
 		os.Exit(1)
 	}
 }
-func runServer(address, dataDir, devOrigin, testAllow, testMap string, noOpen bool) error {
+func runServer(address, dataDir, devOrigin, publicURL, testAllow, testMap string, noOpen bool) error {
 	if dataDir == "" {
 		exe, err := os.Executable()
 		if err != nil {
@@ -87,7 +89,7 @@ func runServer(address, dataDir, devOrigin, testAllow, testMap string, noOpen bo
 			policy.TestAllow[entry] = true
 		}
 	}
-	s, err := app.Start(app.Options{Address: address, DataDir: dataDir, DevOrigin: devOrigin, Policy: policy})
+	s, err := app.Start(app.Options{Address: address, DataDir: dataDir, DevOrigin: devOrigin, PublicURL: publicURL, Policy: policy})
 	if err != nil {
 		return err
 	}

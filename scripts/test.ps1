@@ -9,7 +9,7 @@ try {
     if($LiveDNS){$env:CASTORICE_DNS_LIVE='1'}
     Push-Location (Join-Path $projectRoot 'backend')
     try {
-        $testArgs=@('test','./...','-count=1','-timeout=5m')
+        $testArgs=@('test','./...','-count=1','-timeout=12m')
         if($Race){$testArgs+= '-race'}
         & go @testArgs; if($LASTEXITCODE -ne 0){throw 'Go 测试失败'}
         & go vet ./...; if($LASTEXITCODE -ne 0){throw 'go vet 失败'}

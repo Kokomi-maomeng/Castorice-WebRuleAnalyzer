@@ -1,0 +1,11 @@
+.git
+.runtime
+dist
+frontend/node_modules
+backend/internal/webui/dist/assets
+*.log
+*.db*
+**/*.exe
+**/*.test
+**/*.syso
+**/__pycache__

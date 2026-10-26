@@ -28,6 +28,7 @@ type Manager struct {
 	client     *http.Client
 	sources    map[string]model.RuleSource
 	categories map[string]model.RuleCategory
+	wake       chan struct{}
 }
 
 func defaults() []model.RuleSource {
@@ -48,7 +49,7 @@ func WithHTTPClient(client *http.Client) Option {
 }
 
 func NewManager(store *storage.Store, options ...Option) (*Manager, error) {
-	m := &Manager{store: store, client: &http.Client{Timeout: 90 * time.Second}, sources: map[string]model.RuleSource{}, categories: map[string]model.RuleCategory{}}
+	m := &Manager{store: store, client: &http.Client{Timeout: 90 * time.Second}, sources: map[string]model.RuleSource{}, categories: map[string]model.RuleCategory{}, wake: make(chan struct{}, 1)}
 	for _, option := range options {
 		option(m)
 	}
@@ -60,6 +61,15 @@ func NewManager(store *storage.Store, options ...Option) (*Manager, error) {
 		return nil, err
 	}
 	for _, s := range saved {
+		if s.Status == "syncing" {
+			if s.Version == "" {
+				s.Status = "not_initialized"
+			} else {
+				s.Status = "cached"
+			}
+			s.Error = "上次更新中断，保留已有缓存"
+			s.CheckedAt = nil
+		}
 		m.sources[s.ID] = s
 	}
 	categories, err := store.Categories()
@@ -67,6 +77,7 @@ func NewManager(store *storage.Store, options ...Option) (*Manager, error) {
 		return nil, err
 	}
 	for _, c := range categories {
+		c.Broad = Broad(c.Name, c.RuleCount)
 		valid := true
 		for _, r := range c.Rules {
 			if _, err := Normalize(r); err != nil {
@@ -120,7 +131,7 @@ func (m *Manager) fetch(ctx context.Context, address string, maxBytes int64) ([]
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "Castorice-WebRuleAnalyzer/v1.1")
+	req.Header.Set("User-Agent", "Castorice-WebRuleAnalyzer/"+model.Version)
 	req.Header.Set("Accept", "application/vnd.github+json")
 	resp, err := m.client.Do(req)
 	if err != nil {
@@ -183,10 +194,7 @@ func (m *Manager) commit(ctx context.Context, repo string) (string, error) {
 
 func Broad(name string, count int) bool {
 	n := strings.ToLower(name)
-	if count > 500 {
-		return true
-	}
-	for _, term := range []string{"category-", "geolocation-", "google", "microsoft", "apple", "amazon", "cloudflare", "cdn", "ads", "advertising", "global", "proxy", "direct", "reject", "china", "cn", "private", "tld-", "gfw", "gfwlist", "download"} {
+	for _, term := range []string{"category-", "geolocation-", "google", "alphabet", "microsoft", "apple", "amazon", "cloudflare", "cdn", "ads", "advertising", "global", "proxy", "proxylite", "crypto", "cryptocurrency", "direct", "reject", "china", "cn", "private", "tld-", "gfw", "gfwlist", "download"} {
 		if n == term || strings.HasPrefix(n, term) && strings.HasSuffix(term, "-") {
 			return true
 		}
@@ -204,6 +212,8 @@ func (m *Manager) Sync(ctx context.Context, id string) error {
 	if ok {
 		source.Status = "syncing"
 		source.Error = ""
+		now := time.Now().UTC()
+		source.CheckedAt = &now
 		m.sources[id] = source
 	}
 	m.mu.Unlock()
@@ -243,12 +253,13 @@ func (m *Manager) Sync(ctx context.Context, id string) error {
 			source.Status = "cached"
 		}
 		m.sources[id] = source
-		m.mu.Unlock()
 		_ = m.store.SaveSource(source, nil, false)
+		m.mu.Unlock()
 		return err
 	}
 	now := time.Now().UTC()
 	source.Version = version
+	source.RemoteVersion = version
 	source.UpdatedAt = &now
 	source.Status = "ready"
 	source.CategoryCount = len(categories)
@@ -259,10 +270,12 @@ func (m *Manager) Sync(ctx context.Context, id string) error {
 			source.LoadedCount++
 		}
 	}
+	m.mu.Lock()
+	source.AutoUpdate = m.sources[id].AutoUpdate
 	if err = m.store.SaveSource(source, categories, true); err != nil {
+		m.mu.Unlock()
 		return m.fail(source, err)
 	}
-	m.mu.Lock()
 	for key, c := range m.categories {
 		if c.Source == id {
 			delete(m.categories, key)
@@ -321,22 +334,73 @@ func (m *Manager) syncBlackmatrix(ctx context.Context) ([]model.RuleCategory, st
 			continue
 		}
 		seen[name] = true
-		c := model.RuleCategory{ID: "blackmatrix7:" + name, Source: "blackmatrix7", Name: name, Path: "rule/Clash/" + entry.Path, Version: version, Broad: Broad(name, 0), Warnings: []string{}}
+		c := model.RuleCategory{ID: "blackmatrix7:" + name, Source: "blackmatrix7", Name: name, Path: "rule/Clash/" + entry.Path, Version: version, ContentHash: entry.SHA, Broad: Broad(name, 0), Warnings: []string{}}
 		out = append(out, c)
 	}
 	if len(out) == 0 {
 		return nil, "", errors.New("没有发现可用的 classical YAML 分类")
 	}
-	initial := map[string]bool{"Gemini": true, "Google": true, "OpenAI": true, "YouTube": true, "GitHub": true, "Claude": true, "Copilot": true, "Netflix": true, "Telegram": true, "Spotify": true, "BiliBili": true, "Microsoft": true}
-	for i, c := range out {
-		if !initial[c.Name] {
-			continue
+	// Cache every indexed YAML, with bounded concurrency. Unchanged blobs are
+	// reused, while all provenance is advanced to this atomic source snapshot.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	jobs := make(chan int)
+	var wg sync.WaitGroup
+	var resultMu sync.Mutex
+	var firstError error
+	var totalBytes int
+	for worker := 0; worker < 4; worker++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range jobs {
+				c := out[i]
+				old, exists := m.Category(c.ID)
+				var loaded model.RuleCategory
+				var e error
+				if exists && old.Raw != "" && old.ContentHash == c.ContentHash {
+					loaded = old
+					loaded.Broad = Broad(loaded.Name, loaded.RuleCount)
+					loaded.Version = version
+					loaded.Rules = append([]model.RuleEntry(nil), old.Rules...)
+					for ri := range loaded.Rules {
+						loaded.Rules[ri].Origins = append([]model.RuleOrigin(nil), old.Rules[ri].Origins...)
+						for oi := range loaded.Rules[ri].Origins {
+							loaded.Rules[ri].Origins[oi].Version = version
+						}
+					}
+				} else {
+					loaded, e = m.downloadBlackmatrix(ctx, c)
+				}
+				resultMu.Lock()
+				totalBytes += len(loaded.Raw)
+				if totalBytes > 96<<20 && e == nil {
+					e = errors.New("规则快照超过 96 MiB 限制")
+				}
+				if e != nil && firstError == nil {
+					firstError = fmt.Errorf("下载分类 %s: %w", c.Name, e)
+					cancel()
+				}
+				resultMu.Unlock()
+				if e == nil {
+					out[i] = loaded
+				}
+			}
+		}()
+	}
+	for i := range out {
+		if ctx.Err() != nil {
+			break
 		}
-		loaded, e := m.downloadBlackmatrix(ctx, c)
-		if e != nil {
-			return nil, "", fmt.Errorf("加载初始分类 %s: %w", c.Name, e)
-		}
-		out[i] = loaded
+		jobs <- i
+	}
+	close(jobs)
+	wg.Wait()
+	if firstError != nil {
+		return nil, "", firstError
+	}
+	if ctx.Err() != nil {
+		return nil, "", ctx.Err()
 	}
 	return out, version, nil
 }
@@ -351,6 +415,8 @@ func (m *Manager) downloadBlackmatrix(ctx context.Context, c model.RuleCategory)
 		return c, err
 	}
 	c.Loaded = true
+	c.Raw = string(b)
+	c.Format = "yaml"
 	c.Rules = entries
 	c.RuleCount = len(entries)
 	c.Warnings = warnings
@@ -412,7 +478,7 @@ func (m *Manager) syncV2fly(ctx context.Context) ([]model.RuleCategory, string, 
 			return nil, "", err
 		}
 		entries, warnings, e := parser.Parse(name)
-		c := model.RuleCategory{ID: "v2fly:" + name, Name: name, Source: "v2fly", Version: version, Path: "data/" + name, Loaded: e == nil, Rules: entries, RuleCount: len(entries), Broad: Broad(name, len(entries)), Warnings: warnings}
+		c := model.RuleCategory{ID: "v2fly:" + name, Name: name, Source: "v2fly", Version: version, Path: "data/" + name, Raw: string(files[name]), Format: "text", Loaded: e == nil, Rules: entries, RuleCount: len(entries), Broad: Broad(name, len(entries)), Warnings: warnings}
 		if e != nil {
 			c.Warnings = append(c.Warnings, e.Error())
 		}
@@ -430,27 +496,38 @@ func (m *Manager) Load(ctx context.Context, id string) (model.RuleCategory, erro
 	if !ok {
 		return c, errors.New("分类不存在，请先初始化规则库")
 	}
-	if c.Loaded {
+	if c.Loaded && c.Raw != "" {
 		return c, nil
 	}
-	if c.Source != "blackmatrix7" {
-		return c, errors.New("该分类解析失败，请查看分类警告")
+	var err error
+	if c.Source == "v2fly" {
+		// v1.1 caches contain parsed entries but no original text. Fetch the
+		// exact historical file without changing its parsed rules or snapshot.
+		var raw []byte
+		raw, err = m.fetch(ctx, "https://raw.githubusercontent.com/v2fly/domain-list-community/"+c.Version+"/"+c.Path, MaxFileBytes)
+		if err == nil {
+			c.Raw = string(raw)
+			c.Format = "text"
+		}
+	} else if c.Source == "blackmatrix7" {
+		c, err = m.downloadBlackmatrix(ctx, c)
+	} else {
+		return c, errors.New("未知分类来源")
 	}
-	c, err := m.downloadBlackmatrix(ctx, c)
 	if err != nil {
 		return c, err
 	}
-	m.mu.RLock()
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	s := m.sources[c.Source]
-	m.mu.RUnlock()
-	s.LoadedCount++
+	if old := m.categories[id]; !old.Loaded && c.Loaded {
+		s.LoadedCount++
+	}
 	if err = m.store.SaveSource(s, []model.RuleCategory{c}, false); err != nil {
 		return c, err
 	}
-	m.mu.Lock()
 	m.categories[id] = c
 	m.sources[s.ID] = s
-	m.mu.Unlock()
 	return c, nil
 }
 
@@ -479,15 +556,15 @@ func (m *Manager) Clear() error {
 		return errors.New("规则库正在操作，暂时不能清理")
 	}
 	defer m.operation.Unlock()
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if err := m.store.ClearRules(); err != nil {
 		return err
 	}
-	m.mu.Lock()
 	m.categories = map[string]model.RuleCategory{}
 	m.sources = map[string]model.RuleSource{}
 	for _, s := range defaults() {
 		m.sources[s.ID] = s
 	}
-	m.mu.Unlock()
 	return nil
 }

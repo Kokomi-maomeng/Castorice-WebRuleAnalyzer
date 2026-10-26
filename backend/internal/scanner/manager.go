@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/castorice/Castorice-WebRuleAnalyzer/backend/internal/browser"
 	"github.com/castorice/Castorice-WebRuleAnalyzer/backend/internal/domain"
 	"github.com/castorice/Castorice-WebRuleAnalyzer/backend/internal/matcher"
 	"github.com/castorice/Castorice-WebRuleAnalyzer/backend/internal/model"
@@ -53,6 +54,9 @@ func (m *Manager) Close() {
 func (m *Manager) Start(ctx context.Context, raw string, options model.ScanOptions) (model.ScanTask, error) {
 	if err := ValidateOptions(options); err != nil {
 		return model.ScanTask{}, err
+	}
+	if (options.Visible || options.Mode == "interactive") && !browser.VisibleSupported() {
+		return model.ScanTask{}, errors.New("当前服务没有图形会话，请使用快速扫描或自动探索并关闭可见浏览器")
 	}
 	u, err := domain.NormalizeURL(raw)
 	if err != nil {

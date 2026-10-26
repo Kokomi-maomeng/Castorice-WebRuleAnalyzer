@@ -1,25 +1,27 @@
 import { Alert, Box, Button, Chip, Paper, Stack, Typography } from '@mui/material';
-import { AutoAwesomeRounded, RefreshRounded } from '@mui/icons-material';
+import { RefreshRounded } from '@mui/icons-material';
 import type { ScanTask } from '../types';
 import { active } from '../utils/format';
-interface Props {
-    task?: ScanTask;
-    onRematch: () => void;
-    onLibrary: () => void;
-    busy: boolean;
-}
+interface Props { task?: ScanTask; onRematch: () => void; onLibrary: (id?: string) => void; busy: boolean }
 export default function MatchPanel(p: Props) {
-    const t = p.task;
-    return <Paper sx={{ p: 2.5, border: 1, borderColor: 'divider', mt: 2.5 }}>
-  <Stack direction="row" sx={{ alignItems: "center", gap: 1, flexWrap: "wrap" }}><AutoAwesomeRounded color="primary"/><Typography variant="h6" sx={{ flex: 1 }}>规则库匹配</Typography><Button size="small" onClick={p.onLibrary}>管理规则库</Button><Button size="small" startIcon={<RefreshRounded />} onClick={p.onRematch} disabled={!t || active(t) || p.busy}>重新匹配</Button></Stack>
-  {!t || active(t) ? <Typography color="text.secondary" sx={{ mt: 1.5 }}>扫描完成后，从已加载的真实规则分类中寻找匹配。默认导出仍为仅抓取结果。</Typography> : <>
-   <Alert severity={t.recommended_category ? 'success' : 'info'} sx={{ mt: 1.5 }}>{t.match_note || '未加载规则库，仍可导出本次观察域名。'}</Alert>
-   <Stack direction="row" sx={{ mt: t.matches.length ? 2 : 0, gap: 1.5, flexWrap: "wrap" }}>{t.matches.slice(0, 6).map(m => <Box key={m.category_id} sx={{ flex: '1 1 240px', maxWidth: 460, border: 1, borderColor: t.recommended_category === m.category_id ? 'primary.main' : 'divider', p: 2, borderRadius: 3 }}>
-    <Stack direction="row" sx={{ alignItems: "center", gap: 1 }}><Typography sx={{ flex: 1, fontWeight: 650 }}>{m.category}</Typography><Typography color="primary" sx={{ fontWeight: 700 }}>{m.score} 分</Typography></Stack>
-    <Stack direction="row" sx={{ my: 1, gap: .7 }}><Chip label={m.source}/><Chip variant="outlined" color={m.suitable ? 'success' : 'default'} label={m.confidence === 'high' ? '高置信度' : m.confidence === 'medium' ? '中置信度' : '低置信度'}/>{m.broad && <Chip label="通用分类" color="warning" variant="outlined"/>}</Stack>
-    <Typography variant="caption" color="text.secondary">命中 {m.matched_domains.length} 个观察域名 · 覆盖 {(m.coverage * 100).toFixed(0)}% · {m.version.slice(0, 8)}</Typography>
-    <Box component="details" sx={{ mt: 1, fontSize: 12 }}><summary style={{ cursor: 'pointer' }}>查看匹配依据</summary>{m.reasons.map((r, i) => <Typography variant="caption" key={i} sx={{ mt: .6, display: "block" }}>{r}</Typography>)}<Typography variant="caption" sx={{ overflowWrap: 'anywhere', mt: .5, display: "block" }}>{m.matched_domains.join('、')}</Typography></Box>
-   </Box>)}</Stack>
+ const t = p.task;
+ const target = t?.matches.filter(m => m.relation === 'target') || [];
+ const dependencies = t?.matches.filter(m => m.relation === 'dependency') || [];
+ const keywords = t?.matches.filter(m => m.relation === 'keyword') || [];
+ const legacy = t?.matches.some(m => !m.relation);
+ function results(items: typeof target) { return items.map(m => <Box key={m.category_id} className="match-row" sx={{ border: 1, borderColor: m.suitable ? 'primary.main' : 'divider', borderRadius: 2, p: 1.5, mb: 1 }}>
+  <Stack direction="row" sx={{ gap: 1, alignItems: 'center', flexWrap: 'wrap' }}><Typography sx={{ fontWeight: 650 }}>{m.category}</Typography><Chip label={m.source} size="small" variant="outlined" />{m.suitable && <Chip label="专属规则" color="success" size="small" />}{m.broad && <Chip label="通用集合" size="small" />}<Button size="small" sx={{ ml: 'auto' }} onClick={() => p.onLibrary(m.category_id)}>查看原文</Button></Stack>
+  <Typography variant="caption" color="text.secondary">{m.matched_domains.length} 个观察域名命中 · {m.version.slice(0, 8)}</Typography>
+  <Box component="details" sx={{ mt: .5, fontSize: 12 }}><summary>命中依据</summary>{m.reasons.map((r, i) => <Typography variant="caption" key={i} sx={{ display: 'block', mt: .5 }}>{r}</Typography>)}<Box component="ul" sx={{ pl: 2.5, my: 1 }}>{m.evidence?.map(e => <li key={e.hostname}><code>{e.hostname}</code>{e.target ? '（目标）' : ''}<br /><code>{e.rule_type},{e.rule_value}</code></li>)}</Box></Box>
+ </Box>); }
+ return <Paper component="section" className="match-panel" sx={{ p: 2, minHeight: 0, height: '100%', overflow: 'auto' }}>
+  <Stack direction="row" sx={{ alignItems: 'center', gap: 1, mb: 1 }}><Typography variant="subtitle1" sx={{ flex: 1, fontWeight: 650 }}>规则命中</Typography><Button size="small" onClick={() => p.onLibrary()}>规则库</Button><Button size="small" startIcon={<RefreshRounded />} onClick={p.onRematch} disabled={!t || active(t) || p.busy}>重新匹配</Button></Stack>
+  {!t || active(t) ? <Typography color="text.secondary">扫描结束后查看目标主机与第三方请求的实际规则命中。</Typography> : <>
+   <Alert severity={t.recommended_category && !legacy ? 'success' : 'info'} sx={{ mb: 1.5 }}>{legacy ? '历史结果使用旧版算法，请重新匹配。' : t.match_note}</Alert>
+   <Typography variant="subtitle2" sx={{ mb: 1 }}>目标主机命中 · {target.length}</Typography>
+   {target.length ? results(target) : <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>当前本地缓存没有命中目标主机的域名规则。可在规则库更新后重新匹配。</Typography>}
+   {dependencies.length > 0 && <><Typography variant="subtitle2" sx={{ mb: .5 }}>第三方请求命中 · {dependencies.length}</Typography><Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>以下集合仅包含部分第三方依赖，不表示目标属于这些应用。</Typography>{results(dependencies)}</>}
+   {keywords.length > 0 && <><Typography variant="subtitle2" sx={{ mb: 1 }}>目标关键词命中 · 需人工核对</Typography>{results(keywords)}</>}
   </>}
  </Paper>;
 }

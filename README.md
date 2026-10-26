@@ -1,186 +1,94 @@
-# Castorice-WebRuleAnalyzer v1.1
+# Castorice-WebRuleAnalyzer v1.2
 
-**Web分流规则分析器**。输入网站 URL，通过独立 Chrome / Edge / Chromium 会话观察 HTTP(S)、XHR/Fetch、WebSocket 请求，提取真实出现的域名，按需结合公开分类规则，生成 Clash/Mihomo 或 sing-box 规则文件。
+Web 分流规则分析器。输入网址，用独立 Chrome / Edge / Chromium 采集实际网络请求，查看域名与规则命中，导出 Clash/Mihomo、Rule Provider 或 sing-box 规则。
 
-这是 Windows 原生桌面窗口软件，使用 Go + WebView2 嵌入 React 界面。Windows x64 EXE 内嵌全部前端资源；双击后没有命令行窗口，也不打开外部浏览器作为主界面。普通用户无需安装开发工具。首次运行不包含虚构规则、演示历史或预置扫描结果。
+## 下载与运行
 
-## 快速运行（Windows 10/11 x64）
+从 [GitHub Releases](https://github.com/Kokomi-maomeng/Castorice-WebRuleAnalyzer/releases/latest) 下载 Windows 便携 ZIP，**解压后双击 `Castorice-WebRuleAnalyzer.exe`**。无需 Go、Node 或安装器。Windows 10/11 x64 需要 Edge WebView2 Runtime 和 Chrome/Edge；本次在 Windows 11 上完成实测。发行包不带个人数据或外部规则缓存。
 
-1. 本机需要 Microsoft Edge WebView2 Runtime，以及用于采集的 Chrome、Edge 或 Chromium。本次 Windows 11 环境已具备；缺少 Runtime 时按启动提示安装微软官方组件。
-2. 解压 `dist/Castorice-WebRuleAnalyzer-v1.1-windows-amd64.zip`。
-3. 双击 `Castorice-WebRuleAnalyzer.exe`，直接打开独立桌面窗口。
-4. 输入 `example.com` 或完整 HTTP(S) URL，点击“开始分析”。没有协议时补全 HTTPS。
-5. 在左侧选择观察到的域名，点击“预览与导出规则”。默认精确 `DOMAIN`，默认策略组 `dibao` 可修改。
-6. 点击窗口右上角 × 退出；正在运行的扫描会取消，所属浏览器、WebView2 和本地服务一同退出。
+软件数据存于 EXE 旁的 `data/`，导出文件存于 `exports/`。解压到可写目录，移动整个目录即可携带数据。关闭主窗口会取消扫描并关闭本次创建的子进程。请先退出旧版再替换 EXE，保留自己的 `data/` 与 `exports/`；先备份数据目录。不能在 ZIP 内直接运行。
 
-默认以 **EXE 所在文件夹** 为基准，与启动时工作目录无关：
+## v1.2 的改动
 
-```text
-Castorice-WebRuleAnalyzer.exe
-data/
-  castorice.db       历史、设置、规则缓存
-  webview2/          独立桌面界面 Profile 与缓存
-  sessions/         独立扫描浏览器 Profile，结束后清理
-  tmp/              应用及子进程临时目录，退出后清理
-  logs/             应用日志、last-exit.json 退出清理报告
-exports/            实际导出文件；重名自动编号，不覆盖
-```
+- **窗口工作区**：压缩顶部输入栏；域名列表与分析区域各自滚动；规则命中并入分析选项卡。窄窗口自动切换面板，低高度窗口收起部分选项。高级参数独立弹窗。
+- **完整规则原文**：规则库采用分类列表与原文编辑区，可全选、复制、临时编辑、恢复原文、下载。Facebook YAML 的 IP/ASN 等未转换条目原样保留。编辑不会修改已缓存规则或匹配行为。
+- **本地规则搜索**：搜索分类名或原文件中的域名，分类名称优先排列；点击查看原文。blackmatrix7 更新时下载全部分类，不再只预加载 12 类。
+- **自动更新开关**：在规则库设置中按来源开启，立即下载、运行期间每日检查；失败至多每小时重试，保留旧缓存。关闭软件后没有后台计划任务。可手动检查新版本或立即更新。
+- **实际规则命中**：分开显示目标主机、第三方请求和关键词命中；每项列出命中的具体规则。第三方 Google/认证/字体依赖不再显示成目标应用推荐。移除界面上的算法分数。
+- **Linux 与容器**：Linux 启动本地网页界面；Docker 提供完整网页服务。无图形会话时使用快速扫描/自动探索，辅助可见交互会明确禁用。
 
-请先解压到可写文件夹，勿直接在压缩包内运行。目录不可写时明确报错，不自动改用 AppData。移动整个软件目录即可携带设置与历史；v1.1 不自动迁移旧 AppData 数据。关闭后保留历史、规则缓存及桌面界面缓存，临时扫描会话和 tmp 内容清理。Windows 自身的事件日志、预取记录及已安装 Runtime 的系统更新记录由操作系统管理，不属于软件可重定向的数据。
+`gemini.com` 与 `gemini.google.com` 是不同网站。规则库中的 Google Gemini 分类需实际命中其对应域名，名称相似不会生成规则或自动识别。
 
-Windows 进程监督使用专属 Job Object；只管理本次创建的子进程，不按 `chrome.exe` 等进程名全局结束程序。单目录仅允许一个实例。内部 API 使用随机回环端口，关闭窗口会取消扫描、关闭监听和数据库。异常终止后，再次打开会标记中断历史并清理有所有权标记的临时 Profile。
+## 操作
 
-开发时可显式启动独立服务（桌面运行不需要这些命令）：
+1. 输入 URL 或域名，选择快速扫描、自动探索或辅助交互，开始分析。
+2. 左侧只显示本次真实观察域名；点击域名查看相关请求。
+3. 在“规则命中”核对目标、第三方依赖与具体命中规则；可直接打开分类原文。
+4. 开源规则库 → 规则库设置，开启需要的来源自动更新，或手动下载。首次下载需要网络与时间，下载完成后本地搜索可离线使用。
+5. 选择域名，预览并导出。默认仅观察结果与精确 DOMAIN；合并外部分类需要核对与选择，不自动加入所有第三方应用规则。
 
-```powershell
-.\Castorice-WebRuleAnalyzer.exe --server --no-open --listen 127.0.0.1:19112 --data-dir .\data
-```
+规则原文中保留全部条目；自动匹配和转换支持 DOMAIN、DOMAIN-SUFFIX、DOMAIN-KEYWORD。IP、进程、逻辑、正则等保留在原文中，不伪装成域名。v2fly 原文保留 include，域名匹配使用经过有界递归解析的规则。
 
-## 主要功能
+## 规则来源
 
-- 快速扫描：加载单页、滚动、观察异步请求；静默等待和每页观察上限均有界，不等待长连接永久静默。
-- 自动探索：发现 DOM 中同源普通链接，队列去重，限制深度与页面数；跳过查询参数、普通锚点、下载及已知危险操作路径。支持 `#/route`、`#!/route` 导航及 SPA 路由事件记录。
-- 辅助交互：打开独立可见浏览器，在**受控当前标签页**手动登录/操作，采集持续到停止或时间上限。软件不填写账号密码、不自动提交表单。
-- 实时域名、请求分页及筛选、响应/失败/耗时、重定向各跳独立记录、WebSocket 握手、过程日志、已访问/跳过/未访问页面。
-- IDN/Punycode、末尾点及大小写规范化，Public Suffix List 主域名分析，区分域名与 IPv4/IPv6。IP 主机保留观察记录，但不伪装为 DOMAIN 导出。
-- SQLite 批量写入历史、请求、域名、事件、规则索引与设置；刷新 GUI 恢复任务；服务异常中断的旧任务会标记失败。
-- 两套真实规则源、独立分类与版本、手动更新、缓存回退、解析警告、可解释匹配及人工选择。
-- 观察 / 合并两种范围、逐条来源预览和取消条目、精确去重及后缀覆盖分析、剪贴板和文件下载。
-- Material UI 中文界面、明暗/系统主题、设置持久化、历史重开与重新导出。
-
-**左侧始终只显示实际观察记录；规则库补充永远在导出预览展示。** 默认保留观察到的第三方域名，不把广告/CDN/认证分类等同于业务必要性。
-
-## 规则库
-
-| 来源 | 获取与缓存策略 | v1.1 支持 |
+| 来源 | 缓存方式 | 许可证 |
 | --- | --- | --- |
-| [blackmatrix7/ios_rule_script](https://github.com/blackmatrix7/ios_rule_script) | GitHub 当前 Commit + 实际 Clash 子树索引；首批 12 个常用应用，其余分类按需下载；固定 Commit 原始文件 | classical YAML / 列表中的 DOMAIN、DOMAIN-SUFFIX、DOMAIN-KEYWORD |
-| [v2fly/domain-list-community](https://github.com/v2fly/domain-list-community) | 当前 Commit 的受限 tar.gz 源码快照，只读取 `data/` 常规文件；解析结果存 SQLite | full、domain、裸域名、keyword、递归 include、属性与负属性过滤、`&target` affiliation |
+| [blackmatrix7/ios_rule_script](https://github.com/blackmatrix7/ios_rule_script) | 固定 Commit 的 Clash 分类 YAML，全部下载；未变更文件复用，成功后整体切换 | GPL-2.0，另见上游声明 |
+| [v2fly/domain-list-community](https://github.com/v2fly/domain-list-community) | 固定 Commit 源码快照、分类原文、解析后的 include | MIT |
 
-请在界面的“规则库”点击初始化或更新。**扫描本身不会下载整个仓库**，匹配只使用已加载缓存。blackmatrix7 新应用若尚未加载，请搜索分类并点击加载，再重新匹配。没有对应分类或来源不可达时，仍可正常扫描、导出仅观察结果。
+下载时校验上游许可证。原文件、Commit、许可证可在界面查看；再分发外部规则需遵守其许可证。成品与源码不预装外部规则快照。详见 [第三方说明](docs/THIRD-PARTY-NOTICES.md)。更新下载失败不会覆盖已有缓存。
 
-所有规则保留原始类型、分类、文件、来源、Commit 和许可证。regexp、IP/策略条件、复合规则等不在本版转换范围，保留警告而不误转成域名。include 限制深度 24、检测循环；文件 2 MiB、压缩快照 20 MiB、解压读取 64 MiB、分类规则 100,000 条上限。
+## Linux
 
-应用匹配使用目标身份/别名、目标入口、域名集合覆盖和跨分类共享频率；字体、认证域名、广泛后缀与大型分类降权。Google 等通用分类不会作为 Gemini 专属分类自动选择。低置信度或不同应用候选评分接近时不自动选定。**分数是算法评分，不是统计识别准确率**。即使有高置信度推荐，导出默认仍为仅观察结果。
+解压 Linux amd64 包，在有 Chromium/Chrome 的系统中运行：
 
-本项目自身代码采用 MIT。外部规则不随成品预装；blackmatrix7 为 GPL-2.0 并有上游使用声明，v2fly 为 MIT。初始化时核验、保存上游 LICENSE 原文，可在界面查看。合并导出附带来源信息，并可单独下载 `.sources.txt`。外部规则再分发须遵守各自许可证，详见 [第三方说明](docs/THIRD-PARTY-NOTICES.md)。
+```sh
+chmod +x castorice start.sh
+./start.sh
+# 或启动服务而不打开网页
+./castorice --server --no-open --listen 127.0.0.1:19110 --data-dir ./data
+```
 
-## 导出格式
+Debian 可自行通过官方软件源安装 Chromium。图形会话下支持可见辅助交互；SSH/无桌面服务只提供无头采集。Linux 使用系统浏览器显示界面，Windows 使用原生 WebView2 窗口。
 
-1. **Clash / Mihomo YAML**：`rules:` 列表，每条含策略组；可以仅输出列表以粘贴到已有配置。
-2. **Mihomo Rule Provider**：`payload:`，classical 类型，每条不附策略组。客户端需自行声明 provider 并用 RULE-SET 指定策略。
-3. **sing-box Source Rule Set**：JSON version 3，目标 sing-box 1.11+，保留 `domain`、`domain_suffix`、`domain_keyword`。可由 `sing-box rule-set compile` 编译；不是完整客户端配置。[官方格式](https://sing-box.sagernet.org/configuration/rule-set/source-format/)
+## Docker 网页版
 
-后缀规则只在用户显式选择或上游原本如此时使用。合并不把观察域名自动泛化为主域名。已选上层 DOMAIN-SUFFIX 会覆盖相应 DOMAIN/更窄后缀，预览保留被覆盖行与来源，导出不重复；取消上层规则会恢复未排除的子规则。关键词不会被用来删除精确观察规则，并会显示误匹配风险。
+```sh
+docker compose up -d --build
+# 浏览器访问 http://127.0.0.1:19110
+```
 
-合并统计分别计算观察域名数、外部实际保留的规则条数、重复/被覆盖条数、最终规则数。跨类型与覆盖关系下不能把所有数字都当作域名计数或直接套用简单加减。
+Compose 默认仅绑定宿主回环地址，使用持久卷保存数据。Chromium 以非 root 用户运行，并保留自身沙箱；Compose 中允许其创建用户命名空间，Debian AppArmor 环境也需要相应容器选项。不要把本地工具直接开放为匿名公网服务。
 
-## 开发环境与构建
+如修改映射端口/域名，需要通过 `--public-url` 配置**精确来源**，保持 Host/Origin 校验。可用 SSH 转发访问远程主机的回环端口；不要修改系统代理、DNS 或防火墙来迁就测试。没有图形会话的容器不提供可见浏览器辅助模式。
 
-本次验证环境为 Windows x64、Go 1.26.2、Node.js 24.13.0 / npm 11.6.2。建议 Go 1.26+ 与 Node 24 LTS+。使用纯 Go SQLite，正式编译 `CGO_ENABLED=0`；无需 Rust、C 编译器或完整 Chromium 下载。构建脚本使用固定版本 go-winres 生成图标、版本与 Windows DPI 资源。
+Linux 发布目录也附带 `Dockerfile`，可在该目录 `docker build -t castorice:1.2 .`，使用已编译的同版二进制构建运行镜像。仓库根 Dockerfile 可从源码完整构建。
+
+## 开发与验证
+
+需要 Go 1.26+、Node 24+；依赖版本锁定。
 
 ```powershell
-# 源码根目录：安装锁定依赖、前端测试/构建、Go 测试/vet、内嵌前端、编译和打包
-.\scripts\build.ps1
-
-# 同时运行真实浏览器集成测试
-.\scripts\build.ps1 -BrowserTests
-
-# 前端 Vite 热更新与独立后端，开发数据保存在 .runtime/dev
-.\scripts\dev.ps1
-# 热更新 GUI http://127.0.0.1:5173；后端 http://127.0.0.1:19110
+./scripts/test.ps1 -Browser -LiveRules -LiveDNS
+./scripts/build.ps1 -BrowserTests
+./scripts/build-linux.ps1
+# 启动独立测试服务后验证真实页面、规则原文及响应布局
+$env:CASTORICE_TEST_URL='http://127.0.0.1:19120'
+node scripts/verify-ui.mjs
+python scripts/audit-release.py --zip ./dist/Castorice-WebRuleAnalyzer-v1.2-windows-amd64.zip
 ```
 
-如果本机 PowerShell 策略不允许运行脚本，可在源码目录逐条执行等价命令：
+`verify-ui.mjs` 使用系统 Chrome，先在测试服务下载规则库；普通 Go 测试不自动下载规则或运行浏览器。浏览器/上游实测通过显式开关启用。测试站只使用精确、临时注入的 `.test` 白名单，生产扫描始终阻止私网/回环/元数据目标。
 
-```powershell
-cd frontend
-npm ci
-npm run build
-cd ..\backend
-go test ./...
-go run ./cmd/castorice --server --data-dir ../.runtime/dev
-# 单独编译：前端构建后
-$env:CGO_ENABLED='0'
-go build -trimpath -ldflags='-H windowsgui -s -w' -o ..\dist\Castorice-WebRuleAnalyzer.exe ./cmd/castorice
-```
+[测试报告](docs/TEST-REPORT.md) · [发布流程模板](docs/RELEASE-WORKFLOW.md) · [架构与安全边界](docs/ARCHITECTURE.md)
 
-前端生产构建直接输出 `backend/internal/webui/dist/`，Go Embed 在编译时内嵌。直接运行 `go run` 前应先构建前端；未构建会显示明确提示，不展示假界面。`config.example.json` 为设置 API 的示例结构，正常用户在 GUI 设置即可；程序不会自动读取该示例文件。
+## 边界
 
-## 测试
+- 这是受控标签页的 CDP 网络事件采集，不是系统 PCAP；失败请求也会记录。新标签页、独立 Worker、登录后功能和未操作流程的覆盖有限。扫描通过不证明整个应用完整覆盖。
+- 不保存请求头、Cookie、认证信息或正文；URL 查询值脱敏。任意业务路径仍可能敏感，请妥善保管自己的历史与导出文件。
+- 默认禁用 QUIC，保护代理支持 HTTP(S)/WebSocket；没有声称采集原生 HTTP/3。
+- 系统 DNS 全部属于已知 Fake-IP 时，自动模式使用固定 Cloudflare HTTPS DNS 重新验证公网地址；混合/私网答案继续拒绝。不修改系统网络配置。
+- Windows 包没有代码签名。未在全新无 WebView2 的 Windows 10/11 安装上实测；第三方登录、支付等流程未执行。
+- 历史保存当时的匹配，重新匹配使用当前缓存。缓存清理后需重新下载；外部仓库、网络及规则本身不由本项目保证。
 
-```powershell
-.\scripts\test.ps1                    # Go 单元/API/存储测试 + vet + 前端测试和构建
-.\scripts\test.ps1 -Browser           # 增加本机真实 Chrome/Edge 测试，不依赖外网网站
-.\scripts\test.ps1 -LiveRules         # 增加真实 GitHub 源、许可证、解析及离线缓存回退验证
-.\scripts\test.ps1 -Browser -LiveRules -LiveDNS
-
-# 已启动的正式程序：公网扫描、历史与三种导出验收（需要外网）
-.\scripts\smoke.ps1
-```
-
-桌面成品生命周期验收（在源码根目录运行；normal / active-close 提示 READY 后关闭原生主窗口）：
-
-```powershell
-.\scripts\verify-desktop.ps1 -PackageDirectory .\dist\Castorice-WebRuleAnalyzer-v1.1-windows-amd64 -Scenario normal -SyncRules -WaitForCloseSeconds 600
-.\scripts\verify-desktop.ps1 -PackageDirectory .\dist\Castorice-WebRuleAnalyzer-v1.1-windows-amd64 -Scenario active-close
-.\scripts\verify-desktop.ps1 -PackageDirectory .\dist\Castorice-WebRuleAnalyzer-v1.1-windows-amd64 -Scenario force-crash
-```
-
-脚本使用真实发布 EXE 的副本，生成含中文空格的测试目录；不会运行或结束其他用户浏览器。结果保存在 `.runtime/桌面验收 空格/`。最终发布验收见 [测试报告](docs/TEST-REPORT.md) 和 [机器可读结果](docs/v1.1-acceptance.json)。
-
-直接命令：在 `backend` 执行 `go test ./...`；浏览器测试显式设置 `CASTORICE_BROWSER_TEST=1`，真实规则源测试设置 `CASTORICE_RULES_LIVE=1`。在 `frontend` 执行 `npm test`。默认跳过真实浏览器和在线规则测试，并会明确标记 skip。`-race` 需要本机 Go race 所需 C 工具链，见 [测试报告](docs/TEST-REPORT.md)。
-
-浏览器测试通过内存注入的精确 `.test:port → loopback` 白名单访问独立 `httptest` 网站，不改变正常策略、hosts、DNS 或系统代理。静态字体为原创测试字体；正常测试不需要 Python。另有 `scripts/local-test.ps1` 可手工验收测试站。测试启动参数 `--test-map-loopback` / `--test-allow-loopback` 只在显式使用时生效，不保存到用户设置；**日常运行不要使用这些测试参数**。
-
-测试覆盖 URL/IDN/IP/PSL、安全代理/DNS Rebinding、源格式/include 属性语义与循环、Gemini/Google 和歧义、合并/覆盖/排除、三格式可解析性、SQLite 历史、API Host/Origin/CSRF、SSE 隔离、前端预览与断线、真实浏览器采集和资源清理。实际执行结果见 [测试报告](docs/TEST-REPORT.md)。
-
-## 架构与目录
-
-```text
-frontend/                    React + TypeScript + Material UI + Vite
-  src/components/            采集、域名、请求、规则库、导出、设置、历史
-  src/hooks/                 SSE、状态恢复、请求分页
-  src/services/              统一 API / 下载 / 剪贴板
-backend/
-  cmd/castorice/             原生桌面与显式独立服务入口
-  cmd/testsite/              仅开发/测试站入口
-  internal/desktop/          Windows 原生窗口与 Job 进程监督
-  internal/portable/         EXE 目录数据、临时文件与导出
-  internal/app/              共用服务启动与关闭
-  internal/api/              HTTP API、SSE、Host/Origin/CSRF
-  internal/browser/          跨平台浏览器路径检测
-  internal/scanner/          chromedp、CDP 记录器、任务生命周期
-  internal/crawler/          安全链接发现策略
-  internal/domain/           URL、IDNA、PSL
-  internal/security/         地址校验、受控代理、统一脱敏
-  internal/rules/            来源适配、下载、缓存与格式解析
-  internal/matcher/          索引匹配与保守推荐
-  internal/exporter/         类型化合并、覆盖、YAML/JSON
-  internal/storage/          纯 Go SQLite、增量批量写入
-  internal/model/            统一业务数据模型
-  internal/config/           默认值、校验、系统数据目录
-  internal/webui/            Go Embed 静态界面
-  internal/testsite/         真实浏览器测试资源
-scripts/                     构建、开发、测试
-docs/                        架构、安全边界、许可证、验收记录
-dist/                        本地产物（不进 Git）
-```
-
-API 与数据流、安全设计及匹配评分说明见 [ARCHITECTURE.md](docs/ARCHITECTURE.md)。后端可独立构建，核心没有 Windows 专有 API；Linux/macOS 编译验证和 Windows 实测范围在报告中逐项注明。未把 Tauri 作为唯一入口。
-
-## 重要限制与常见问题
-
-- **这不是 PCAP / 系统透明抓包。** 只记录受控当前标签页中 CDP 可见的请求，包括失败/被拦截的尝试。新标签页、独立 Worker、Service Worker 的部分请求，以及未执行交互的功能可能不完整。辅助交互请优先在当前标签页操作。
-- **HTTP/3/QUIC 默认禁用。** 地址保护代理支持 HTTP/HTTPS CONNECT 与 WebSocket，并允许隧道内 HTTP/2；未实现受保护的 QUIC 出站。因此不会声称已经验证原生 HTTP/3 抓取。`protocol` 仅保存浏览器实际报告值。
-- **远端 IP 可能是保护代理。** 保留浏览器报告值，不把本地代理 IP 推测成真实服务器 IP。没有响应或未完成的耗时保持空。
-- **查询值全部脱敏。** 不记录请求头、认证信息或正文；请求 URL 不保存片段，页面账本仅保留经过同样脱敏的 SPA 路由片段，明显长令牌路径片段也会脱敏。但任意 URL 路径可能含业务敏感信息，历史数据仍应妥善保管。
-- **规则匹配需要缓存。** 未初始化/未加载的 blackmatrix 分类不会参与匹配；可手工加载后重新匹配。历史保存当时匹配的来源/Commit；再次合并使用当前缓存版本并在预览标明，不保证重现已被更新覆盖的旧外部快照。
-- **扫描有界。** 默认 180 秒、深度 2、最多 20 页，单任务最多 20,000 请求，页面覆盖账本最多 1,000 条，内存日志显示最近 2,000 条。静默可能提前结束单页观察；持续轮询会在上限结束。
-- **探索保持保守。** 不自动点击控件、不提交表单、跳过查询导航与已知操作路径。无法证明任意站点的所有 GET 都无副作用，针对敏感业务建议快速或手动辅助采集。
-- **本机安全保护范围。** 默认拦截回环、私网、链路本地、常见元数据/保留地址，拒绝混合 DNS 答案，逐 TCP 连接固定已验证 IP，禁用 QUIC/非代理 WebRTC UDP；仍依赖未被篡改的 Chrome 代理实现和浏览器沙箱，不是恶意网站的操作系统级隔离环境。
-- **网络环境**：保护代理直接连接经过校验的目标 IP，不自动继承系统 HTTP/SOCKS 代理。系统已有 TUN/VPN 仍可能影响连接。自动 DNS 模式仅在系统答案全部属于已知 Fake-IP 网段（198.18.0.0/15、fdfe:dcba:9876::/64）时，经固定 1.1.1.1 端点的标准 HTTPS DNS 重新解析，并再次校验全部地址；设置中可选择仅系统 DNS。此时被查询域名会发送给 Cloudflare，缓存最多 60 秒。不修改系统代理、DNS 或网络设置。自定义其他 Fake-IP 网段或需要额外上游代理链的环境目前可能不可达。
-- **构建与桌面封装**：Windows x64 原生 WebView2 窗口与进程监督已提供；未制作代码签名、安装器和 Tauri 封装。Win10/Linux/macOS 的实际运行与第三方登录/上传/视频流业务流程，不能等同于本机 Chrome 测试通过。
-- **端口/实时断开**：桌面启动错误通过原生弹窗显示，详情查看 data/logs；开发服务可另选回环端口；SSE 会自动重连，GUI 每 3 秒补取断线任务状态。服务异常退出后的任务会标记中断，可再次创建扫描。
-
-后续优先补充多标签页/Worker 采集、可选安全上游代理、旧规则快照重现、Tauri 2 + Go sidecar、平台实机验证与签名分发。Android、Docker 远程多用户服务、系统流量采集未实现；架构保留独立服务入口与平台适配位置。
+本项目采用 MIT。

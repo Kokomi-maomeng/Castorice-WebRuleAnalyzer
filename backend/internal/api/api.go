@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -57,7 +58,7 @@ func New(store *storage.Store, scans *scanner.Manager, rules *rules.Manager, bas
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, r *http.Request) {
-		respond(w, 200, map[string]any{"status": "ok", "version": model.Version, "name": "Castorice-WebRuleAnalyzer"})
+		respond(w, 200, map[string]any{"status": "ok", "version": model.Version, "name": "Castorice-WebRuleAnalyzer", "visible_browser": browser.VisibleSupported()})
 	})
 	mux.HandleFunc("GET /api/session", func(w http.ResponseWriter, r *http.Request) { respond(w, 200, map[string]string{"token": s.Token}) })
 	mux.HandleFunc("GET /api/browsers", func(w http.ResponseWriter, r *http.Request) { respond(w, 200, browser.Detect()) })
@@ -105,15 +106,73 @@ func (s *Server) Handler() http.Handler {
 		out := []model.RuleCategory{}
 		q := strings.ToLower(r.URL.Query().Get("q"))
 		for _, c := range all {
-			if q != "" && !strings.Contains(strings.ToLower(c.Name), q) {
+			if q != "" && !strings.Contains(strings.ToLower(c.Name+" "+c.Source+" "+c.Raw), q) {
 				continue
 			}
 			c.Rules = nil
+			c.Raw = ""
 			out = append(out, c)
+		}
+		if q != "" {
+			rank := func(c model.RuleCategory) int {
+				n := strings.ToLower(c.Name)
+				if n == q {
+					return 0
+				}
+				if strings.HasPrefix(n, q) {
+					return 1
+				}
+				if strings.Contains(n, q) {
+					return 2
+				}
+				return 3
+			}
+			sort.SliceStable(out, func(i, j int) bool { return rank(out[i]) < rank(out[j]) })
 		}
 		respond(w, 200, out)
 	})
 	mux.HandleFunc("POST /api/rules/sync", s.syncRules)
+	mux.HandleFunc("PUT /api/rules/auto-update", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Source  string `json:"source"`
+			Enabled bool   `json:"enabled"`
+		}
+		if !decode(w, r, &body) {
+			return
+		}
+		if handleError(w, s.Rules.SetAutoUpdate(body.Source, body.Enabled)) {
+			return
+		}
+		respond(w, 200, s.Rules.Sources())
+	})
+	mux.HandleFunc("POST /api/rules/check", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Source string `json:"source"`
+		}
+		if !decode(w, r, &body) {
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		defer cancel()
+		source, err := s.Rules.Check(ctx, body.Source)
+		if handleError(w, err) {
+			return
+		}
+		respond(w, 200, source)
+	})
+	mux.HandleFunc("GET /api/rules/content", func(w http.ResponseWriter, r *http.Request) {
+		c, ok := s.Rules.Category(r.URL.Query().Get("id"))
+		if !ok {
+			fail(w, 404, "not_found", "分类不存在")
+			return
+		}
+		if c.Raw == "" {
+			fail(w, 409, "content_missing", "请先更新或加载此分类以缓存原文")
+			return
+		}
+		c.Rules = nil
+		respond(w, 200, c)
+	})
 	mux.HandleFunc("POST /api/rules/load", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			ID string `json:"id"`
@@ -128,6 +187,7 @@ func (s *Server) Handler() http.Handler {
 			return
 		}
 		c.Rules = nil
+		c.Raw = ""
 		respond(w, 200, c)
 	})
 	mux.HandleFunc("POST /api/rules/match", func(w http.ResponseWriter, r *http.Request) {
@@ -286,7 +346,7 @@ func (s *Server) syncRules(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Minute)
 	defer cancel()
 	if handleError(w, s.Rules.Sync(ctx, body.Source)) {
 		return

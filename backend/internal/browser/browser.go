@@ -13,6 +13,10 @@ type Candidate struct {
 	Path string `json:"path"`
 }
 
+func VisibleSupported() bool {
+	return runtime.GOOS != "linux" || os.Getenv("DISPLAY") != "" || os.Getenv("WAYLAND_DISPLAY") != ""
+}
+
 func Detect() []Candidate {
 	paths := []Candidate{}
 	switch runtime.GOOS {

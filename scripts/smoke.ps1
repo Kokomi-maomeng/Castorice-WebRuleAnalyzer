@@ -4,7 +4,7 @@ $ErrorActionPreference='Stop'
 $projectRoot=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 if(-not $OutputDirectory){$OutputDirectory=Join-Path $projectRoot '.runtime/smoke'}
 $health=(Invoke-RestMethod ($BaseURL+'/api/health')).data
-if($health.name -ne 'Castorice-WebRuleAnalyzer' -or $health.version -ne 'v1.1'){throw 'Unexpected server'}
+if($health.name -ne 'Castorice-WebRuleAnalyzer' -or $health.version -ne 'v1.2'){throw 'Unexpected server'}
 $session=(Invoke-RestMethod ($BaseURL+'/api/session')).data
 $headers=@{'X-Castorice-Token'=$session.token}
 function Post-JSON([string]$Path,$Value){return (Invoke-RestMethod ($BaseURL+$Path) -Method Post -ContentType 'application/json' -Headers $headers -Body ($Value|ConvertTo-Json -Depth 12 -Compress)).data}

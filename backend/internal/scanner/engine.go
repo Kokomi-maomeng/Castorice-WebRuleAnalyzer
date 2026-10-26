@@ -72,13 +72,9 @@ func (e Engine) run(ctx context.Context, r *runtimeTask, target string) (string,
 		return "profile_error", err
 	}
 	defer func() {
-		for attempt := 0; attempt < 5; attempt++ {
-			if os.RemoveAll(profile) == nil {
-				return
-			}
-			time.Sleep(100 * time.Millisecond)
+		if removeProfile(profile) != nil {
+			r.log("WARN", "cleanup", "临时 Profile 未完全删除，请在设置中清理残留会话。")
 		}
-		r.log("WARN", "cleanup", "临时 Profile 未完全删除，请在设置中清理残留会话。")
 	}()
 	if err = os.WriteFile(filepath.Join(profile, sessionMarker), []byte(sessionOwner), 0600); err != nil {
 		return "profile_error", err
@@ -91,8 +87,10 @@ func (e Engine) run(ctx context.Context, r *runtimeTask, target string) (string,
 	opts := append([]chromedp.ExecAllocatorOption{}, chromedp.DefaultExecAllocatorOptions[:]...)
 	opts = append(opts, chromedp.ExecPath(browserPath), chromedp.UserDataDir(profile), chromedp.Flag("headless", !o.Visible && o.Mode != "interactive"), chromedp.ProxyServer("http://"+proxy.Address), chromedp.Flag("proxy-bypass-list", "<-loopback>"), chromedp.Flag("disable-quic", true), chromedp.Flag("disable-extensions", true), chromedp.Flag("disable-background-networking", true), chromedp.Flag("disable-sync", true), chromedp.Flag("disable-popup-blocking", false), chromedp.Flag("force-webrtc-ip-handling-policy", "disable_non_proxied_udp"), chromedp.Flag("host-resolver-rules", "MAP * ~NOTFOUND , EXCLUDE 127.0.0.1"), chromedp.Flag("window-size", "1360,900"))
 	opts = append(opts, chromedp.Flag("crash-dumps-dir", filepath.Join(e.SessionDir, "crashes")), chromedp.Flag("disable-crash-reporter", true))
+	scopeOptions, closeScope := browserProcessScope(profile)
+	opts = append(opts, scopeOptions...)
 	allocCtx, cancelAllocator := chromedp.NewExecAllocator(ctx, opts...)
-	defer cancelAllocator()
+	defer func() { cancelAllocator(); closeScope() }()
 	tabCtx, cancelTab := chromedp.NewContext(allocCtx, chromedp.WithErrorf(func(_ string, _ ...any) { /* Protocol diagnostics may contain unredacted URLs; task errors are logged separately. */
 	}))
 	defer cancelTab()

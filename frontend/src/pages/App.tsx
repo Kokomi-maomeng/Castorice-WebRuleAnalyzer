@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, AppBar, Box, Button, Chip, CircularProgress, Container, CssBaseline, IconButton, Snackbar, Stack, ThemeProvider, Toolbar, Tooltip, Typography, useMediaQuery } from '@mui/material';
+import { Alert, AppBar, Box, Button, Chip, CircularProgress, CssBaseline, IconButton, Snackbar, Stack, ThemeProvider, Toolbar, Tooltip, Typography, useMediaQuery } from '@mui/material';
 import { DarkModeRounded, HistoryRounded, HubRounded, LightModeRounded, MenuBookRounded, SettingsRounded } from '@mui/icons-material';
 import ScanControls from '../components/ScanControls';
 import DomainPanel from '../components/DomainPanel';
@@ -21,10 +21,13 @@ export default function App() {
     const [id, setID] = useState('');
     const [busy, setBusy] = useState(false);
     const [initializing, setInitializing] = useState(true);
+    const [canShowBrowser, setCanShowBrowser] = useState(true);
     const [error, setError] = useState('');
     const [notice, notify] = useState('');
     const [dialog, setDialog] = useState('');
     const [tab, setTab] = useState(0);
+    const [mobilePanel, setMobilePanel] = useState('domains');
+    const [libraryCategory, setLibraryCategory] = useState('');
     const [mode, setMode] = useState<'observed' | 'merged'>('observed');
     const [excluded, setExcluded] = useState<Set<string>>(new Set());
     const [filter, setFilter] = useState<RequestFilter>({ host: '', method: '', type: '', status: '', page: 0 });
@@ -34,7 +37,7 @@ export default function App() {
     const theme = useMemo(() => makeTheme(dark), [dark]);
     const chosenDomains = useMemo(() => domains.filter(d => d.kind === 'domain' && !excluded.has(d.hostname)), [domains, excluded]);
     useEffect(() => {
-        void Promise.all([api<Settings>('/settings'), api<ScanTask[]>('/scans')]).then(([s, scans]) => { setSettings(s); setOptions(s.scan); const stored = localStorage.getItem('castorice.lastScan'); const restore = scans.find(active) || scans.find(t => t.id === stored) || scans[0]; if (restore) {
+        void Promise.all([api<Settings>('/settings'), api<ScanTask[]>('/scans'), api<{ visible_browser: boolean }>('/health')]).then(([s, scans, capabilities]) => { setCanShowBrowser(capabilities.visible_browser); setSettings(s); setOptions(capabilities.visible_browser ? s.scan : { ...s.scan, mode: s.scan.mode === 'interactive' ? 'quick' : s.scan.mode, visible: false }); const stored = localStorage.getItem('castorice.lastScan'); const restore = scans.find(active) || scans.find(t => t.id === stored) || scans[0]; if (restore) {
             setID(restore.id);
             setURL(restore.target_url);
         } }).catch(e => setError(errorMessage(e))).finally(() => setInitializing(false));
@@ -82,27 +85,27 @@ export default function App() {
     catch (e) {
         notify(errorMessage(e));
     } }
-    return <ThemeProvider theme={theme}><CssBaseline /><AppBar position="static" color="transparent" elevation={0} sx={{ borderBottom: 1, borderColor: 'divider', bgcolor: 'background.paper' }}><Toolbar sx={{ minHeight: 82, maxWidth: 1536, width: '100%', mx: 'auto', px: { xs: 2, md: 4 }, gap: 1.5 }}><Box sx={{ display: 'grid', placeItems: 'center', width: 42, height: 42, bgcolor: 'primary.main', color: 'primary.contrastText', borderRadius: 3, mr: .5 }}><HubRounded /></Box><Box sx={{ minWidth: 0, flex: 1 }}><Typography sx={{ fontSize: { xs: 14, sm: 18 }, fontWeight: 700, letterSpacing: -.3, overflowWrap: 'anywhere' }}>Castorice-WebRuleAnalyzer</Typography><Typography variant="caption" color="text.secondary">Web分流规则分析器 <Box component="span" sx={{ mx: .5 }}>·</Box> v1.1</Typography></Box><Button color="inherit" startIcon={<MenuBookRounded />} onClick={() => setDialog('rules')} sx={{ display: { xs: 'none', sm: 'inline-flex' } }}>规则库</Button><Tooltip title="扫描历史"><IconButton aria-label="扫描历史" onClick={() => setDialog('history')}><HistoryRounded /></IconButton></Tooltip><Tooltip title={dark ? '切换浅色' : '切换深色'}><IconButton aria-label="切换主题" onClick={() => void toggleTheme()}>{dark ? <LightModeRounded /> : <DarkModeRounded />}</IconButton></Tooltip><Tooltip title="设置"><IconButton aria-label="软件设置" onClick={() => setDialog('settings')}><SettingsRounded /></IconButton></Tooltip></Toolbar></AppBar>
-  <Container maxWidth={false} sx={{ maxWidth: 1536, py: 3.5, px: { xs: 2, md: 4 } }}>
-   {initializing && <Stack direction="row" sx={{ mb: 2, alignItems: "center", gap: 1 }}><CircularProgress size={18}/><Typography>正在连接本地服务…</Typography></Stack>}
-   {error && <Alert severity="error" onClose={() => setError('')} sx={{ mb: 2 }}>{error}</Alert>}
-   <ScanControls url={url} setURL={setURL} options={options} setOptions={setOptions} running={running} busy={busy || initializing} onStart={() => void start()} onStop={() => void stop()}/>
-   <Stack direction="row" sx={{ py: 2.5, alignItems: "center", gap: 1, flexWrap: "wrap" }}><Chip size="small" label="浏览器网络事件" variant="outlined" color="secondary"/><Typography variant="caption" color="text.secondary">独立会话 · 查询参数脱敏 · 默认精确域名匹配</Typography><Typography variant="caption" color="text.secondary" sx={{ ml: 'auto', display: { xs: 'none', md: 'block' } }}>本地运行 / 单任务采集</Typography></Stack>
-   {connection && <Alert severity="warning" sx={{ mb: 2 }}>{connection}</Alert>}
-   <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0,1fr)', lg: 'minmax(350px,.8fr) minmax(0,1.6fr)' }, gap: 2.5 }}>
-    <DomainPanel task={task} domains={domains} excluded={excluded} toggle={host => setExcluded(old => { const value = new Set(old); if (value.has(host))
-        value.delete(host);
-    else
-        value.add(host); return value; })} mode={mode} setMode={setMode} onExport={() => setDialog('export')} onRequests={host => { setFilter({ ...filter, host, page: 0 }); setTab(1); }} notify={notify}/>
-    <AnalysisPanel key={id} task={task} requests={requests} total={total} filter={filter} setFilter={setFilter} logs={logs} tab={tab} setTab={setTab} logLevel={settings.log_level} notify={notify}/>
-   </Box>
-   <MatchPanel task={task} onRematch={() => void rematch()} onLibrary={() => setDialog('rules')} busy={busy}/>
-   <Typography variant="caption" color="text.secondary" align="center" sx={{ mt: 3, display: "block" }}>仅记录当前受控浏览器可观察的网络事件。有限扫描无法证明整个应用的完整域名覆盖。</Typography>
-  </Container>
-  {dialog === 'settings' && <SettingsDialog settings={settings} onSave={save} onClose={() => setDialog('')} onLibrary={() => setDialog('rules')} notify={notify}/>}
-  {dialog === 'history' && <HistoryDialog onClose={() => setDialog('')} onOpen={t => { setID(t.id); setURL(t.target_url); setOptions(t.options); setTab(0); }}/>}
-  {dialog === 'rules' && <RuleLibrary onClose={() => setDialog('')} notify={notify} onRematch={() => void rematch()}/>}
-  {dialog === 'export' && task && <ExportDialog task={task} domains={chosenDomains} mode={mode} settings={settings} onClose={() => setDialog('')} notify={notify} onRematch={() => void rematch()}/>}
-  <Snackbar open={!!notice} autoHideDuration={4500} onClose={() => notify('')} message={notice}/>
- </ThemeProvider>;
+    function openLibrary(category = '') { setLibraryCategory(category); setDialog('rules'); }
+    return <ThemeProvider theme={theme}><CssBaseline /><Box className="app-shell">
+     <AppBar position="static" color="transparent" elevation={0} sx={{ borderBottom: 1, borderColor: 'divider', bgcolor: 'background.paper' }}><Toolbar sx={{ minHeight: '54px !important', px: { xs: 1, sm: 2 }, gap: 1 }}>
+      <HubRounded color="primary" /><Typography noWrap sx={{ fontSize: 15, fontWeight: 700, flex: 1 }}><Box component="span" className="brand-full">Castorice-WebRuleAnalyzer</Box><Box component="span" className="brand-short">Web规则分析器</Box><Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1 }}>v1.2</Typography></Typography>
+      <Tooltip title="开源规则库"><IconButton aria-label="开源规则库" onClick={() => openLibrary()}><MenuBookRounded /></IconButton></Tooltip><Tooltip title="扫描历史"><IconButton aria-label="扫描历史" onClick={() => setDialog('history')}><HistoryRounded /></IconButton></Tooltip><Tooltip title="切换主题"><IconButton aria-label="切换主题" onClick={() => void toggleTheme()}>{dark ? <LightModeRounded /> : <DarkModeRounded />}</IconButton></Tooltip><Tooltip title="软件设置"><IconButton aria-label="软件设置" onClick={() => setDialog('settings')}><SettingsRounded /></IconButton></Tooltip>
+     </Toolbar></AppBar>
+     <Box component="main" className="app-main">
+      {initializing && <Stack direction="row" sx={{ alignItems: 'center', gap: 1 }}><CircularProgress size={16} /><Typography variant="body2">连接本地服务…</Typography></Stack>}
+      {error && <Alert severity="error" onClose={() => setError('')}>{error}</Alert>}
+      <ScanControls url={url} setURL={setURL} options={options} setOptions={setOptions} canShowBrowser={canShowBrowser} running={running} busy={busy || initializing} onStart={() => void start()} onStop={() => void stop()} />
+      {connection && <Alert severity="warning">{connection}</Alert>}
+      <Stack direction="row" className="workspace-toolbar" sx={{ gap: 1, alignItems: 'center' }}><Box className="mobile-switch"><Button size="small" variant={mobilePanel === 'domains' ? 'contained' : 'text'} onClick={() => setMobilePanel('domains')}>域名</Button><Button size="small" variant={mobilePanel === 'analysis' ? 'contained' : 'text'} onClick={() => setMobilePanel('analysis')}>分析 / 规则命中</Button></Box><Typography variant="caption" color="text.secondary" className="privacy-note">独立浏览器 · URL 脱敏 · 本地保存</Typography><Chip size="small" label={running ? '正在采集' : '本地工作区'} variant="outlined" sx={{ ml: 'auto' }} /></Stack>
+      <Box className="workspace" data-mobile-panel={mobilePanel}>
+       <DomainPanel task={task} domains={domains} excluded={excluded} toggle={host => setExcluded(old => { const value = new Set(old); if (value.has(host)) value.delete(host); else value.add(host); return value; })} mode={mode} setMode={setMode} onExport={() => setDialog('export')} onRequests={host => { setFilter({ ...filter, host, page: 0 }); setTab(1); setMobilePanel('analysis'); }} notify={notify} />
+       <AnalysisPanel key={id} task={task} requests={requests} total={total} filter={filter} setFilter={setFilter} logs={logs} tab={tab} setTab={setTab} logLevel={settings.log_level} notify={notify} matchContent={<MatchPanel task={task} onRematch={() => void rematch()} onLibrary={openLibrary} busy={busy} />} />
+      </Box>
+     </Box>
+     {dialog === 'settings' && <SettingsDialog canShowBrowser={canShowBrowser} settings={settings} onSave={save} onClose={() => setDialog('')} onLibrary={() => openLibrary()} notify={notify} />}
+     {dialog === 'history' && <HistoryDialog onClose={() => setDialog('')} onOpen={t => { setID(t.id); setURL(t.target_url); setOptions(t.options); setTab(0); }} />}
+     {dialog === 'rules' && <RuleLibrary initialCategory={libraryCategory} onClose={() => setDialog('')} notify={notify} onRematch={() => void rematch()} />}
+     {dialog === 'export' && task && <ExportDialog task={task} domains={chosenDomains} mode={mode} settings={settings} onClose={() => setDialog('')} notify={notify} onRematch={() => void rematch()} />}
+     <Snackbar open={!!notice} autoHideDuration={4500} onClose={() => notify('')} message={notice} />
+    </Box></ThemeProvider>;
 }

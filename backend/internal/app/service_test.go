@@ -38,6 +38,20 @@ func TestServiceShutdownReleasesListener(t *testing.T) {
 	}
 }
 
+func TestContainerOriginMustBeExplicitAndExact(t *testing.T) {
+	for _, origin := range []string{"", "https://user:secret@example.com", "https://example.com/path", "https://example.com?x=1"} {
+		if s, err := Start(Options{Address: "0.0.0.0:0", DataDir: t.TempDir(), PublicURL: origin}); err == nil {
+			s.Close()
+			t.Fatal("unsafe origin accepted", origin)
+		}
+	}
+	s, err := Start(Options{Address: "0.0.0.0:0", DataDir: t.TempDir(), PublicURL: "http://127.0.0.1:19110"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+}
+
 func TestDesktopExportsAreConfinedAndAuthenticated(t *testing.T) {
 	p, err := portable.Open(filepath.Join(t.TempDir(), "app.exe"))
 	if err != nil {

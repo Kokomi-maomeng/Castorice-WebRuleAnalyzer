@@ -1,32 +1,30 @@
 package matcher
 
 import (
-	"math"
 	"sort"
 	"strings"
 
-	"github.com/castorice/Castorice-WebRuleAnalyzer/backend/internal/domain"
 	"github.com/castorice/Castorice-WebRuleAnalyzer/backend/internal/model"
 )
 
-// Identity hints are transparent application metadata, never synthetic rules.
-// A hint can only score if the downloaded category also matches the target.
+// Aliases strengthen real downloaded rule hits; names alone never identify apps.
 var identities = map[string][]string{
 	"gemini":        {"gemini.google.com", "bard.google.com", "ai.google.dev", "deepmind.google", "deepmind.com"},
 	"google-gemini": {"gemini.google.com", "bard.google.com", "ai.google.dev"},
-	"openai":        {"chatgpt.com", "openai.com", "chat.openai.com"},
-	"youtube":       {"youtube.com", "youtu.be"}, "github": {"github.com"},
-	"claude": {"claude.ai", "anthropic.com"}, "anthropic": {"claude.ai", "anthropic.com"},
+	"openai":        {"chatgpt.com", "openai.com"}, "youtube": {"youtube.com", "youtu.be"},
+	"github": {"github.com"}, "claude": {"claude.ai", "anthropic.com"}, "anthropic": {"claude.ai", "anthropic.com"},
 	"copilot": {"copilot.microsoft.com"}, "netflix": {"netflix.com"}, "spotify": {"spotify.com"},
 }
-var shared = map[string]bool{"accounts.google.com": true, "fonts.gstatic.com": true, "fonts.googleapis.com": true, "www.gstatic.com": true, "www.google-analytics.com": true, "www.googletagmanager.com": true, "login.microsoftonline.com": true}
 
 func identity(name, target string) bool {
 	n := strings.ToLower(name)
-	for _, h := range identities[n] {
-		if target == h || strings.HasSuffix(target, "."+h) {
-			return true
+	if aliases, known := identities[n]; known {
+		for _, host := range aliases {
+			if target == host || strings.HasSuffix(target, "."+host) {
+				return true
+			}
 		}
+		return false
 	}
 	for _, label := range strings.Split(target, ".") {
 		if len(label) > 2 && label == n {
@@ -46,124 +44,101 @@ func family(name string) string {
 }
 
 func Match(target string, observed []model.DomainRecord, categories []model.RuleCategory) ([]model.RuleMatch, string, string) {
+	target = strings.TrimSuffix(strings.ToLower(target), ".")
 	hosts := []string{}
-	seenHosts := map[string]bool{}
+	seen := map[string]bool{}
+	exact := map[string][]int{}
+	suffix := map[string][]int{}
 	for _, d := range observed {
-		if d.Kind == "domain" && !seenHosts[d.Hostname] {
-			hosts = append(hosts, d.Hostname)
-			seenHosts[d.Hostname] = true
-		}
-	}
-	// Index observed hostnames and their label-boundary suffixes once. Matching
-	// stays practical at 20,000 requests instead of scanning every rule against
-	// every hostname in every category. Only keyword rules need substring scans.
-	exactIndex := map[string][]int{}
-	suffixIndex := map[string][]int{}
-	registered := make([]string, len(hosts))
-	for i, h := range hosts {
-		exactIndex[h] = append(exactIndex[h], i)
-		registered[i] = domain.Registrable(h)
-		for suffix := h; strings.Contains(suffix, "."); {
-			suffixIndex[suffix] = append(suffixIndex[suffix], i)
-			_, next, _ := strings.Cut(suffix, ".")
-			suffix = next
-		}
-	}
-	type hostHit struct {
-		weight float64
-		exact  bool
-	}
-	hits := make([]map[int]hostHit, len(categories))
-	frequency := map[string]int{}
-	for ci, c := range categories {
-		if !c.Loaded || c.RuleCount == 0 {
+		host := strings.TrimSuffix(strings.ToLower(d.Hostname), ".")
+		if d.Kind != "domain" || seen[host] {
 			continue
 		}
-		hits[ci] = map[int]hostHit{}
+		seen[host] = true
+		index := len(hosts)
+		hosts = append(hosts, host)
+		exact[host] = append(exact[host], index)
+		for part := host; strings.Contains(part, "."); {
+			suffix[part] = append(suffix[part], index)
+			_, part, _ = strings.Cut(part, ".")
+		}
+	}
+	out := []model.RuleMatch{}
+	for _, c := range categories {
+		if !c.Loaded || len(c.Rules) == 0 {
+			continue
+		}
+		// Retain the strongest concrete rule per hostname, with label boundaries.
+		best := map[int]model.RuleEntry{}
+		strength := map[int]int{}
 		for _, rule := range c.Rules {
-			var indexes []int
+			indexes := []int{}
+			rank := 0
 			switch rule.Type {
 			case model.Domain:
-				indexes = exactIndex[rule.Value]
+				indexes = exact[rule.Value]
+				rank = 1000 + len(rule.Value)
 			case model.Suffix:
-				indexes = suffixIndex[rule.Value]
+				indexes = suffix[rule.Value]
+				rank = len(rule.Value)
 			case model.Keyword:
-				for i, h := range hosts {
-					if strings.Contains(h, rule.Value) {
+				rank = -1
+				for i, host := range hosts {
+					if strings.Contains(host, rule.Value) {
 						indexes = append(indexes, i)
 					}
 				}
 			}
 			for _, i := range indexes {
-				h := hosts[i]
-				weight := 1.0
-				if rule.Type == model.Keyword {
-					weight = .12
-				}
-				if rule.Type == model.Suffix && rule.Value == registered[i] && h != rule.Value {
-					weight = .35
-				}
-				if shared[h] {
-					weight *= .08
-				}
-				hit := hits[ci][i]
-				hit.weight = math.Max(hit.weight, weight)
-				hit.exact = hit.exact || rule.Type != model.Keyword && rule.Value == h
-				hits[ci][i] = hit
-			}
-		}
-		for i := range hits[ci] {
-			frequency[hosts[i]]++
-		}
-	}
-	out := []model.RuleMatch{}
-	for ci, c := range categories {
-		if !c.Loaded || len(c.Rules) == 0 {
-			continue
-		}
-		matched := []string{}
-		specific := 0.0
-		targetHit := false
-		targetExact := false
-		for i, h := range hosts {
-			hit := hits[ci][i]
-			if hit.weight > 0 {
-				matched = append(matched, h)
-				specific += hit.weight / math.Sqrt(float64(max(1, frequency[h])))
-				if h == target {
-					targetHit = true
-					targetExact = hit.exact
+				if _, ok := best[i]; !ok || rank > strength[i] {
+					best[i] = rule
+					strength[i] = rank
 				}
 			}
 		}
-		if len(matched) == 0 {
+		if len(best) == 0 {
 			continue
 		}
-		coverage := float64(len(matched)) / float64(max(1, len(hosts)))
-		reasons := []string{}
-		score := math.Min(25, specific*12) + coverage*15
-		explicit := targetHit && identity(c.Name, target) && !c.Broad
-		if explicit {
-			score += 65
-			reasons = append(reasons, "目标域名与分类身份名称/公开别名一致，且命中已下载规则")
+		hit := model.RuleMatch{CategoryID: c.ID, Category: c.Name, Source: c.Source, Version: c.Version, Broad: c.Broad, Confidence: "low", Relation: "dependency", MatchedDomains: []string{}, Evidence: []model.RuleEvidence{}, Reasons: []string{}}
+		targetSpecificity := 0
+		for i, host := range hosts {
+			rule, ok := best[i]
+			if !ok {
+				continue
+			}
+			hit.MatchedDomains = append(hit.MatchedDomains, host)
+			isTarget := host == target
+			hit.Evidence = append(hit.Evidence, model.RuleEvidence{Hostname: host, Type: rule.Type, Value: rule.Value, Target: isTarget})
+			if isTarget && rule.Type != model.Keyword {
+				hit.Relation = "target"
+				targetSpecificity = len(rule.Value)
+			} else if isTarget {
+				hit.Relation = "keyword"
+			}
 		}
-		if targetExact && !shared[target] && !c.Broad {
-			score += 15
-			reasons = append(reasons, "规则直接包含目标 Hostname 的精确或后缀入口")
+		hit.Coverage = float64(len(best)) / float64(max(1, len(hosts)))
+		if hit.Relation == "target" {
+			hit.Score = 50 + float64(targetSpecificity)/100
+			hit.Confidence = "medium"
+			hit.Reasons = append(hit.Reasons, "已下载的精确或后缀规则命中本次访问的目标主机")
+			if identity(c.Name, target) && !c.Broad {
+				hit.Score += 40
+				hit.Confidence = "high"
+				hit.Suitable = true
+				hit.Reasons = append(hit.Reasons, "分类名称或已核对别名与目标网站一致")
+			}
+			if c.Broad {
+				hit.Score -= 15
+				hit.Reasons = append(hit.Reasons, "这是通用集合，不能视为目标网站的专属规则")
+			}
+		} else if hit.Relation == "keyword" {
+			hit.Score = hit.Coverage
+			hit.Reasons = append(hit.Reasons, "目标只命中关键词，存在包含关系误匹配风险，不用于识别应用")
+		} else {
+			hit.Score = hit.Coverage
+			hit.Reasons = append(hit.Reasons, "仅命中本次观察到的第三方请求；不代表目标网站属于此应用")
 		}
-		if c.Broad {
-			score *= .4
-			reasons = append(reasons, "通用/大型分类已降权，不适合自动合并")
-		}
-		reasons = append(reasons, "评分结合观察集合覆盖率与跨分类共享频率；共享认证、字体和宽泛后缀降权")
-		score = math.Round(math.Min(score, 100)*10) / 10
-		confidence := "low"
-		if score >= 80 && explicit {
-			confidence = "high"
-		} else if score >= 40 {
-			confidence = "medium"
-		}
-		out = append(out, model.RuleMatch{CategoryID: c.ID, Category: c.Name, Source: c.Source, Version: c.Version, Score: score, Confidence: confidence, Reasons: reasons, MatchedDomains: matched, Coverage: coverage, Suitable: confidence == "high", Broad: c.Broad})
+		out = append(out, hit)
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Score == out[j].Score {
@@ -172,20 +147,19 @@ func Match(target string, observed []model.DomainRecord, categories []model.Rule
 		return out[i].Score > out[j].Score
 	})
 	recommended := ""
-	note := "没有可靠的专属分类，保持仅抓取结果；可以手动加载并选择分类。评分不是统计准确率。"
+	note := "目标主机没有匹配到专属分类；第三方请求命中仅供核对。可直接导出观察域名。"
 	if len(out) > 0 && out[0].Suitable {
 		ambiguous := false
 		for _, other := range out[1:] {
-			if out[0].Score-other.Score < 12 && family(out[0].Category) != family(other.Category) {
+			if other.Suitable && family(other.Category) != family(out[0].Category) {
 				ambiguous = true
-				break
 			}
 		}
 		if !ambiguous {
 			recommended = out[0].CategoryID
-			note = "发现高置信度专属分类，可选择合并。评分为可解释算法评分，不代表实际识别准确率。"
+			note = "目标主机命中专属规则，可核对原文后选择合并。"
 		} else {
-			note = "多个不同应用分类评分接近，未自动选择，请人工核对。"
+			note = "多个不同应用分类同时声称目标主机，需核对规则原文后手动选择。"
 			for i := range out {
 				out[i].Suitable = false
 				if out[i].Confidence == "high" {
@@ -194,8 +168,8 @@ func Match(target string, observed []model.DomainRecord, categories []model.Rule
 			}
 		}
 	}
-	if len(out) > 12 {
-		out = out[:12]
+	if len(out) > 60 {
+		out = out[:60]
 	}
 	return out, recommended, note
 }

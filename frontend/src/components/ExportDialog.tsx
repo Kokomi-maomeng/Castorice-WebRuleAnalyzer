@@ -21,7 +21,7 @@ export default function ExportDialog(p: Props) {
     const [suffix, setSuffix] = useState(false);
     const [listOnly, setListOnly] = useState(false);
     const [categories, setCategories] = useState<RuleCategory[]>([]);
-    const [categoryIDs, setCategoryIDs] = useState<string[]>(p.task.recommended_category ? [p.task.recommended_category] : []);
+    const [categoryIDs, setCategoryIDs] = useState<string[]>(p.task.matches.some(m => m.category_id === p.task.recommended_category && m.relation === 'target' && m.suitable) ? [p.task.recommended_category!] : []);
     const [excluded, setExcluded] = useState<string[]>([]);
     const [result, setResult] = useState<ExportResult>();
     const [error, setError] = useState('');

@@ -1,0 +1,16 @@
+services:
+  analyzer:
+    build: .
+    init: true
+    ports:
+      - "127.0.0.1:19110:19110"
+    volumes:
+      - analyzer-data:/data
+    shm_size: 256m
+    # Allows Chromium to create its own user-namespace sandbox as non-root.
+    security_opt:
+      - seccomp:unconfined
+      - apparmor:unconfined
+    restart: unless-stopped
+volumes:
+  analyzer-data:

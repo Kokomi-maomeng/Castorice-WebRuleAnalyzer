@@ -1,0 +1,230 @@
+{
+  "version": "v1.2",
+  "date": "2026-10-27",
+  "platforms": [
+    "Windows 11 x64",
+    "Debian 13.7 amd64 GUI",
+    "Debian Docker 26.1.5"
+  ],
+  "executable_sha256": "9e0f5221bd5b9e7cdbdd831daa9f4742be98d548ee1b8d43d9e6356a02479952",
+  "executable_bytes": 15677440,
+  "file_version": "1.2.0.0",
+  "unsigned": true,
+  "frontend_tests": {
+    "passed": 8,
+    "files": 4
+  },
+  "go_tests": "passed with real Chrome",
+  "go_vet": "passed",
+  "lifecycle": [
+    {
+      "scenario": "active-close",
+      "owned_processes_before": 18,
+      "remaining_processes": 0,
+      "listener_closed": true,
+      "passed": true
+    },
+    {
+      "scenario": "force-crash",
+      "owned_processes_before": 18,
+      "remaining_processes": 0,
+      "listener_closed": true,
+      "passed": true
+    },
+    {
+      "scenario": "normal",
+      "owned_processes_before": 8,
+      "remaining_processes": 0,
+      "listener_closed": true,
+      "passed": true
+    }
+  ],
+  "native_ui_export": "passed",
+  "linux_cleanup_regression": {
+    "repeated_cancel_suites": 3,
+    "full_browser_suite": "passed",
+    "late_writer_unit": "passed"
+  },
+  "layout_viewports": [
+    {
+      "width": 1920,
+      "height": 1080,
+      "scrollWidth": 1920,
+      "scrollHeight": 1080,
+      "workspaceBottom": 1066,
+      "exportBottom": 1053
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900,
+      "workspaceBottom": 886,
+      "exportBottom": 873
+    },
+    {
+      "width": 1280,
+      "height": 720,
+      "scrollWidth": 1280,
+      "scrollHeight": 720,
+      "workspaceBottom": 706,
+      "exportBottom": 693
+    },
+    {
+      "width": 1024,
+      "height": 640,
+      "scrollWidth": 1024,
+      "scrollHeight": 640,
+      "workspaceBottom": 632,
+      "exportBottom": 619
+    },
+    {
+      "width": 820,
+      "height": 600,
+      "scrollWidth": 820,
+      "scrollHeight": 600,
+      "workspaceBottom": 590,
+      "exportBottom": 577
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "scrollWidth": 390,
+      "scrollHeight": 844,
+      "workspaceBottom": 834,
+      "exportBottom": 821
+    },
+    {
+      "width": 640,
+      "height": 360,
+      "scrollWidth": 640,
+      "scrollHeight": 360,
+      "workspaceBottom": 350,
+      "exportBottom": 341
+    },
+    {
+      "width": 760,
+      "height": 480,
+      "scrollWidth": 760,
+      "scrollHeight": 480,
+      "workspaceBottom": 470,
+      "exportBottom": 461
+    }
+  ],
+  "browser_errors": [],
+  "rule_original_copy_edit_download": true,
+  "text_scaling": [
+    1.25,
+    1.5
+  ],
+  "dense_fixture_domains": 350,
+  "rule_sources": [
+    {
+      "id": "blackmatrix7",
+      "version": "9b29c945b9164a02c7018ed333cb9b5bc1bcb417",
+      "categories": 679,
+      "loaded": 679,
+      "supported_rule_entries": 23110
+    },
+    {
+      "id": "v2fly",
+      "version": "fa3cb96fbc210b8d6466251a1d71b4a6e63a9c85",
+      "categories": 1542,
+      "loaded": 1542,
+      "supported_rule_entries": 86506
+    }
+  ],
+  "real_website_scans": [
+    {
+      "url": "https://gemini.com",
+      "domains": 8,
+      "requests": 113,
+      "recommended": null
+    },
+    {
+      "url": "https://gemini.google.com",
+      "domains": 15,
+      "requests": 135,
+      "recommended": "blackmatrix7:Gemini"
+    }
+  ],
+  "privacy_check": {
+    "scope": [
+      "working files",
+      "all reachable Git blobs",
+      "portable ZIP",
+      "screenshots"
+    ],
+    "findings": 0
+  },
+  "unverified": [
+    "clean Windows install without WebView2",
+    "Windows 10 physical runtime",
+    "Go race detector",
+    "HTTP/3",
+    "new-tab and independent Worker completeness",
+    "third-party authenticated transactions"
+  ],
+  "linux_public_scan_exports": {
+    "health": {
+      "name": "Castorice-WebRuleAnalyzer",
+      "status": "ok",
+      "version": "v1.2",
+      "visible_browser": true
+    },
+    "status": "completed",
+    "domains": 1,
+    "requests": 2,
+    "exports": [
+      {
+        "format": "clash",
+        "rules": 1
+      },
+      {
+        "format": "provider",
+        "rules": 1
+      },
+      {
+        "format": "singbox",
+        "rules": 1
+      }
+    ],
+    "passed": true
+  },
+  "docker_public_scan_exports": {
+    "health": {
+      "name": "Castorice-WebRuleAnalyzer",
+      "status": "ok",
+      "version": "v1.2",
+      "visible_browser": false
+    },
+    "status": "completed",
+    "domains": 1,
+    "requests": 2,
+    "exports": [
+      {
+        "format": "clash",
+        "rules": 1
+      },
+      {
+        "format": "provider",
+        "rules": 1
+      },
+      {
+        "format": "singbox",
+        "rules": 1
+      }
+    ],
+    "passed": true
+  },
+  "crash_recovery": {
+    "interrupted_status": "failed",
+    "source_sha256": "9e0f5221bd5b9e7cdbdd831daa9f4742be98d548ee1b8d43d9e6356a02479952",
+    "new_scan_passed": true,
+    "profiles_cleaned": true,
+    "version": "v1.2",
+    "ordinary_launch_debug_disabled": true,
+    "passed": true,
+    "interrupted_reason": "service_interrupted"
+  }
+}

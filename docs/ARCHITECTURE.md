@@ -1,4 +1,4 @@
-# v1.1 技术设计与接口
+# v1.2 技术设计与接口
 
 ## 数据流
 
@@ -15,7 +15,7 @@ flowchart LR
   Recorder --> SSE[SSE 更新通知]
   SSE --> UI
   Source[GitHub Adapter / 固定 Commit] --> Rules[来源独立的分类缓存]
-  Rules --> Match[保守加权匹配]
+  Rules --> Match[目标与依赖规则匹配]
   Recorder --> Match
   Rules --> Merge[类型化合并与覆盖分析]
   Recorder --> Merge
@@ -31,7 +31,7 @@ flowchart LR
 - 监听 requestWillBeSent、responseReceived、loadingFinished、loadingFailed、webSocketCreated、webSocketWillSendHandshakeRequest、webSocketHandshakeResponseReceived、webSocketClosed、webSocketFrameError，以及 SPA 路由/主框架导航事件。
 - 同 CDP RequestID 的重定向各跳生成不同记录 ID。耗时使用同一单调时钟差值；未完成请求不推测成功或完整耗时。WebSocket 不保存帧正文。
 - 事件回调只更新受互斥保护的内存记录。750ms 将脏请求、脏域名、新日志及小任务快照在一个 SQLite 事务批量写入；结束强制最终写入。
-- 超时/取消/浏览器退出统一结束，停止浏览器 allocator、关闭代理连接、删除 Profile，再释放任务槽。数据库错误取消任务并在界面标明；进程被强制终止遗留的 active 任务在下一次启动修正为 failed。
+- 超时/取消/浏览器退出统一结束，停止浏览器 allocator、关闭代理连接、删除 Profile，再释放任务槽。Linux 浏览器使用本次独立进程组，allocator 等候后关闭该组；Profile 清理需保持至少 250ms 不再出现，最长 3 秒，避免 Chromium 异步晚写入重建目录。Linux XDG 配置与缓存也放入该临时 Profile。数据库错误取消任务并在界面标明；进程被强制终止遗留的 active 任务在下一次启动修正为 failed。
 - 主文档 HTTP 4xx/5xx 与导航异常标记失败，子资源失败保留记录并允许继续。大量请求不会每条写数据库或渲染全表。
 
 ## 地址和 API 保护
@@ -42,7 +42,7 @@ flowchart LR
 
 普通运行无法从 GUI/API 放开私网。测试程序只为精确 loopback IP:port 或 `.test:port → loopback IP` 开启显式内存白名单；既不接受网段或通配符，也不保存为用户偏好。
 
-本地服务只绑定回环地址；校验 Host 防止 DNS Rebinding 访问 API；拒绝不同 Origin/cross-site 请求；写操作需同源获取的每次服务随机 CSRF 令牌。开发源只能由 `--dev-origin` 显式指定。API 不作为已实现的远程认证服务宣传。
+默认本地服务只绑定回环地址；容器非回环监听需指定精确 public-url；校验 Host 防止 DNS Rebinding 访问 API；拒绝不同 Origin/cross-site 请求；写操作需同源获取的每次服务随机 CSRF 令牌。开发源只能由 `--dev-origin` 显式指定。API 不作为已实现的远程认证服务宣传。
 
 URL 查询参数值统一替换为 REDACTED，去掉凭据和片段，路径长令牌及已知 token/reset 等片段脱敏。数据模型没有请求头/正文/Cookie 字段。错误和日志经过同一 URL 脱敏器。UI 的“URL”因此是脱敏后的值，绝不声称与含认证参数的原文完全一致。
 
@@ -52,9 +52,9 @@ URL 查询参数值统一替换为 REDACTED，去掉凭据和片段，路径长�
 
 `include` 递归查找，检测栈循环、深度与条数；包含 `@attr` 与 `@-attr` 时先过滤，再最终去重，避免重复域名的属性并集改变 include 语义。`&分类` affiliation 在解析所有文件时补到目标分类。regexp 等不支持项保留警告。
 
-匹配先建立观察精确域名与各层标签后缀索引，再关联分类，避免“分类 × 域名 × 全部规则”的乘法遍历。关键词单独做子串匹配。每个分类/域名取最强规则特征，并除以共享分类数的平方根。广泛可注册后缀权重 0.35，关键词 0.12，已知共享域名乘 0.08。
+匹配先建立观察精确域名与各层标签后缀索引，再关联分类，避免“分类 × 域名 × 全部规则”的乘法遍历。关键词单独做子串匹配。每个分类/域名保留最强的具体规则，并记录是否为目标主机。共享第三方命中只用于依赖核对，不生成应用身份。
 
-基础分数为 `min(25, 特征权重和 × 12) + 覆盖率 × 15`；真实分类命中目标且身份/公开别名一致加 65；目标 Hostname 直接入口加 15；通用/超过 500 规则的分类乘 0.4，最高 100 分。高置信度需 >=80 且明确身份，中等 >=40；不同应用候选间距小于 12 分时撤销自动选择。同应用两来源可视为同一 family，Gemini 和 Google 分开。身份别名只是公开应用元数据，不生成任何额外规则。
+v1.2 按真实下载规则匹配每个观察主机，精确规则和更窄的标签边界后缀优先；关键词不能用来识别应用。结果区分 target、dependency、keyword，并保留具体 hostname/type/value 证据。目标实际命中且名称或已核对别名一致才可推荐专属分类；多个不同应用同时符合则撤销推荐。通用分类按名称语义识别，单个应用不会仅因规则多而被标为通用。GUI 不展示内部排序分数。
 
 关键词、上游覆盖范围和共享认证域名均不能证明某个域名是应用必需项。GUI 允许用户在观察/合并范围及逐条预览中决定导出内容。
 
@@ -91,11 +91,15 @@ SQLite WAL、busy_timeout、单连接事务；任务、请求、域名、事件�
 | POST /api/export | ExportJob，返回内容、逐条来源、统计、来源说明 |
 | GET / PUT /api/settings | 读取/校验/保存设置 |
 
-## 后续平台
+## v1.2 Linux 与 Docker
 
-Go 核心、SQLite、规则逻辑不依赖 Windows；浏览器发现和打开 GUI 单独按 GOOS 适配。未来 Docker 必须由容器服务端浏览器扫描，并增加远程认证、持久化/沙箱及部署约束；页面不能抓取访问者设备全系统流量。Tauri 2 可将本机 Go 二进制作为 sidecar 并显示同源 GUI，但当前未交付或声称已验证 Tauri 安装包。
+Linux 默认启动回环 HTTP 服务并打开浏览器；Windows 默认原生 WebView2。容器非回环监听必须显式指定精确 public-url；Host/Origin/CSRF 校验继续保留。Compose 仅发布宿主回环端口，非 root Chromium 使用自身沙箱，数据持久化到卷。无图形会话时 API 拒绝可见/辅助模式，前端禁用对应选项。远程多用户认证不在本版范围，不直接开放匿名公网。
 
-## v1.1 Windows 桌面生命周期
+规则更新：blackmatrix7 有界并发下载全部分类原文，复用未变更 blob，并将规则来源 Commit 更新为新快照；v2fly 保存 data 原文及递归解析结果。单个文件 2 MiB、blackmatrix7 原文总计 96 MiB；整源成功且许可证校验通过后，在 SQLite 事务中切换，失败保留旧源。按来源持久化自动更新开关，服务生命周期内首次立即执行，随后每日检查、失败至多每小时重试；关闭服务取消更新并等候退出，不创建外部计划任务。
+
+分类列表接口不返回规则数组或原文。`q` 搜索分类名与缓存原文，名称命中优先；`GET /api/rules/content?id=...` 单独读取原文，原文编辑只在前端临时状态中进行。`PUT /api/rules/auto-update` 保存来源开关，`POST /api/rules/check` 检查远端 Commit。应用健康响应同时报告 visible_browser 能力。
+
+## Windows 桌面生命周期
 
 `cmd/castorice` 默认启动原生桌面；`--server` 显式保留独立 HTTP 开发模式。桌面不依赖 Rust/CGo，不执行 Node.js 开发服务器。
 

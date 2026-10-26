@@ -1,62 +1,103 @@
-import { useEffect, useState } from 'react';
-import { Alert, Box, Button, Chip, CircularProgress, Dialog, DialogContent, DialogTitle, Divider, IconButton, Link, Stack, TextField, Typography } from '@mui/material';
-import { CloseRounded, CloudDownloadRounded, RefreshRounded } from '@mui/icons-material';
+import { useEffect, useRef, useState } from 'react';
+import { Alert, Box, Button, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, IconButton, Link, MenuItem, Stack, Switch, TextField, Tooltip, Typography } from '@mui/material';
+import { CloseRounded, ContentCopyRounded, DownloadRounded, RefreshRounded, SettingsRounded } from '@mui/icons-material';
 import type { RuleCategory, RuleSource } from '../types';
-import { api } from '../services/api';
+import { api, copy, download } from '../services/api';
 import { date, errorMessage } from '../utils/format';
-interface Props {
-    onClose: () => void;
-    notify: (s: string) => void;
-    onRematch: () => void;
-}
-const names: Record<string, string> = { not_initialized: '尚未初始化', syncing: '正在同步', ready: '缓存可用', error: '同步失败', cached: '更新失败，使用旧缓存', cache_invalid: '缓存校验失败' };
+interface Props { onClose: () => void; notify: (s: string) => void; onRematch: () => void; initialCategory?: string }
+const names: Record<string, string> = { not_initialized: '未下载', syncing: '正在更新', ready: '本地可用', error: '更新失败', cached: '使用旧缓存', cache_invalid: '需重新更新' };
 export default function RuleLibrary(p: Props) {
-    const [sources, setSources] = useState<RuleSource[]>([]);
-    const [categories, setCategories] = useState<RuleCategory[]>([]);
-    const [busy, setBusy] = useState('');
-    const [query, setQuery] = useState('');
-    const [limit, setLimit] = useState(60);
-    const [error, setError] = useState('');
-    async function reload() { const [s, c] = await Promise.all([api<RuleSource[]>('/rules/sources'), api<RuleCategory[]>('/rules/categories')]); setSources(s); setCategories(c); }
-    useEffect(() => { void reload().catch(e => setError(errorMessage(e))); }, []);
-    async function sync(id: string) { setBusy(id); setError(''); const polling = setInterval(() => { void api<RuleSource[]>('/rules/sources').then(setSources).catch(() => undefined); }, 2000); try {
-        await api('/rules/sync', 'POST', { source: id });
-        await reload();
-        p.notify('规则库已同步并保存到本地');
-        p.onRematch();
-    }
+ const [sources, setSources] = useState<RuleSource[]>([]);
+ const [categories, setCategories] = useState<RuleCategory[]>([]);
+ const [query, setQuery] = useState('');
+ const [sourceFilter, setSourceFilter] = useState('all');
+ const [selected, setSelected] = useState(p.initialCategory || '');
+ const [content, setContent] = useState<RuleCategory>();
+ const [draft, setDraft] = useState('');
+ const [busy, setBusy] = useState('');
+ const [loading, setLoading] = useState(false);
+ const [error, setError] = useState('');
+ const [settings, setSettings] = useState(false);
+ const [details, setDetails] = useState('');
+ const [limit, setLimit] = useState(100);
+ const editor = useRef<HTMLTextAreaElement>(null);
+ const versions = sources.map(s => s.version).join(':');
+ useEffect(() => {
+  let cancelled = false;
+  async function reload() {
+   try {
+    const [s, c] = await Promise.all([api<RuleSource[]>('/rules/sources'), api<RuleCategory[]>('/rules/categories?q=' + encodeURIComponent(query.trim()))]);
+    if (!cancelled) { setSources(s); setCategories(c); }
+   } catch (e) { if (!cancelled) setError(errorMessage(e)); }
+  }
+  const timer = setTimeout(() => void reload(), 180);
+  const interval = setInterval(() => void reload(), 3000);
+  return () => { cancelled = true; clearTimeout(timer); clearInterval(interval); };
+ }, [query]);
+ useEffect(() => {
+  if (!selected) return;
+  let cancelled = false;
+  setLoading(true); setError(''); setContent(undefined); setDraft('');
+  async function open() {
+   try {
+    let c: RuleCategory;
+    try { c = await api<RuleCategory>('/rules/content?id=' + encodeURIComponent(selected)); }
     catch (e) {
-        setError(errorMessage(e));
-        await reload().catch(() => undefined);
+     if (!(e instanceof Error) || !('status' in e) || e.status !== 409) throw e;
+     await api('/rules/load', 'POST', { id: selected });
+     c = await api<RuleCategory>('/rules/content?id=' + encodeURIComponent(selected));
     }
-    finally {
-        clearInterval(polling);
-        setBusy('');
-    } }
-    async function load(id: string) { setBusy(id); setError(''); try {
-        await api('/rules/load', 'POST', { id });
-        await reload();
-        p.onRematch();
-    }
-    catch (e) {
-        setError(errorMessage(e));
-    }
-    finally {
-        setBusy('');
-    } }
-    const filtered = categories.filter(c => (c.name + ' ' + c.source).toLowerCase().includes(query.toLowerCase()));
-    return <Dialog open fullWidth maxWidth="md" onClose={p.onClose}><DialogTitle>开源规则库<IconButton aria-label="关闭规则库" onClick={p.onClose} sx={{ float: 'right' }}><CloseRounded /></IconButton></DialogTitle><DialogContent dividers>
-  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>按来源独立索引，保留分类、Commit 和原始匹配类型。更新失败时已有缓存仍然可用。</Typography>
-  {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-  <Stack sx={{ gap: 2 }}>{sources.map(source => <Box key={source.id} sx={{ p: 2.5, border: 1, borderColor: 'divider', borderRadius: 3 }}>
-   <Stack direction="row" sx={{ alignItems: "center", gap: 1, flexWrap: "wrap" }}><Typography variant="subtitle1" sx={{ flex: 1, fontWeight: 650 }}>{source.name}</Typography><Chip label={names[source.status] || source.status} color={source.status === 'ready' ? 'success' : source.status === 'cached' || source.status === 'error' ? 'warning' : 'default'}/><Button startIcon={busy === source.id ? <CircularProgress size={16}/> : <RefreshRounded />} disabled={!!busy || source.status === 'syncing'} onClick={() => void sync(source.id)}>{source.version ? '更新' : '初始化'}</Button></Stack>
-   <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>{source.loaded_count} / {source.category_count} 个分类已加载 · {source.license}</Typography>
-   <Typography variant="caption" color="text.secondary" sx={{ mt: .7, display: "block" }}>上次成功：{date(source.updated_at)} · Commit {source.version ? source.version.slice(0, 12) : '—'}</Typography>
-   <Link href={source.repository} target="_blank" rel="noreferrer" variant="caption">上游仓库与许可证</Link>
-   {source.id === 'blackmatrix7' && <Typography variant="caption" color="text.secondary" sx={{ mt: .7, display: "block" }}>先加载常用应用分类，其余按需下载；使用前请阅读上游 GPL-2.0 及附加声明。</Typography>}
-   {source.license_text && <Box component="details" sx={{ mt: 1, fontSize: 12 }}><summary style={{ cursor: 'pointer' }}>查看已缓存的许可证原文</summary><Box component="pre" sx={{ maxHeight: 180, overflow: 'auto', mt: 1, fontSize: 11 }}>{source.license_text}</Box></Box>}{source.error && <Alert severity="warning" sx={{ mt: 1 }}>{source.error}</Alert>}
-  </Box>)}</Stack>
-  <Divider sx={{ my: 2.5 }}/><TextField fullWidth placeholder="搜索分类，如 Gemini、OpenAI、YouTube" value={query} onChange={e => { setQuery(e.target.value); setLimit(60); }} slotProps={{ htmlInput: { 'aria-label': '搜索规则分类' } }}/>
-  <Box sx={{ mt: 1, maxHeight: 320, overflow: 'auto' }}>{filtered.slice(0, limit).map(c => <Stack direction="row" key={c.id} sx={{ py: 1.2, borderBottom: 1, borderColor: 'divider', alignItems: "center", gap: 1 }}><Box sx={{ flex: 1, minWidth: 0 }}><Typography variant="body2" sx={{ fontWeight: 600 }}>{c.name} <Typography component="span" variant="caption" color="text.secondary">{c.source}</Typography></Typography><Typography variant="caption" color="text.secondary">{c.loaded ? `${c.rule_count} 条可转换规则` : '未加载'}{c.broad ? ' · 通用/大型分类' : ''}{c.warnings?.length ? ` · ${c.warnings.length} 项未转换/解析提示` : ''}</Typography>{c.warnings?.length > 0 && <Box component="details" sx={{ fontSize: 11, color: 'text.secondary' }}><summary>查看解析提示</summary>{c.warnings.slice(0, 20).map((w, i) => <div key={i}>{w}</div>)}{c.warnings.length > 20 && <div>另有 {c.warnings.length - 20} 项</div>}</Box>}</Box>{!c.loaded && <Button size="small" disabled={!!busy} startIcon={busy === c.id ? <CircularProgress size={14}/> : <CloudDownloadRounded />} onClick={() => void load(c.id)}>加载</Button>}</Stack>)}{filtered.length > limit && <Button fullWidth onClick={() => setLimit(v => v + 100)}>继续显示（共 {filtered.length} 类）</Button>}{categories.length === 0 && <Typography color="text.secondary" sx={{ py: 4, textAlign: "center" }}>初始化规则源后，在这里查看真实分类。</Typography>}</Box>
- </DialogContent></Dialog>;
+    if (!cancelled) { setContent(c); setDraft(c.raw || ''); }
+   } catch (e) { if (!cancelled) setError(errorMessage(e)); }
+   finally { if (!cancelled) setLoading(false); }
+  }
+  void open();
+  return () => { cancelled = true; };
+ }, [selected, versions]);
+ async function action(id: string, operation: 'sync' | 'check' | 'auto', enabled?: boolean) {
+  setBusy(id); setError('');
+  try {
+   await api('/rules/' + (operation === 'auto' ? 'auto-update' : operation), operation === 'auto' ? 'PUT' : 'POST', { source: id, ...(operation === 'auto' ? { enabled } : {}) });
+   setSources(await api<RuleSource[]>('/rules/sources'));
+   setCategories(await api<RuleCategory[]>('/rules/categories?q=' + encodeURIComponent(query.trim())));
+   if (operation === 'sync') { p.notify('规则原文与索引已更新到本地'); p.onRematch(); }
+   if (operation === 'check') p.notify('已检查上游可达性与最新版本');
+  } catch (e) { setError(errorMessage(e)); setSources(await api<RuleSource[]>('/rules/sources').catch(() => sources)); }
+  finally { setBusy(''); }
+ }
+ const list = categories.filter(c => sourceFilter === 'all' || c.source === sourceFilter);
+ const source = sources.find(s => s.id === content?.source);
+ const sourceURL = source && content ? source.repository + '/blob/' + content.version + '/' + content.path : '';
+ return <Dialog open fullWidth maxWidth={false} onClose={p.onClose} className="library-dialog">
+  <DialogTitle sx={{ py: 1, px: 2 }}><Stack direction="row" sx={{ gap: 1, alignItems: 'center' }}><Typography variant="h6" sx={{ flex: 1 }}>开源规则库</Typography><Button size="small" startIcon={<SettingsRounded />} onClick={() => setSettings(true)}>规则库设置</Button><IconButton aria-label="关闭规则库" onClick={p.onClose}><CloseRounded /></IconButton></Stack></DialogTitle>
+  <DialogContent dividers sx={{ p: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+   <Stack direction="row" className="library-toolbar" sx={{ gap: 1, px: 2, py: 1.5, flexShrink: 0 }}><TextField value={query} onChange={e => { setQuery(e.target.value); setLimit(100); }} placeholder="搜索分类或规则域名，如 Facebook" slotProps={{ htmlInput: { 'aria-label': '搜索规则分类' } }} sx={{ flex: 1 }} /><TextField select value={sourceFilter} onChange={e => setSourceFilter(e.target.value)} slotProps={{ htmlInput: { 'aria-label': '规则来源筛选' } }} sx={{ minWidth: 130 }}><MenuItem value="all">所有来源</MenuItem>{sources.map(s => <MenuItem key={s.id} value={s.id}>{s.id}</MenuItem>)}</TextField></Stack>
+   {error && <Alert severity="error" onClose={() => setError('')} sx={{ mx: 2, mb: 1 }}>{error}</Alert>}
+   <Box className="library-workspace">
+    <Box className="category-list" role="navigation" aria-label="规则分类列表">
+     <Typography variant="caption" color="text.secondary" sx={{ display: 'block', p: 1 }}>{list.length} 个分类 · 搜索本地缓存</Typography>
+     {list.slice(0, limit).map(c => <Button key={c.id} onClick={() => setSelected(c.id)} className="category-button" variant={selected === c.id ? 'contained' : 'text'} sx={{ width: '100%', justifyContent: 'flex-start', textAlign: 'left', px: 1.5, py: 1, borderRadius: 1, color: selected === c.id ? undefined : 'text.primary' }}><Box sx={{ minWidth: 0 }}><Typography variant="body2" sx={{ overflowWrap: 'anywhere', fontWeight: 650 }}>{c.name}</Typography><Typography variant="caption" sx={{ opacity: .7 }}>{c.source} · {c.loaded ? `${c.rule_count} 条域名规则` : '未缓存'}</Typography></Box></Button>)}
+     {list.length > limit && <Button fullWidth onClick={() => setLimit(v => v + 100)}>显示更多</Button>}
+     {!list.length && <Box sx={{ p: 2 }}><Typography color="text.secondary">{sources.some(s => s.status === 'syncing') ? '规则库正在下载，完成后即可搜索。' : sources.some(s => s.category_count) ? '没有匹配分类或域名' : '尚未下载规则库'}</Typography>{!sources.some(s => s.category_count) && <Button sx={{ mt: 1 }} onClick={() => setSettings(true)}>下载 / 自动更新设置</Button>}</Box>}
+    </Box>
+    <Box className="rule-reader">
+     {loading ? <Stack sx={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 1 }}><CircularProgress size={24} /><Typography>正在读取原文…</Typography></Stack> : content ? <>
+      <Stack direction="row" sx={{ gap: 1, alignItems: 'center', flexWrap: 'wrap', p: 1.5, borderBottom: 1, borderColor: 'divider' }}><Box sx={{ flex: 1, minWidth: 100 }}><Typography sx={{ fontWeight: 650 }}>{content.name}{content.format === 'yaml' ? '.yaml' : ''}</Typography><Typography variant="caption" color="text.secondary">{content.source} · {content.version.slice(0, 8)}</Typography></Box><Tooltip title="全选文本"><Button size="small" onClick={() => { editor.current?.focus(); editor.current?.select(); }}>全选</Button></Tooltip><Button size="small" startIcon={<ContentCopyRounded />} onClick={() => void copy(draft).then(() => p.notify('规则文本已复制')).catch(e => p.notify(errorMessage(e)))}>复制</Button><Button size="small" startIcon={<DownloadRounded />} onClick={() => void download(draft, content.name.replace(/[<>:"/\\|?*]/g, '_') + (content.format === 'yaml' ? '.yaml' : '.txt'), 'text/plain;charset=utf-8').then(() => p.notify('规则文本已导出')).catch(e => p.notify(errorMessage(e)))}>下载</Button></Stack>
+      <Box component="textarea" ref={editor} className="rule-editor" aria-label="规则原文编辑区" spellCheck={false} value={draft} onChange={e => setDraft(e.target.value)} sx={{ color: 'text.primary', bgcolor: 'background.default' }} />
+      <Stack direction="row" sx={{ px: 1.5, py: .8, gap: 1.5, alignItems: 'center', flexWrap: 'wrap', borderTop: 1, borderColor: 'divider' }}><Link href={sourceURL} target="_blank" rel="noreferrer" variant="caption">上游原文件</Link><Button size="small" onClick={() => setDetails('license')}>许可证</Button>{!!content.warnings?.length && <Button size="small" onClick={() => setDetails('warnings')}>{content.warnings.length} 项转换提示</Button>}{draft !== content.raw ? <Button size="small" onClick={() => setDraft(content.raw || '')}>恢复原文</Button> : <Typography variant="caption" color="text.secondary" sx={{ ml: 'auto' }}>原始内容完整保留，可选中、编辑、复制</Typography>}</Stack>
+     </> : <Stack sx={{ flex: 1, alignItems: 'center', justifyContent: 'center', px: 2 }}><Typography color="text.secondary">选择分类查看完整原文</Typography><Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>YAML 中的 IP、进程等规则也会原样保留。</Typography></Stack>}
+    </Box>
+   </Box>
+  </DialogContent>
+  <Dialog open={settings} onClose={() => setSettings(false)} fullWidth maxWidth="sm"><DialogTitle>规则库设置</DialogTitle><DialogContent dividers>
+   <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>开启后立即下载到本地，运行期间每天检查更新。失败时保留旧缓存；关闭软件后不在后台运行。</Typography>
+   {sources.map(s => <Box key={s.id} sx={{ border: 1, borderColor: 'divider', borderRadius: 2, p: 1.5, mb: 1.5 }}><Stack direction="row" sx={{ alignItems: 'center', gap: 1 }}><Typography variant="subtitle2" sx={{ flex: 1 }}>{s.name}</Typography><Chip size="small" label={names[s.status] || s.status} color={s.status === 'ready' ? 'success' : 'default'} /></Stack>
+    <FormControlLabel control={<Switch checked={s.auto_update || false} disabled={!!busy} onChange={(_, checked) => void action(s.id, 'auto', checked)} />} label="自动更新到本地" />
+    <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>{s.loaded_count} / {s.category_count} 分类 · 更新于 {date(s.updated_at)} · {s.version.slice(0, 8) || '—'}</Typography><Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>检查于 {date(s.checked_at)}{s.remote_version && s.remote_version !== s.version ? ' · 有新版本可下载' : s.remote_version ? ' · 已是当前上游版本' : ''}</Typography>
+    {s.error && <Alert severity="warning" sx={{ my: 1 }}>{s.error}</Alert>}
+    <Stack direction="row" sx={{ gap: .5, mt: 1 }}><Button size="small" disabled={!!busy || sources.some(v => v.status === 'syncing')} startIcon={busy === s.id || s.status === 'syncing' ? <CircularProgress size={14} /> : <RefreshRounded />} onClick={() => void action(s.id, 'sync')}>{s.version ? '立即更新' : '下载规则库'}</Button><Button size="small" disabled={!!busy || sources.some(v => v.status === 'syncing')} onClick={() => void action(s.id, 'check')}>检查更新</Button><Link sx={{ ml: 'auto', alignSelf: 'center' }} variant="caption" href={s.repository} target="_blank" rel="noreferrer">上游 · {s.license}</Link></Stack>
+   </Box>)}
+  </DialogContent><DialogActions><Button onClick={() => setSettings(false)}>完成</Button></DialogActions></Dialog>
+  <Dialog open={!!details} onClose={() => setDetails('')} fullWidth maxWidth="md"><DialogTitle>{details === 'license' ? '上游许可证' : '域名规则转换提示'}</DialogTitle><DialogContent dividers><Box component="pre" sx={{ fontSize: 12 }}>{details === 'license' ? source?.license_text || '请更新来源以获取许可证。' : '以下条目不参与域名匹配或转换，原文件中仍完整保留。\n\n' + content?.warnings.join('\n')}</Box></DialogContent><DialogActions><Button onClick={() => setDetails('')}>关闭</Button></DialogActions></Dialog>
+ </Dialog>;
 }

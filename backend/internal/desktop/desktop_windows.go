@@ -230,18 +230,33 @@ func Worker(gate string) error {
 	}
 	// Explicit arguments prevent the GUI Runtime from using a user's profile or
 	// Downloads directory. Scanner Chromium has a separate temporary profile.
-	_ = os.Setenv("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", `--no-first-run --disable-background-networking --disable-features=msEdgeSidebarV2 --crash-dumps-dir="`+filepath.Join(p.Data, "crashes")+`"`)
+	arguments := `--no-first-run --disable-background-networking --disable-features=msEdgeSidebarV2 --crash-dumps-dir="` + filepath.Join(p.Data, "crashes") + `"`
+	testPort, _ := strconv.Atoi(os.Getenv("CASTORICE_DESKTOP_TEST_PORT"))
+	testingWindow := os.Getenv("CASTORICE_DESKTOP_TEST") == "1" && testPort >= 1024 && testPort <= 65535
+	if testingWindow {
+		arguments += " --remote-debugging-address=127.0.0.1 --remote-debugging-port=" + strconv.Itoa(testPort)
+	}
+	_ = os.Setenv("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", arguments)
 	service, err := app.Start(app.Options{Address: "127.0.0.1:0", DataDir: p.Data, SaveExport: p.SaveExport})
 	if err != nil {
 		return err
 	}
 	defer service.Close()
-	w := webview2.NewWithOptions(webview2.WebViewOptions{DataPath: p.WebView, AutoFocus: true, WindowOptions: webview2.WindowOptions{Title: "Castorice-WebRuleAnalyzer " + model.Version + " · Web分流规则分析器", Width: 1280, Height: 900, Center: true, IconId: 1}})
+	w := webview2.NewWithOptions(webview2.WebViewOptions{DataPath: p.WebView, AutoFocus: true, WindowOptions: webview2.WindowOptions{Title: "Castorice-WebRuleAnalyzer " + model.Version + " · Web分流规则分析器", Width: 1280, Height: 800, Center: true, IconId: 1}})
 	if w == nil {
 		return errors.New("WebView2 窗口初始化失败，请查看 data/logs/application.log")
 	}
 	defer w.Destroy()
-	w.SetSize(900, 650, webview2.HintMin)
+	w.SetSize(720, 480, webview2.HintMin)
+	if testingWindow {
+		// Explicit local acceptance hook: post the same native WM_CLOSE message
+		// as the title-bar close button. Absent in ordinary application windows.
+		_ = w.Bind("__castoriceTestClose", func() {
+			w.Dispatch(func() {
+				user32.NewProc("PostMessageW").Call(uintptr(w.Window()), 0x0010, 0, 0)
+			})
+		})
+	}
 	meta, _ := json.Marshal(map[string]string{"dataDir": p.Data, "exportDir": p.Exports, "version": model.Version})
 	origin, _ := json.Marshal(service.URL)
 	w.Init(`if(location.origin===` + string(origin) + `){Object.defineProperty(window,'castoriceDesktop',{value:Object.freeze(` + string(meta) + `),writable:false});}`)

@@ -1,0 +1,11 @@
+# Build the UI and Linux binary with scripts/build-linux.ps1 first.
+# Context: the output package directory containing the `castorice` binary.
+FROM debian:13-slim
+RUN apt-get update && apt-get install -y --no-install-recommends chromium ca-certificates fonts-noto-cjk && rm -rf /var/lib/apt/lists/* \
+    && useradd --uid 10001 --create-home app && mkdir /data && chown app:app /data
+COPY castorice /usr/local/bin/castorice
+USER app
+EXPOSE 19110
+VOLUME /data
+ENTRYPOINT ["castorice", "--server", "--no-open", "--listen", "0.0.0.0:19110", "--data-dir", "/data"]
+CMD ["--public-url", "http://127.0.0.1:19110"]

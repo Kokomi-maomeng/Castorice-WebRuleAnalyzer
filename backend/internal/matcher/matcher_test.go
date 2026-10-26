@@ -51,3 +51,37 @@ func TestSharedUnknownAndAmbiguous(t *testing.T) {
 		t.Fatal("keyword inferred identity")
 	}
 }
+
+func TestGeminiDotComIsNotGoogleGeminiOrSharedAI(t *testing.T) {
+	cats := []model.RuleCategory{
+		category("Gemini", false, suffix("gemini.google.com")),
+		category("Copilot", false, suffix("www.google.com")),
+		category("OpenAI", false, suffix("www.google.com")),
+		category("Google", true, suffix("google.com")),
+	}
+	matches, recommendation, _ := Match("gemini.com", observed("gemini.com", "www.google.com", "www.googletagmanager.com"), cats)
+	if recommendation != "" {
+		t.Fatal("unrelated Gemini application recommended")
+	}
+	for _, hit := range matches {
+		if hit.Relation != "dependency" || hit.Suitable || len(hit.Evidence) == 0 {
+			t.Fatalf("shared hit misrepresented: %+v", hit)
+		}
+	}
+	_, recommendation, _ = Match("gemini.google.com", observed("gemini.google.com", "www.google.com"), cats)
+	if recommendation != "test:Gemini" {
+		t.Fatal("actual Google Gemini not identified", recommendation)
+	}
+}
+
+func TestSuffixBoundaryKeywordAndLargeApp(t *testing.T) {
+	cats := []model.RuleCategory{category("Facebook", false, suffix("facebook.com")), category("Keyword", false, model.RuleEntry{Type: model.Keyword, Value: "facebook"})}
+	matches, recommended, _ := Match("facebook.com.evil.example", observed("facebook.com.evil.example"), cats)
+	if recommended != "" || len(matches) != 1 || matches[0].Relation == "target" {
+		t.Fatal("suffix boundary or keyword used as identity", matches)
+	}
+	matches, recommended, _ = Match("www.facebook.com", observed("www.facebook.com"), cats)
+	if recommended != "test:Facebook" || matches[0].Evidence[0].Value != "facebook.com" {
+		t.Fatal("specific suffix not identified", matches)
+	}
+}

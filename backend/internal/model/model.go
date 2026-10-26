@@ -2,7 +2,7 @@ package model
 
 import "time"
 
-const Version = "v1.1"
+const Version = "v1.2"
 
 type ScanOptions struct {
 	DNSMode           string `json:"dns_mode"`
@@ -134,19 +134,25 @@ type RuleEntry struct {
 func (r RuleEntry) Key() string { return string(r.Type) + "," + r.Value }
 
 type RuleCategory struct {
-	ID        string      `json:"id"`
-	Name      string      `json:"name"`
-	Source    string      `json:"source"`
-	Version   string      `json:"version"`
-	Path      string      `json:"path"`
-	Loaded    bool        `json:"loaded"`
-	Broad     bool        `json:"broad"`
-	RuleCount int         `json:"rule_count"`
-	Warnings  []string    `json:"warnings"`
-	Rules     []RuleEntry `json:"rules,omitempty"`
+	Raw         string      `json:"raw,omitempty"`
+	Format      string      `json:"format,omitempty"`
+	ContentHash string      `json:"content_hash,omitempty"`
+	ID          string      `json:"id"`
+	Name        string      `json:"name"`
+	Source      string      `json:"source"`
+	Version     string      `json:"version"`
+	Path        string      `json:"path"`
+	Loaded      bool        `json:"loaded"`
+	Broad       bool        `json:"broad"`
+	RuleCount   int         `json:"rule_count"`
+	Warnings    []string    `json:"warnings"`
+	Rules       []RuleEntry `json:"rules,omitempty"`
 }
 
 type RuleSource struct {
+	AutoUpdate    bool       `json:"auto_update"`
+	CheckedAt     *time.Time `json:"checked_at,omitempty"`
+	RemoteVersion string     `json:"remote_version,omitempty"`
 	LicenseText   string     `json:"license_text,omitempty"`
 	LicenseURL    string     `json:"license_url,omitempty"`
 	ID            string     `json:"id"`
@@ -162,17 +168,26 @@ type RuleSource struct {
 }
 
 type RuleMatch struct {
-	CategoryID     string   `json:"category_id"`
-	Category       string   `json:"category"`
-	Source         string   `json:"source"`
-	Version        string   `json:"version"`
-	Score          float64  `json:"score"`
-	Confidence     string   `json:"confidence"`
-	Reasons        []string `json:"reasons"`
-	MatchedDomains []string `json:"matched_domains"`
-	Coverage       float64  `json:"coverage"`
-	Suitable       bool     `json:"suitable"`
-	Broad          bool     `json:"broad"`
+	Relation       string         `json:"relation"`
+	Evidence       []RuleEvidence `json:"evidence"`
+	CategoryID     string         `json:"category_id"`
+	Category       string         `json:"category"`
+	Source         string         `json:"source"`
+	Version        string         `json:"version"`
+	Score          float64        `json:"score"`
+	Confidence     string         `json:"confidence"`
+	Reasons        []string       `json:"reasons"`
+	MatchedDomains []string       `json:"matched_domains"`
+	Coverage       float64        `json:"coverage"`
+	Suitable       bool           `json:"suitable"`
+	Broad          bool           `json:"broad"`
+}
+
+type RuleEvidence struct {
+	Hostname string   `json:"hostname"`
+	Type     RuleType `json:"rule_type"`
+	Value    string   `json:"rule_value"`
+	Target   bool     `json:"target"`
 }
 
 type ExportJob struct {

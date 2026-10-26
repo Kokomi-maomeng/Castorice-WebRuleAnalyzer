@@ -119,7 +119,7 @@ func ParseClash(content []byte, origin model.RuleOrigin) ([]model.RuleEntry, []s
 		}
 		entries = append(entries, entry)
 	}
-	if len(entries) == 0 {
+	if len(lines) == 0 {
 		return nil, warnings, errors.New("文件不包含可导出的域名规则")
 	}
 	return Unique(entries), warnings, nil

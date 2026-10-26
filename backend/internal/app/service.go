@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sync"
@@ -19,18 +20,19 @@ import (
 )
 
 type Options struct {
-	Address, DataDir, DevOrigin string
-	Policy                      security.Policy
-	SaveExport                  func(string, string) (string, error)
+	Address, DataDir, DevOrigin, PublicURL string
+	Policy                                 security.Policy
+	SaveExport                             func(string, string) (string, error)
 }
 type Service struct {
-	URL    string
-	Scans  *scanner.Manager
-	Store  *storage.Store
-	server *http.Server
-	cancel context.CancelFunc
-	done   chan error
-	once   sync.Once
+	URL       string
+	Scans     *scanner.Manager
+	Store     *storage.Store
+	server    *http.Server
+	cancel    context.CancelFunc
+	done      chan error
+	once      sync.Once
+	rulesDone chan struct{}
 }
 
 func Start(o Options) (*Service, error) {
@@ -39,8 +41,14 @@ func Start(o Options) (*Service, error) {
 		return nil, err
 	}
 	ip, err := netip.ParseAddr(host)
-	if err != nil || !ip.IsLoopback() {
-		return nil, errors.New("只允许监听回环 IP")
+	if err != nil || !ip.IsLoopback() && o.PublicURL == "" {
+		return nil, errors.New("非回环监听需要显式设置 --public-url")
+	}
+	if o.PublicURL != "" {
+		u, e := url.Parse(o.PublicURL)
+		if e != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
+			return nil, errors.New("public-url 必须是精确的 HTTP(S) 来源，不能包含路径、凭据或查询")
+		}
 	}
 	if err = os.MkdirAll(o.DataDir, 0700); err != nil {
 		return nil, err
@@ -62,6 +70,9 @@ func Start(o Options) (*Service, error) {
 		return nil, err
 	}
 	base := "http://" + listener.Addr().String()
+	if o.PublicURL != "" {
+		base = o.PublicURL
+	}
 	handler, err := api.New(store, scans, rm, base, o.DevOrigin)
 	if err != nil {
 		listener.Close()
@@ -72,7 +83,8 @@ func Start(o Options) (*Service, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	handler.SaveExport = o.SaveExport
 	server := &http.Server{Handler: handler.Handler(), ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 64 << 10, BaseContext: func(net.Listener) context.Context { return ctx }}
-	s := &Service{URL: base, Scans: scans, Store: store, server: server, cancel: cancel, done: make(chan error, 1)}
+	s := &Service{URL: base, Scans: scans, Store: store, server: server, cancel: cancel, done: make(chan error, 1), rulesDone: make(chan struct{})}
+	go func() { defer close(s.rulesDone); rm.Run(ctx) }()
 	go func() { s.done <- server.Serve(listener) }()
 	return s, nil
 }
@@ -80,6 +92,7 @@ func (s *Service) Done() <-chan error { return s.done }
 func (s *Service) Close() {
 	s.once.Do(func() {
 		s.cancel()
+		<-s.rulesDone
 		s.Scans.Close()
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
