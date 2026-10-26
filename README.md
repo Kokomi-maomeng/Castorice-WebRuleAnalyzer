@@ -96,7 +96,7 @@ python scripts/audit-release.py --zip ./dist/Castorice-WebRuleAnalyzer-v1.2-wind
 - 这是受控标签页的 CDP 网络事件采集，不是系统 PCAP；失败请求也会记录。新标签页、独立 Worker、登录后功能和未操作流程的覆盖有限。扫描通过不证明整个应用完整覆盖。
 - 不保存请求头、Cookie、认证信息或正文；URL 查询值脱敏。任意业务路径仍可能敏感，请妥善保管自己的历史与导出文件。
 - 默认禁用 QUIC，保护代理支持 HTTP(S)/WebSocket；没有声称采集原生 HTTP/3。
-- 系统 DNS 含已知 Fake-IP 且其余均为公网地址时，自动模式使用固定 Cloudflare HTTPS DNS 重新验证公网地址；混合/私网答案继续拒绝。不修改系统网络配置。
+- 系统 DNS 含已知 Fake-IP 且其余均为公网地址时，自动模式使用固定 Cloudflare HTTPS DNS 重新验证公网地址；真实私网及其与公网混合的答案继续拒绝。不修改系统网络配置。
 - Windows 包没有代码签名。未在全新无 WebView2 的 Windows 10/11 安装上实测；第三方登录、支付等流程未执行。
 - 历史保存当时的匹配，重新匹配使用当前缓存。缓存清理后需重新下载；外部仓库、网络及规则本身不由本项目保证。
 

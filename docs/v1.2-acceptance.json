@@ -6,7 +6,7 @@
     "Debian 13.7 amd64 GUI",
     "Debian Docker 26.1.5"
   ],
-  "executable_sha256": "9e0f5221bd5b9e7cdbdd831daa9f4742be98d548ee1b8d43d9e6356a02479952",
+  "executable_sha256": "7cf83393dd8ce1bd531e81fb4ede62eebe444414e05a9186d8059fbc1c09bd9c",
   "executable_bytes": 15677440,
   "file_version": "1.2.0.0",
   "unsigned": true,
@@ -217,14 +217,24 @@
     ],
     "passed": true
   },
+  "github_ci": {
+    "code_revision": "386cace2b4cdd23e5c48d992b88ecf3224ff0de4",
+    "run": "https://github.com/Kokomi-maomeng/Castorice-WebRuleAnalyzer/actions/runs/40370704946",
+    "windows": "success",
+    "linux": "success",
+    "docker_compose_public_scan": "success"
+  },
+  "mixed_known_fake_public_dns": "passed; real private, loopback and metadata mixtures remain denied",
+  "clean_npm_install": "passed with original third-party locks preserved",
+  "notification_click_through": "passed in native export/cancel flow",
   "crash_recovery": {
-    "interrupted_status": "failed",
-    "source_sha256": "9e0f5221bd5b9e7cdbdd831daa9f4742be98d548ee1b8d43d9e6356a02479952",
     "new_scan_passed": true,
-    "profiles_cleaned": true,
-    "version": "v1.2",
+    "interrupted_status": "failed",
     "ordinary_launch_debug_disabled": true,
+    "source_sha256": "7cf83393dd8ce1bd531e81fb4ede62eebe444414e05a9186d8059fbc1c09bd9c",
+    "interrupted_reason": "service_interrupted",
+    "version": "v1.2",
     "passed": true,
-    "interrupted_reason": "service_interrupted"
+    "profiles_cleaned": true
   }
 }

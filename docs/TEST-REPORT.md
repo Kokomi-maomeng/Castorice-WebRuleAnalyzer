@@ -1,6 +1,6 @@
 # v1.2 验收报告
 
-日期：2026-10-27。以下区分真实运行、构造回归和未验证范围。最终成品与校验值见 `v1.2-acceptance.json`。
+日期：2026-10-27。以下区分真实运行、构造回归和未验证范围。最终成品与校验值见 `v1.2-acceptance.json`。完整源码验证见 [通过的 GitHub CI](https://github.com/Kokomi-maomeng/Castorice-WebRuleAnalyzer/actions/runs/40370704946)。
 
 ## 已执行的验证
 
@@ -16,6 +16,8 @@
 | Debian 13 GUI | 使用真实 Wayland 图形会话、临时 Chromium 156，采集/探索/取消/超时/导航失败/私网重定向/会话清理通过。真实 GUI 页面已打开并检查。测试 Chromium 解压到临时目录，未替换系统浏览器。最终回归发现并修复 Linux 子进程退出后重新写入 Profile 的时序问题：独立进程组、有界静默清理；取消/超时/导航失败/重定向连续三轮及完整回归通过 |
 | Debian 原生服务 | 真实 `example.com` 公网采集，主文档 200，三格式导出与历史通过；Linux 界面由系统浏览器显示 |
 | Debian Docker | 独立临时 Docker 数据目录与命名空间，实际运行非 root Chromium、保留 Chromium 自身沙箱。真实 `example.com` 公网采集和三格式导出通过；本轮 VM 使用 host 网络和回环端口。Docker 默认 AppArmor 最初拒绝 userns，补齐容器选项后通过。未启用 Windows Docker |
+
+额外回归：修复了版本更新误改第三方锁定版本的问题，干净 npm 安装和前端 8 项测试通过；源代码的 Windows/Linux 与 Docker Compose CI 全部通过。确认本机 Fake-IP 与公网 IPv6 混合会被旧逻辑拒绝后，现改为在不含真实私网的前提下走独立固定 HTTPS DNS，并再次校验全部地址；真实私网/回环/元数据与混合答案仍拒绝，新增回归与实际公网采集通过。原生界面通知条不拦截对话框按钮，导出/取消实际操作通过。
 
 ## 用户案例的真实扫描
 
@@ -38,7 +40,7 @@ Windows ZIP 使用内嵌前端的原生 GUI EXE，程序旁创建 data/exports�
 - Debian 浏览器异常终止的 Windows 专用模拟用例明确跳过；Debian 的实际取消、超时和清理通过。Go race detector 没有本机 C 工具链，未声称执行通过。
 - Windows 桌面自动操作工具出现 kernel assets 环境错误，浏览器界面改用独立 Chrome，原生窗口使用显式测试模式下的 WebView2 与本窗口 WM_CLOSE 验收。普通启动不启用测试调试接口。
 - 新标签页、独立 Worker、原生 HTTP/3、真实账号登录、支付/上传等业务流程未执行。三格式验证为可解析输出，不等于任意客户端策略组与联网业务都已验证。
-- Docker Compose 默认桥接端口映射与源码镜像构建由 GitHub CI 另行验证；本机 Docker 不参与测试。外部源网络与规则内容随时间变化，报告只对应记录的快照。
+- Docker Compose 默认桥接端口映射、宿主限制下的专用 AppArmor 配置、源码镜像构建与实际公网扫描已在 GitHub CI 通过验证；本机 Docker 不参与测试。外部源网络与规则内容随时间变化，报告只对应记录的快照。
 
 ## 截图
 
