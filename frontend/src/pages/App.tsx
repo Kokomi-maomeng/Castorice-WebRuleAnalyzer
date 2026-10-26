@@ -106,6 +106,6 @@ export default function App() {
      {dialog === 'history' && <HistoryDialog onClose={() => setDialog('')} onOpen={t => { setID(t.id); setURL(t.target_url); setOptions(t.options); setTab(0); }} />}
      {dialog === 'rules' && <RuleLibrary initialCategory={libraryCategory} onClose={() => setDialog('')} notify={notify} onRematch={() => void rematch()} />}
      {dialog === 'export' && task && <ExportDialog task={task} domains={chosenDomains} mode={mode} settings={settings} onClose={() => setDialog('')} notify={notify} onRematch={() => void rematch()} />}
-     <Snackbar open={!!notice} autoHideDuration={4500} onClose={() => notify('')} message={notice} />
+     <Snackbar open={!!notice} autoHideDuration={4500} disableWindowBlurListener onClose={() => notify('')} message={notice} sx={{ pointerEvents: 'none' }} />
     </Box></ThemeProvider>;
 }
