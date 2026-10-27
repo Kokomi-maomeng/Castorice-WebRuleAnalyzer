@@ -19,6 +19,7 @@ export default function App() {
     const [options, setOptions] = useState(defaultSettings.scan);
     const [url, setURL] = useState('');
     const [id, setID] = useState('');
+    const [resetCount, setResetCount] = useState(0);
     const [busy, setBusy] = useState(false);
     const [initializing, setInitializing] = useState(true);
     const [canShowBrowser, setCanShowBrowser] = useState(true);
@@ -49,6 +50,7 @@ export default function App() {
     function reset() {
         if (running || busy || initializing) return;
         setID(''); setTask(undefined); setURL(''); setError(''); notify(''); setDialog('');
+        setResetCount(v => v + 1);
         setTab(0); setMobilePanel('domains'); setLibraryCategory(''); setMode('observed');
         setExcluded(new Set()); setFilter({ host: '', method: '', type: '', status: '', page: 0 });
         setOptions(canShowBrowser ? settings.scan : { ...settings.scan, mode: settings.scan.mode === 'interactive' ? 'quick' : settings.scan.mode, visible: false });
@@ -108,8 +110,8 @@ export default function App() {
       {connection && <Alert severity="warning">{connection}</Alert>}
       <Stack direction="row" className="workspace-toolbar" sx={{ gap: .5, alignItems: 'center' }}><Box className="mobile-switch"><Button size="small" variant={mobilePanel === 'domains' ? 'contained' : 'text'} onClick={() => setMobilePanel('domains')}>域名</Button><Button size="small" variant={mobilePanel === 'analysis' ? 'contained' : 'text'} onClick={() => setMobilePanel('analysis')}>分析 / 规则命中</Button></Box><Typography variant="caption" color="text.secondary" className="privacy-note">独立浏览器 · URL 脱敏 · 本地保存</Typography><Tooltip title={running ? '先停止采集，再清空工作区' : '恢复初始页面，保留扫描历史和软件设置'}><span style={{ marginLeft: 'auto' }}><Button size="small" startIcon={<RestartAltRounded />} onClick={reset} disabled={running || busy || initializing}>清空工作区</Button></span></Tooltip><Chip size="small" className="workspace-status" label={running ? '正在采集' : '本地工作区'} variant="outlined" /></Stack>
       <Box className="workspace" data-mobile-panel={mobilePanel}>
-       <DomainPanel key={`domains:${id}`} task={task} domains={domains} excluded={excluded} toggle={host => setExcluded(old => { const value = new Set(old); if (value.has(host)) value.delete(host); else value.add(host); return value; })} mode={mode} setMode={setMode} onExport={() => setDialog('export')} onRequests={host => { setFilter({ ...filter, host, page: 0 }); setTab(1); setMobilePanel('analysis'); }} notify={notify} />
-       <AnalysisPanel key={`analysis:${id}`} task={task} requests={requests} total={total} filter={filter} setFilter={setFilter} logs={logs} tab={tab} setTab={setTab} logLevel={settings.log_level} notify={notify} matchContent={<MatchPanel task={task} onRematch={() => void rematch()} onLibrary={openLibrary} busy={busy} />} />
+       <DomainPanel key={`domains:${id}:${resetCount}`} task={task} domains={domains} excluded={excluded} toggle={host => setExcluded(old => { const value = new Set(old); if (value.has(host)) value.delete(host); else value.add(host); return value; })} mode={mode} setMode={setMode} onExport={() => setDialog('export')} onRequests={host => { setFilter({ ...filter, host, page: 0 }); setTab(1); setMobilePanel('analysis'); }} notify={notify} />
+       <AnalysisPanel key={`analysis:${id}:${resetCount}`} task={task} requests={requests} total={total} filter={filter} setFilter={setFilter} logs={logs} tab={tab} setTab={setTab} logLevel={settings.log_level} notify={notify} matchContent={<MatchPanel task={task} onRematch={() => void rematch()} onLibrary={openLibrary} busy={busy} />} />
       </Box>
      </Box>
      {dialog === 'settings' && <SettingsDialog canShowBrowser={canShowBrowser} settings={settings} onSave={save} onClose={() => setDialog('')} onLibrary={() => openLibrary()} notify={notify} />}

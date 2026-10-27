@@ -63,4 +63,13 @@ describe('清空工作区', () => {
   render(<App />); await screen.findByRole('button', { name: '停止采集' });
   expect(screen.getByRole('button', { name: '清空工作区' })).toBeDisabled();
  });
+ it('已经处于空工作区时再次清空，也会重置新输入的面板搜索', async () => {
+  localStorage.setItem('castorice.lastScan', '');
+  render(<App />);
+  await waitFor(() => expect(screen.getByRole('button', { name: '清空工作区' })).toBeEnabled());
+  fireEvent.change(screen.getByRole('textbox', { name: '搜索域名' }), { target: { value: 'temporary' } });
+  fireEvent.click(screen.getByRole('button', { name: '清空工作区' }));
+  expect(screen.getByRole('textbox', { name: '搜索域名' })).toHaveValue('');
+  expect(screen.getByText('等待首次发现')).toBeInTheDocument();
+ });
 });

@@ -3,7 +3,7 @@
   "date": "2026-10-27",
   "release_tag": "v1.3",
   "frontend_tests": {
-    "passed": 16
+    "passed": 17
   },
   "go_tests": {
     "all_packages": true,
@@ -345,7 +345,7 @@
     "owned_processes_remaining": 0,
     "listeners_closed": true
   },
-  "windows_executable_sha256": "1fa6a4d97ab7e26af8efed9f08e7ffef9a19b1c2bc56e34cce7f06af98a43ba9",
+  "windows_executable_sha256": "7648c5ca779509f9d96772ff703c8cc8dad5383ce26d98777f4529d1ea0b0094",
   "privacy": {
     "working_files": true,
     "git_blobs": true,
@@ -360,5 +360,6 @@
     "VM Docker uses host networking; default Compose covered separately by CI",
     "No native HTTP/3, real account login, payment, upload, or whole-site coverage guarantee",
     "No local Go race detector"
-  ]
+  ],
+  "repeat_empty_reset_regression": true
 }
