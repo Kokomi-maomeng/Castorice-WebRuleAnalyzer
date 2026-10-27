@@ -28,4 +28,16 @@ describe('实时任务隔离', () => {
   act(() => FakeEventSource.instances[0].onerror?.()); expect(result.current.connection).toContain('自动重连');
   expect(mockAPI.mock.calls.some(([path]) => path.includes('offset=50') && path.includes('method=POST'))).toBe(true);
  });
+ it('清空任务后请求总数归零，迟到请求不能恢复旧计数', async () => {
+  let resolveLate: ((value: unknown) => void) | undefined;
+  const original = mockAPI.getMockImplementation()!;
+  let requests = 0;
+  mockAPI.mockImplementation((path: string) => path.includes('/requests?') ? (++requests === 1 ? Promise.resolve({ items: [], total: 57 }) : new Promise(resolve => { resolveLate = resolve; })) : original(path));
+  const filter: RequestFilter = { host: '', method: '', type: '', status: '', page: 0 };
+  const { result, rerender } = renderHook(({ id }) => useScan(id, filter), { initialProps: { id: 'one' } });
+  await waitFor(() => expect(resolveLate).toBeDefined());
+  rerender({ id: '' }); expect(result.current.total).toBe(0);
+  await act(async () => resolveLate!({ items: [], total: 57 }));
+  expect(result.current.total).toBe(0); expect(result.current.task).toBeUndefined(); expect(result.current.domains).toEqual([]);
+ });
 });

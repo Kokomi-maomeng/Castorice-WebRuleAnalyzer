@@ -1,0 +1,365 @@
+{
+  "version": "v1.3",
+  "date": "2026-10-27",
+  "release_tag": "v1.3",
+  "frontend_tests": {
+    "passed": 17
+  },
+  "go_tests": {
+    "all_packages": true,
+    "vet": true,
+    "real_chrome": true,
+    "live_rules": true,
+    "live_dns": true
+  },
+  "windows_ui": {
+    "passed": true,
+    "real": {
+      "previewEntries": 547,
+      "paginationAndSelection": true,
+      "completeDownloads": [
+        "clash",
+        "provider",
+        "singbox"
+      ],
+      "largeCategory": {
+        "id": "v2fly:category-companies",
+        "rules": 8721,
+        "previewEntries": 8730,
+        "elapsedMs": 493
+      },
+      "sources": [
+        {
+          "id": "blackmatrix7",
+          "version": "9b29c945b9164a02c7018ed333cb9b5bc1bcb417",
+          "category_count": 679
+        },
+        {
+          "id": "v2fly",
+          "version": "420c0e7b880c107aa984b3b061997a815c1a0d62",
+          "category_count": 1542
+        }
+      ],
+      "resetAndHistory": true
+    },
+    "layouts": [
+      {
+        "width": 1920,
+        "height": 1080,
+        "scrollWidth": 1920,
+        "scrollHeight": 1080,
+        "listHeight": 309.515625,
+        "actionBottom": 980
+      },
+      {
+        "width": 1440,
+        "height": 900,
+        "scrollWidth": 1440,
+        "scrollHeight": 900,
+        "listHeight": 261.515625,
+        "actionBottom": 866
+      },
+      {
+        "width": 1280,
+        "height": 720,
+        "scrollWidth": 1280,
+        "scrollHeight": 720,
+        "listHeight": 100,
+        "actionBottom": 686
+      },
+      {
+        "width": 1024,
+        "height": 640,
+        "scrollWidth": 1024,
+        "scrollHeight": 640,
+        "listHeight": 100,
+        "actionBottom": 606
+      },
+      {
+        "width": 820,
+        "height": 600,
+        "scrollWidth": 820,
+        "scrollHeight": 600,
+        "listHeight": 125.640625,
+        "actionBottom": 566
+      },
+      {
+        "width": 390,
+        "height": 844,
+        "scrollWidth": 390,
+        "scrollHeight": 844,
+        "listHeight": 311.234375,
+        "actionBottom": 828
+      },
+      {
+        "width": 640,
+        "height": 360,
+        "scrollWidth": 640,
+        "scrollHeight": 360,
+        "listHeight": 100,
+        "actionBottom": 344
+      },
+      {
+        "width": 760,
+        "height": 480,
+        "scrollWidth": 760,
+        "scrollHeight": 480,
+        "listHeight": 100,
+        "actionBottom": 446
+      }
+    ],
+    "fixture": {
+      "explicitlySynthetic": true,
+      "entries": 5000,
+      "renderedPerPage": 30,
+      "tailSearch": true
+    },
+    "motion": {
+      "heldButtonFeedback": true,
+      "normalSwitchTransition": true,
+      "reducedMotion": true
+    },
+    "errors": []
+  },
+  "debian_gui_ui": {
+    "passed": true,
+    "real": {
+      "previewEntries": 547,
+      "paginationAndSelection": true,
+      "completeDownloads": [
+        "clash",
+        "provider",
+        "singbox"
+      ],
+      "largeCategory": {
+        "id": "v2fly:category-companies",
+        "rules": 8721,
+        "previewEntries": 8730,
+        "elapsedMs": 682
+      },
+      "sources": [
+        {
+          "id": "blackmatrix7",
+          "version": "9b29c945b9164a02c7018ed333cb9b5bc1bcb417",
+          "category_count": 679
+        },
+        {
+          "id": "v2fly",
+          "version": "420c0e7b880c107aa984b3b061997a815c1a0d62",
+          "category_count": 1542
+        }
+      ],
+      "resetAndHistory": true
+    },
+    "layouts": [
+      {
+        "width": 1920,
+        "height": 1080,
+        "scrollWidth": 1920,
+        "scrollHeight": 1080,
+        "listHeight": 309.515625,
+        "actionBottom": 980
+      },
+      {
+        "width": 1440,
+        "height": 900,
+        "scrollWidth": 1440,
+        "scrollHeight": 900,
+        "listHeight": 261.515625,
+        "actionBottom": 866
+      },
+      {
+        "width": 1280,
+        "height": 720,
+        "scrollWidth": 1280,
+        "scrollHeight": 720,
+        "listHeight": 100,
+        "actionBottom": 686
+      },
+      {
+        "width": 1024,
+        "height": 640,
+        "scrollWidth": 1024,
+        "scrollHeight": 640,
+        "listHeight": 100,
+        "actionBottom": 606
+      },
+      {
+        "width": 820,
+        "height": 600,
+        "scrollWidth": 820,
+        "scrollHeight": 600,
+        "listHeight": 125.640625,
+        "actionBottom": 566
+      },
+      {
+        "width": 390,
+        "height": 844,
+        "scrollWidth": 390,
+        "scrollHeight": 844,
+        "listHeight": 311.09375,
+        "actionBottom": 828
+      },
+      {
+        "width": 640,
+        "height": 360,
+        "scrollWidth": 640,
+        "scrollHeight": 360,
+        "listHeight": 100,
+        "actionBottom": 344
+      },
+      {
+        "width": 760,
+        "height": 480,
+        "scrollWidth": 760,
+        "scrollHeight": 480,
+        "listHeight": 100,
+        "actionBottom": 446
+      }
+    ],
+    "fixture": {
+      "explicitlySynthetic": true,
+      "entries": 5000,
+      "renderedPerPage": 30,
+      "tailSearch": true
+    },
+    "motion": {
+      "normalSwitchTransition": true,
+      "reducedMotion": true
+    },
+    "errors": []
+  },
+  "docker_ui": {
+    "passed": true,
+    "real": {
+      "previewEntries": 547,
+      "paginationAndSelection": true,
+      "completeDownloads": [
+        "clash",
+        "provider",
+        "singbox"
+      ],
+      "largeCategory": {
+        "id": "v2fly:category-companies",
+        "rules": 8721,
+        "previewEntries": 8730,
+        "elapsedMs": 573
+      },
+      "sources": [
+        {
+          "id": "blackmatrix7",
+          "version": "9b29c945b9164a02c7018ed333cb9b5bc1bcb417",
+          "category_count": 679
+        },
+        {
+          "id": "v2fly",
+          "version": "420c0e7b880c107aa984b3b061997a815c1a0d62",
+          "category_count": 1542
+        }
+      ],
+      "resetAndHistory": true
+    },
+    "layouts": [
+      {
+        "width": 1920,
+        "height": 1080,
+        "scrollWidth": 1920,
+        "scrollHeight": 1080,
+        "listHeight": 309.515625,
+        "actionBottom": 980
+      },
+      {
+        "width": 1440,
+        "height": 900,
+        "scrollWidth": 1440,
+        "scrollHeight": 900,
+        "listHeight": 261.515625,
+        "actionBottom": 866
+      },
+      {
+        "width": 1280,
+        "height": 720,
+        "scrollWidth": 1280,
+        "scrollHeight": 720,
+        "listHeight": 100,
+        "actionBottom": 686
+      },
+      {
+        "width": 1024,
+        "height": 640,
+        "scrollWidth": 1024,
+        "scrollHeight": 640,
+        "listHeight": 100,
+        "actionBottom": 606
+      },
+      {
+        "width": 820,
+        "height": 600,
+        "scrollWidth": 820,
+        "scrollHeight": 600,
+        "listHeight": 125.640625,
+        "actionBottom": 566
+      },
+      {
+        "width": 390,
+        "height": 844,
+        "scrollWidth": 390,
+        "scrollHeight": 844,
+        "listHeight": 311.09375,
+        "actionBottom": 828
+      },
+      {
+        "width": 640,
+        "height": 360,
+        "scrollWidth": 640,
+        "scrollHeight": 360,
+        "listHeight": 100,
+        "actionBottom": 344
+      },
+      {
+        "width": 760,
+        "height": 480,
+        "scrollWidth": 760,
+        "scrollHeight": 480,
+        "listHeight": 100,
+        "actionBottom": 446
+      }
+    ],
+    "fixture": {
+      "explicitlySynthetic": true,
+      "entries": 5000,
+      "renderedPerPage": 30,
+      "tailSearch": true
+    },
+    "motion": {
+      "normalSwitchTransition": true,
+      "reducedMotion": true
+    },
+    "errors": []
+  },
+  "native_lifecycle": {
+    "normal": true,
+    "active_close": true,
+    "force_crash": true,
+    "recovery": true,
+    "owned_processes_remaining": 0,
+    "listeners_closed": true
+  },
+  "windows_executable_sha256": "7648c5ca779509f9d96772ff703c8cc8dad5383ce26d98777f4529d1ea0b0094",
+  "privacy": {
+    "working_files": true,
+    "git_blobs": true,
+    "commit_metadata": true,
+    "portable_archive": true,
+    "manual_diff_and_screenshots": true
+  },
+  "limits": [
+    "Windows 11 with existing WebView2 and Chrome/Edge",
+    "Debian 13 amd64 tested; other Linux distributions not qualified",
+    "Unsigned Windows EXE",
+    "VM Docker uses host networking; default Compose covered separately by CI",
+    "No native HTTP/3, real account login, payment, upload, or whole-site coverage guarantee",
+    "No local Go race detector"
+  ],
+  "repeat_empty_reset_regression": true
+}

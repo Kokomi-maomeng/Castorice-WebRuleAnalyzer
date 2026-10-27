@@ -20,7 +20,7 @@ export function useScan(id: string, filter: RequestFilter) {
  const callbacks = useRef({ refresh, refreshRequests }); callbacks.current = { refresh, refreshRequests };
  useEffect(() => { void refreshRequests(); }, [refreshRequests]);
  useEffect(() => {
-  generation.current++; busy.current = false; cursor.current = 0; setLogs([]); setDomains([]); setRequests([]); setTask(undefined); setConnection(''); if (!id) return;
+  generation.current++; busy.current = false; cursor.current = 0; setLogs([]); setDomains([]); setRequests([]); setTotal(0); setTask(undefined); setConnection(''); if (!id) return;
   const current = generation.current;
   const load = async () => { try { const t = await api<ScanTask>(`/scans/${id}`); if (generation.current === current) setTask(t); } catch (e) { if (generation.current === current) setConnection(errorMessage(e)); } };
   void load(); void callbacks.current.refresh(); void callbacks.current.refreshRequests();

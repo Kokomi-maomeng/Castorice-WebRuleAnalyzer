@@ -19,7 +19,7 @@ $runtime=$null;$supervisor=$null;$ownedBefore=@();$task=$null
 function Wait-Runtime {
  $deadline=[DateTime]::UtcNow.AddSeconds(25)
  do{
-  if(Test-Path -LiteralPath $runtimePath){try{$r=Get-Content -LiteralPath $runtimePath -Raw|ConvertFrom-Json;if($r.version -eq 'v1.2' -and (Get-Process -Id $r.pid -ErrorAction SilentlyContinue)){return $r}}catch{}}
+  if(Test-Path -LiteralPath $runtimePath){try{$r=Get-Content -LiteralPath $runtimePath -Raw|ConvertFrom-Json;if($r.version -eq 'v1.3' -and (Get-Process -Id $r.pid -ErrorAction SilentlyContinue)){return $r}}catch{}}
   Start-Sleep -Milliseconds 150
  }while([DateTime]::UtcNow -lt $deadline)
  throw 'Native startup timed out'
@@ -41,7 +41,7 @@ try {
  $runtime=Wait-Runtime
  $session=(Invoke-RestMethod ($runtime.url+'/api/session')).data;$headers=@{'X-Castorice-Token'=$session.token}
  $health=(Invoke-RestMethod ($runtime.url+'/api/health')).data
- if($health.version -ne 'v1.2'){throw 'Unexpected version'}
+ if($health.version -ne 'v1.3'){throw 'Unexpected version'}
  if($Scenario -eq 'normal'){
   & (Join-Path $PSScriptRoot 'smoke.ps1') -BaseURL $runtime.url -OutputDirectory (Join-Path $caseDir 'exports/api-acceptance')
   if(-not $?){throw 'Packaged API acceptance failed'}
@@ -80,7 +80,7 @@ try {
   if(@(Get-ChildItem -LiteralPath (Join-Path $caseDir 'data/sessions') -Directory -Filter 'scan-*').Count){throw 'Session profile remained'}
   if(@(Get-ChildItem -LiteralPath (Join-Path $caseDir 'data/tmp') -Force).Count){throw 'Temporary files remained'}
  }
- $result=@{version='v1.2';scenario=$Scenario;executable_sha256=(Get-FileHash -LiteralPath $caseExe -Algorithm SHA256).Hash;owned_before=$ownedBefore;remaining_processes=$remaining.Count;listener_closed=$true;task_id=$task.id;passed=$true;case_directory=$caseDir}
+ $result=@{version='v1.3';scenario=$Scenario;executable_sha256=(Get-FileHash -LiteralPath $caseExe -Algorithm SHA256).Hash;owned_before=$ownedBefore;remaining_processes=$remaining.Count;listener_closed=$true;task_id=$task.id;passed=$true;case_directory=$caseDir}
  $resultPath=Join-Path $caseDir 'acceptance-result.json'
  [IO.File]::WriteAllText($resultPath,($result|ConvertTo-Json -Depth 8))
  Write-Host ('PASS '+$Scenario+'：无残留进程或监听端口；'+$resultPath)

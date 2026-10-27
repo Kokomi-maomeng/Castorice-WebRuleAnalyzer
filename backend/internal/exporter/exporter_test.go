@@ -2,6 +2,7 @@ package exporter
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -148,5 +149,50 @@ func TestValidationAndFilename(t *testing.T) {
 	j := job()
 	if _, err := Build(j, []model.DomainRecord{{Hostname: "8.8.8.8", Kind: "ipv4"}}, nil); err == nil {
 		t.Fatal("IP exported as domain")
+	}
+}
+
+func TestNestedSuffixCoverageAndBoundary(t *testing.T) {
+	j := job()
+	j.Mode = "merged"
+	c := cat(model.RuleEntry{Type: model.Suffix, Value: "example.com"}, model.RuleEntry{Type: model.Suffix, Value: "a.example.com"}, model.RuleEntry{Type: model.Domain, Value: "a.example.com"}, model.RuleEntry{Type: model.Domain, Value: "x.a.example.com"}, model.RuleEntry{Type: model.Domain, Value: "notexample.com"})
+	for _, exclusions := range [][]string{nil, {"DOMAIN-SUFFIX,example.com"}, {"DOMAIN-SUFFIX,example.com", "DOMAIN-SUFFIX,a.example.com"}} {
+		j.Excluded = exclusions
+		out, err := Build(j, nil, []model.RuleCategory{c})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, entry := range out.Entries {
+			if entry.Type != model.Domain {
+				continue
+			}
+			want := ""
+			if entry.Value != "notexample.com" {
+				if len(exclusions) == 0 {
+					want = "DOMAIN-SUFFIX,example.com"
+				} else if len(exclusions) == 1 {
+					want = "DOMAIN-SUFFIX,a.example.com"
+				}
+			}
+			if entry.CoveredBy != want {
+				t.Fatalf("%s: want %q, got %q", entry.Value, want, entry.CoveredBy)
+			}
+		}
+	}
+}
+
+func TestLargeExportRetainsAllEntries(t *testing.T) {
+	entries := make([]model.RuleEntry, 30000)
+	for i := range entries {
+		entries[i] = model.RuleEntry{Type: model.Suffix, Value: fmt.Sprintf("d%d.example.com", i)}
+	}
+	j := job()
+	j.Mode = "merged"
+	out, err := Build(j, domainRecords("sub.d42.example.com"), []model.RuleCategory{cat(entries...)})
+	if err != nil || out.FinalRules != len(entries) || len(out.Entries) != len(entries)+1 {
+		t.Fatalf("large export truncated: %d, %d, %v", out.FinalRules, len(out.Entries), err)
+	}
+	if !strings.Contains(out.Content, "d29999.example.com") {
+		t.Fatal("last entry missing")
 	}
 }
