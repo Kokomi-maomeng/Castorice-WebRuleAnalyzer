@@ -43,9 +43,9 @@
 # 独立服务已启动且已初始化规则库
 node scripts/verify-ui.mjs
 python scripts/smoke.py --base-url http://127.0.0.1:19110
-./scripts/verify-desktop.ps1 -PackageDirectory ./dist/Castorice-WebRuleAnalyzer-v1.2-windows-amd64 -Scenario normal -AutoClose
-./scripts/verify-desktop.ps1 -PackageDirectory ./dist/Castorice-WebRuleAnalyzer-v1.2-windows-amd64 -Scenario active-close -AutoClose
-./scripts/verify-desktop.ps1 -PackageDirectory ./dist/Castorice-WebRuleAnalyzer-v1.2-windows-amd64 -Scenario force-crash
+./scripts/verify-desktop.ps1 -PackageDirectory ./dist/Castorice-WebRuleAnalyzer-v1.3-windows-amd64 -Scenario normal -AutoClose
+./scripts/verify-desktop.ps1 -PackageDirectory ./dist/Castorice-WebRuleAnalyzer-v1.3-windows-amd64 -Scenario active-close -AutoClose
+./scripts/verify-desktop.ps1 -PackageDirectory ./dist/Castorice-WebRuleAnalyzer-v1.3-windows-amd64 -Scenario force-crash
 ```
 
 替换示例版本号。测试数据只放 `.runtime/` 或外部临时目录；不在正式发布目录启动 EXE，避免个人历史进入 ZIP。
@@ -58,7 +58,7 @@ python scripts/smoke.py --base-url http://127.0.0.1:19110
 - 从干净 ZIP 再次解压启动，核对最终 EXE/ZIP SHA256。签名、系统组件依赖、未测平台应明确写入报告。
 
 ```powershell
-python scripts/audit-release.py --zip ./dist/Castorice-WebRuleAnalyzer-v1.2-windows-amd64.zip
+python scripts/audit-release.py --zip ./dist/Castorice-WebRuleAnalyzer-v1.3-windows-amd64.zip
 ```
 
 ## 6. 发布与下载复验
@@ -69,3 +69,13 @@ python scripts/audit-release.py --zip ./dist/Castorice-WebRuleAnalyzer-v1.2-wind
 4. 发布对应标签的 GitHub Release，并上传 Windows 便携 ZIP 和 SHA256。后续版本继续沿用此形式。
 5. 从 GitHub 下载附件，比较 SHA256，再次解压启动真实成品。确认 Release 标签与附件对应相同源码版本。
 6. 保存脱敏报告。关闭本次临时服务与测试浏览器；验证虚拟机原有服务未被改动。不要停止用户日常浏览器、代理或无关容器。
+
+## v1.3 之后复用的针对性检查
+
+- 复现先检查实际使用的数据目录和来源状态；开发测试缓存正常不代表用户便携目录已有规则。
+- 规则源更新共享互斥写入器，多个来源应依次执行；不能用并发初始化测试掩盖只成功一套的情况。
+- `node scripts/verify-export-ui.mjs` 检查真实分类、完整导出、分页、清空、八种尺寸、字体放大、按压与减少动效；密集夹具会明确标记。使用 `CASTORICE_INIT_RULES=1` 测试全新缓存，同时断言两套来源都完成。
+- 界面脚本支持 `CASTORICE_UI_CDP` 与 `CASTORICE_PLAYWRIGHT_MODULE`，可在 Debian 内直接控制本机 GUI Chromium，避免新增转发；只连接专属测试 Profile。
+- Debian 临时浏览器需要与真实会话匹配；Wayland 使用 `--ozone-platform=wayland`。临时 Docker 必须连同 containerd 一起隔离在同一挂载命名空间，不能借用系统 containerd；记录并对比原有容器 PID/启动时间。
+- 原生关闭脚本使用稳定的“关闭导出”标签，截图前等待包含本机保存路径的通知消失。
+- 最终包的 EXE 先完成正常/扫描中/强制退出与恢复，文档更新后重新打包并检查 EXE SHA256 不变；ZIP 校验值放在包外，避免自引用。

@@ -3,8 +3,11 @@ param([switch]$SkipTests, [switch]$BrowserTests, [switch]$SkipInstall)
 $ErrorActionPreference = 'Stop'
 $projectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $outputRoot = Join-Path $projectRoot 'dist'
-$packageName = 'Castorice-WebRuleAnalyzer-v1.2-windows-amd64'
+$packageName = 'Castorice-WebRuleAnalyzer-v1.3-windows-amd64'
 $packageDir = Join-Path $outputRoot $packageName
+foreach ($runtimeFolder in @('data', 'exports')) {
+    if (Test-Path -LiteralPath (Join-Path $packageDir $runtimeFolder)) { throw '发布目录包含运行数据，请先将其备份并换用干净构建目录。' }
+}
 function Invoke-Checked { param([string]$File, [string[]]$Arguments) & $File @Arguments; if ($LASTEXITCODE -ne 0) { throw "$File failed ($LASTEXITCODE)" } }
 $npmCommand = (Get-Command npm.cmd -ErrorAction Stop).Source
 $goCommand = (Get-Command go -ErrorAction Stop).Source

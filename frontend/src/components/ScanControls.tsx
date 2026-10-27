@@ -3,14 +3,14 @@ import { Box, Button, CircularProgress, Dialog, DialogActions, DialogContent, Di
 import { ArrowForwardRounded, CloseRounded, LinkRounded, StopRounded, TuneRounded } from '@mui/icons-material';
 import type { ScanOptions } from '../types';
 import { modeNames } from '../utils/format';
-interface Props { canShowBrowser: boolean; url: string; setURL: (v: string) => void; options: ScanOptions; setOptions: (v: ScanOptions) => void; running: boolean; busy: boolean; onStart: () => void; onStop: () => void }
+interface Props { canShowBrowser: boolean; url: string; setURL: (v: string) => void; options: ScanOptions; setOptions: (v: ScanOptions) => void; running: boolean; busy: boolean; onStart: () => void; onStop: () => void; onReset: () => void }
 export default function ScanControls(p: Props) {
  const [advanced, setAdvanced] = useState(false);
  const set = <K extends keyof ScanOptions>(key: K, value: ScanOptions[K]) => p.setOptions({ ...p.options, [key]: value });
  const number = (label: string, key: keyof ScanOptions, min: number, max: number) => <TextField label={label} type="number" value={p.options[key]} onChange={e => set(key, Number(e.target.value))} slotProps={{ htmlInput: { min, max } }} disabled={p.running} fullWidth />;
  return <Paper component="section" className="scan-controls" sx={{ p: 1.5, border: 1, borderColor: 'divider', flexShrink: 0 }}>
-  <Box component="form" onSubmit={e => { e.preventDefault(); if (!p.running && !p.busy) p.onStart(); }} className="scan-form">
-   <TextField fullWidth label="要分析的网站" placeholder="example.com 或完整 URL" value={p.url} disabled={p.running} onChange={e => p.setURL(e.target.value)} autoComplete="off" slotProps={{ input: { startAdornment: <InputAdornment position="start"><LinkRounded color="primary" /></InputAdornment> } }} />
+  <Box component="form" onSubmit={e => { e.preventDefault(); if (!p.running && !p.busy) { if (p.url.trim()) p.onStart(); else p.onReset(); } }} className="scan-form">
+   <TextField fullWidth label="要分析的网站" placeholder="example.com 或完整 URL" value={p.url} disabled={p.running} onChange={e => p.setURL(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.nativeEvent.isComposing && !p.url.trim() && !p.running && !p.busy) { e.preventDefault(); p.onReset(); } }} autoComplete="off" slotProps={{ input: { startAdornment: <InputAdornment position="start"><LinkRounded color="primary" /></InputAdornment> } }} />
    <TextField select label="扫描模式" value={p.options.mode} onChange={e => set('mode', e.target.value as ScanOptions['mode'])} disabled={p.running} className="scan-mode">{Object.entries(modeNames).map(([v, label]) => <MenuItem key={v} value={v} disabled={v === 'interactive' && !p.canShowBrowser}>{label}</MenuItem>)}</TextField>
    <Tooltip title={`高级设置 · 最长 ${p.options.max_seconds} 秒`}><Button className="advanced-button" startIcon={<TuneRounded />} onClick={() => setAdvanced(true)} aria-label="高级设置"><span>高级设置</span></Button></Tooltip>
    {p.running ? <Button variant="contained" color="error" startIcon={<StopRounded />} onClick={p.onStop} disabled={p.busy}>停止采集</Button> : <Button type="submit" variant="contained" endIcon={p.busy ? <CircularProgress size={16} color="inherit" /> : <ArrowForwardRounded />} disabled={p.busy || !p.url.trim()}>开始分析</Button>}

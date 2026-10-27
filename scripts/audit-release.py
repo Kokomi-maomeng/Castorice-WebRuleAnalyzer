@@ -35,7 +35,7 @@ def main():
     parser.add_argument("--output", type=Path, default=ROOT / ".runtime/release-privacy.json")
     args = parser.parse_args()
     findings = []
-    counts = {"working_files": 0, "history_blobs": 0, "zip_files": 0}
+    counts = {"working_files": 0, "history_blobs": 0, "commits": 0, "zip_files": 0}
 
     def check(label, data):
         for name, pattern in compiled.items():
@@ -51,6 +51,9 @@ def main():
             check(relative, candidate.read_bytes())
             counts["working_files"] += 1
     objects = git("rev-list", "--objects", "--all").splitlines()
+    for commit in git("rev-list", "--all").splitlines():
+        check("commit:" + commit.decode(), git("show", "-s", "--format=fuller", commit.decode()))
+        counts["commits"] += 1
     # Batch object inspection avoids hundreds of process launches.
     proc = subprocess.Popen(["git", "cat-file", "--batch"], cwd=ROOT, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
     try:

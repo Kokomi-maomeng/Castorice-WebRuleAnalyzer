@@ -160,6 +160,32 @@ func TestAPIHistoryExportAndSSE(t *testing.T) {
 	}
 }
 
+func TestLargeExportExclusionsKeepStrictBoundedJSON(t *testing.T) {
+	s, _ := testAPI(t)
+	task := model.ScanTask{ID: "large-export", TargetURL: "https://example.com/", Status: "completed", Options: model.DefaultOptions(), StartedAt: time.Now().UTC()}
+	if err := s.Store.Save(task, nil, []model.DomainRecord{{Hostname: "example.com", Kind: "domain"}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	keys := make([]string, 60000)
+	for i := range keys {
+		keys[i] = "DOMAIN-SUFFIX,excluded-name.example.net"
+	}
+	body, err := json.Marshal(model.ExportJob{TaskID: task.ID, Mode: "observed", Format: "provider", Excluded: keys})
+	if err != nil || len(body) <= 2<<20 {
+		t.Fatal("fixture does not exercise large request", err)
+	}
+	resp := request(t, s, "POST", "/api/export", string(body), true)
+	resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatal("large exclusion list rejected", resp.StatusCode)
+	}
+	resp = request(t, s, "POST", "/api/export", string(body)+`{}`, true)
+	resp.Body.Close()
+	if resp.StatusCode != 400 {
+		t.Fatal("multiple objects accepted")
+	}
+}
+
 func TestTopLevelGUIFromOtherSiteAllowedButAPIRemainsDenied(t *testing.T) {
 	s, _ := testAPI(t)
 	for _, path := range []string{"/", "/api/session"} {

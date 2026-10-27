@@ -8,7 +8,7 @@ const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const require = createRequire(path.join(root, 'frontend/package.json'));
 const { chromium } = require('playwright-core');
 const base = process.env.CASTORICE_TEST_URL || 'http://127.0.0.1:19120';
-const output = process.env.CASTORICE_UI_OUTPUT || path.join(root, '.runtime/v1.2-ui');
+const output = process.env.CASTORICE_UI_OUTPUT || path.join(root, '.runtime/v1.3-ui');
 await fs.mkdir(output, { recursive: true });
 const browser = await chromium.launch({ channel: 'chrome', headless: true });
 const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, permissions: ['clipboard-read', 'clipboard-write'] });

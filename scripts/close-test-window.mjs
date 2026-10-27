@@ -2,6 +2,7 @@
 import { createRequire } from 'node:module';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import assert from 'node:assert/strict';
 const require = createRequire(new URL('../frontend/package.json', import.meta.url));
 const { chromium } = require('playwright-core');
 const port = Number(process.env.CASTORICE_DESKTOP_TEST_PORT || 19230);
@@ -28,10 +29,16 @@ try {
    if (attempt === 29) throw new Error('Native UI export file missing');
    await new Promise(resolve => setTimeout(resolve, 100));
   }
-  await dialog.getByRole('button', { name: '取消', exact: true }).click();
   await candidates[0].locator('.MuiSnackbar-root').waitFor({ state: 'hidden', timeout: 7000 });
+  await candidates[0].screenshot({ path: process.env.CASTORICE_DESKTOP_SCREENSHOT.replace(/\.png$/, '-export.png') });
+  await dialog.getByRole('button', { name: '关闭导出', exact: true }).click();
+  await candidates[0].getByRole('button', { name: '清空工作区', exact: true }).click();
+  await candidates[0].getByText('等待首次发现', { exact: true }).waitFor();
+  await candidates[0].reload();
+  await candidates[0].getByText('等待首次发现', { exact: true }).waitFor();
+  assert(await candidates[0].getByRole('button', { name: '预览与导出规则', exact: true }).isDisabled());
   await candidates[0].screenshot({ path: process.env.CASTORICE_DESKTOP_SCREENSHOT });
-  console.log('Native UI export: PASS');
+  console.log('Native UI export/reset/reload: PASS');
  }
  await candidates[0].evaluate(() => { setTimeout(() => window.__castoriceTestClose(), 100); });
 } finally { await browser.close(); }

@@ -2,7 +2,8 @@
 param([switch]$SkipFrontend)
 $ErrorActionPreference='Stop'
 $projectRoot=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-$packageDir=Join-Path $projectRoot 'dist/Castorice-WebRuleAnalyzer-v1.2-linux-amd64'
+$packageDir=Join-Path $projectRoot 'dist/Castorice-WebRuleAnalyzer-v1.3-linux-amd64'
+foreach($runtimeFolder in @('data','exports')){if(Test-Path -LiteralPath (Join-Path $packageDir $runtimeFolder)){throw '发布目录包含运行数据，请先备份并换用干净构建目录。'}}
 if(-not $SkipFrontend){
  Push-Location (Join-Path $projectRoot 'frontend')
  try { & npm.cmd ci --no-audit --no-fund; if($LASTEXITCODE -ne 0){throw 'npm ci failed'}; & npm.cmd run build; if($LASTEXITCODE -ne 0){throw 'Frontend build failed'} } finally {Pop-Location}

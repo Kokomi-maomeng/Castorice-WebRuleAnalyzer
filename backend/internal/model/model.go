@@ -2,7 +2,7 @@ package model
 
 import "time"
 
-const Version = "v1.2"
+const Version = "v1.3"
 
 type ScanOptions struct {
 	DNSMode           string `json:"dns_mode"`

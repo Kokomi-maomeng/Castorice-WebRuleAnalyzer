@@ -106,15 +106,14 @@ func Build(job model.ExportJob, observed []model.DomainRecord, categories []mode
 	for _, key := range job.Excluded {
 		excluded[key] = true
 	}
-	selectedSuffix := []model.RuleEntry{}
+	selectedSuffix := map[string]string{}
 	for _, r := range unique {
 		if r.Type == model.Suffix && !excluded[r.Key()] {
-			selectedSuffix = append(selectedSuffix, r)
+			selectedSuffix[r.Value] = r.Key()
 		}
 	}
 	// Prefer the broadest selected suffix as the covering representative. Keywords
 	// are not used to delete narrower rules: substring coverage is too ambiguous.
-	sort.Slice(selectedSuffix, func(i, j int) bool { return len(selectedSuffix[i].Value) < len(selectedSuffix[j].Value) })
 	final := []model.RuleEntry{}
 	for _, r := range unique {
 		entry := model.PreviewEntry{RuleEntry: r, Selected: !excluded[r.Key()], Label: "规则库补充"}
@@ -131,12 +130,20 @@ func Build(job model.ExportJob, observed []model.DomainRecord, categories []mode
 			entry.Risk = "关键词规则可能误匹配不相关域名"
 		}
 		if entry.Selected && (r.Type == model.Domain || r.Type == model.Suffix) {
-			for _, suffix := range selectedSuffix {
-				if r.Key() != suffix.Key() && rules.Matches(suffix, r.Value) {
-					entry.CoveredBy = suffix.Key()
-					result.DuplicateOrCovered++
+			// Walk DNS label boundaries, retaining the broadest selected suffix.
+			// This bounds lookup by hostname depth instead of all suffix rules.
+			for value := r.Value; ; {
+				if key := selectedSuffix[value]; key != "" && key != r.Key() {
+					entry.CoveredBy = key
+				}
+				i := strings.IndexByte(value, '.')
+				if i < 0 {
 					break
 				}
+				value = value[i+1:]
+			}
+			if entry.CoveredBy != "" {
+				result.DuplicateOrCovered++
 			}
 		}
 		if entry.Selected && entry.CoveredBy == "" {
@@ -151,7 +158,7 @@ func Build(job model.ExportJob, observed []model.DomainRecord, categories []mode
 		return result, errors.New("没有可导出的已选择域名规则（IP 地址不作为普通域名导出）")
 	}
 	result.FinalRules = len(final)
-	provenance := []string{"Castorice-WebRuleAnalyzer v1.1 · 规则来源与许可证", "观察数据来自扫描任务 " + job.TaskID + "；有限扫描不代表完整覆盖。"}
+	provenance := []string{"Castorice-WebRuleAnalyzer " + model.Version + " · 规则来源与许可证", "观察数据来自扫描任务 " + job.TaskID + "；有限扫描不代表完整覆盖。"}
 	seenOrigins := map[string]bool{}
 	for _, r := range final {
 		for _, o := range r.Origins {
@@ -249,7 +256,7 @@ func Serialize(entries []model.RuleEntry, job model.ExportJob) (string, string, 
 	if err != nil {
 		return "", "", "", err
 	}
-	attribution := []string{"# Castorice-WebRuleAnalyzer v1.1 · 浏览器观察结果，覆盖有限"}
+	attribution := []string{"# Castorice-WebRuleAnalyzer " + model.Version + " · 浏览器观察结果，覆盖有限"}
 	origins := map[string]bool{}
 	for _, r := range entries {
 		for _, o := range r.Origins {

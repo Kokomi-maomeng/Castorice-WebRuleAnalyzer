@@ -8,7 +8,7 @@ pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }
 ::-webkit-scrollbar-track { background: transparent; }
 .domain-name { font-family: Consolas, "Cascadia Code", monospace; font-size: 13px; overflow-wrap: anywhere; }
 @keyframes pulse { 50% { opacity: .4; } }
-@media (prefers-reduced-motion: reduce) { * { animation: none !important; scroll-behavior: auto !important; } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition-duration: 0s !important; transition-delay: 0s !important; scroll-behavior: auto !important; } }
 
 html, body, #root { width: 100%; height: 100%; overflow: hidden; }
 .app-shell { height: 100vh; height: 100dvh; display: flex; flex-direction: column; min-height: 0; }
@@ -29,6 +29,35 @@ html, body, #root { width: 100%; height: 100%; overflow: hidden; }
 .rule-reader { min-height: 0; min-width: 0; display: flex; flex-direction: column; }
 .rule-reader > .MuiStack-root { flex-shrink: 0; }
 .rule-editor { flex: 1; min-height: 0; width: 100%; resize: none; border: 0; outline-offset: -3px; padding: 16px; font: 13px/1.7 Consolas, 'Cascadia Code', monospace; tab-size: 2; white-space: pre; overflow: auto; }
+.export-dialog > .MuiDialog-container > .MuiDialog-paper { width: calc(100vw - 48px); height: min(900px, calc(100dvh - 48px)); max-height: calc(100dvh - 48px); margin: 24px; }
+.export-options { display: grid; grid-template-columns: 1.2fr 1.2fr .7fr 1fr; gap: 12px; padding-top: 4px; }
+.export-options > * { min-width: 0; }
+.preview-panel { display: flex; flex-direction: column; flex: 1; min-height: 220px; }
+.preview-scroll { flex: 1; min-height: 100px; overflow: auto; overscroll-behavior: contain; }
+.preview-pager { flex-shrink: 0; }
+.content-preview pre { white-space: pre; overflow-wrap: normal; min-width: max-content; line-height: 1.7; }
+.preview-line { display: block; }
+.line-number { display: inline-block; width: 5ch; margin-right: 2ch; color: #888; user-select: none; text-align: right; }
+@keyframes panel-enter { from { opacity: .35; } to { opacity: 1; } }
+.motion-panel { animation: panel-enter 180ms cubic-bezier(.2,0,0,1); }
+.MuiButton-root, .MuiIconButton-root, .MuiTab-root, .category-button { transition: transform 160ms cubic-bezier(.2,0,0,1), background-color 160ms cubic-bezier(.2,0,0,1), box-shadow 180ms cubic-bezier(.2,0,0,1) !important; }
+.MuiButton-root:active, .MuiIconButton-root:active, .category-button:active { transform: scale(.97); }
+.preview-row { transition: background-color 180ms cubic-bezier(.2,0,0,1), opacity 180ms cubic-bezier(.2,0,0,1); }
+.preview-row[data-selected='false'] { background-color: #aca4b416; }
+.preview-row[data-selected='false'] code { opacity: .55; }
+.MuiSwitch-switchBase, .MuiSwitch-thumb, .MuiSwitch-track { transition-duration: 180ms !important; transition-timing-function: cubic-bezier(.2,0,0,1) !important; }
+@media (max-width: 700px) {
+ .export-options { grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px 8px; }
+ .export-dialog > .MuiDialog-container > .MuiDialog-paper { width: calc(100vw - 12px); height: calc(100dvh - 12px); max-height: calc(100dvh - 12px); margin: 6px; }
+ .export-dialog .MuiDialogContent-root { padding: 12px; }
+ .export-dialog .MuiTableCell-root { padding-inline: 6px; }
+ .export-actions > .MuiButton-root { min-width: 0; padding-inline: 8px; margin-left: 0 !important; }
+ .workspace-status { display: none !important; }
+}
+@media (prefers-reduced-motion: reduce) {
+ .MuiButton-root, .MuiIconButton-root, .MuiTab-root, .category-button, .MuiSwitch-switchBase, .MuiSwitch-thumb, .MuiSwitch-track { transition-duration: 0s !important; }
+ .MuiButton-root:active, .MuiIconButton-root:active, .category-button:active { transform: none; }
+}
 @media (max-height: 640px) {
  .app-main { padding: 8px 12px; gap: 6px; }
  .app-shell .MuiToolbar-root { min-height: 44px !important; }

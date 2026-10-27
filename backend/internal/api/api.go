@@ -355,7 +355,8 @@ func (s *Server) syncRules(w http.ResponseWriter, r *http.Request) {
 }
 func (s *Server) export(w http.ResponseWriter, r *http.Request) {
 	var job model.ExportJob
-	if !decode(w, r, &job) {
+	// Large category selections can contain many excluded rule keys.
+	if !decodeLimit(w, r, &job, 16<<20) {
 		return
 	}
 	if _, err := s.Scans.Task(job.TaskID); handleError(w, err) {
@@ -446,7 +447,10 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 }
 
 func decode(w http.ResponseWriter, r *http.Request, out any) bool {
-	r.Body = http.MaxBytesReader(w, r.Body, 2<<20)
+	return decodeLimit(w, r, out, 2<<20)
+}
+func decodeLimit(w http.ResponseWriter, r *http.Request, out any, limit int64) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, limit)
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(out); err != nil {

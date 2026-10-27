@@ -1,0 +1,141 @@
+// Real service/UI acceptance. The optional density case is explicitly a browser fixture.
+import { createRequire } from 'node:module';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import assert from 'node:assert/strict';
+const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+const require = createRequire(path.join(root, 'frontend/package.json'));
+const { chromium } = require(process.env.CASTORICE_PLAYWRIGHT_MODULE || 'playwright-core');
+const base = process.env.CASTORICE_TEST_URL || 'http://127.0.0.1:19131';
+const output = process.env.CASTORICE_UI_OUTPUT || path.join(root, '.runtime/v1.3-export-ui');
+await fs.mkdir(output, { recursive: true });
+const browser = process.env.CASTORICE_UI_CDP ? await chromium.connectOverCDP(process.env.CASTORICE_UI_CDP) : await chromium.launch({ channel: 'chrome', headless: true });
+const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, permissions: ['clipboard-read', 'clipboard-write'] });
+const page = await context.newPage();
+const errors = [];
+page.on('pageerror', e => errors.push(e.message));
+page.on('console', e => { if (e.type() === 'error') errors.push(e.text()); });
+let latest;
+page.on('response', async response => { if (response.url().endsWith('/api/export') && response.ok()) latest = (await response.json()).data; });
+const report = { passed: false, real: {}, layouts: [], fixture: {}, motion: {}, errors };
+async function ready() { await page.getByRole('button', { name: '下载文件', exact: true }).waitFor(); await page.waitForFunction(() => [...document.querySelectorAll('button')].some(b => b.textContent.trim() === '下载文件' && !b.disabled)); }
+try {
+ await page.goto(base);
+ await page.getByRole('button', { name: '预览与导出规则', exact: true }).waitFor();
+ await page.waitForFunction(() => [...document.querySelectorAll('button')].some(b => b.textContent.trim() === '预览与导出规则' && !b.disabled));
+ await page.getByRole('button', { name: '预览与导出规则', exact: true }).click();
+ await ready();
+ await page.getByRole('combobox', { name: '导出范围', exact: true }).click();
+ await page.getByRole('option', { name: '抓取 + 开源规则库', exact: true }).click();
+ if (process.env.CASTORICE_INIT_RULES === '1') {
+  await page.getByRole('button', { name: '下载规则库', exact: true }).waitFor();
+  assert(await page.getByRole('checkbox', { name: /^导出 DOMAIN,/ }).count() > 0, 'empty cache hid captured entries');
+  assert(await page.getByRole('button', { name: '下载文件' }).isDisabled(), 'empty merge enabled download');
+  await page.getByRole('button', { name: '下载规则库', exact: true }).click();
+  await page.getByText('正在下载规则库，完成后分类会自动显示。', { exact: true }).waitFor();
+  await page.waitForFunction(() => !document.body.textContent.includes('正在下载规则库，完成后分类会自动显示。'), null, { timeout: 240000 });
+  assert(await page.evaluate(async () => (await (await fetch('/api/rules/sources')).json()).data.every(s => s.category_count > 0)), 'both sources must initialize');
+  report.real.initialization = true;
+ }
+ const category = page.getByRole('combobox', { name: '规则分类', exact: true });
+ await category.fill('Facebook');
+ await page.getByRole('option', { name: /^Facebook blackmatrix7/ }).click();
+ await category.press('Escape'); await ready();
+ assert.equal(await page.getByRole('checkbox', { name: /^导出 DOMAIN/ }).count(), 30);
+ report.real.previewEntries = latest.entries.length;
+ assert(latest.entries.length > 500 && latest.content.includes('facebook.com'), 'real category content missing');
+ const first = (await page.getByRole('checkbox', { name: /^导出 DOMAIN/ }).first().getAttribute('aria-label'));
+ await page.getByRole('checkbox', { name: '选择本页', exact: true }).click();
+ await ready();
+ await page.getByRole('button', { name: '下一页', exact: true }).click();
+ assert(await page.getByRole('checkbox', { name: /^导出 DOMAIN/ }).first().isChecked());
+ await page.getByRole('button', { name: '上一页', exact: true }).click();
+ assert(!(await page.getByRole('checkbox', { name: first, exact: true }).isChecked()), 'page change lost exclusions');
+ await page.getByRole('textbox', { name: '搜索预览条目' }).fill('facebook.com');
+ assert(await page.getByRole('checkbox', { name: /^导出 DOMAIN/ }).count() > 0);
+ await page.getByRole('textbox', { name: '搜索预览条目' }).fill('blackmatrix7/Facebook');
+ assert.equal(await page.getByRole('checkbox', { name: /^导出 DOMAIN/ }).count(), 30);
+ await page.getByRole('textbox', { name: '搜索预览条目' }).fill('no-such-domain.invalid');
+ await page.getByText('没有符合筛选条件的条目', { exact: true }).waitFor();
+ await page.getByRole('textbox', { name: '搜索预览条目' }).fill('');
+ await page.getByRole('button', { name: '恢复全选', exact: true }).click(); await ready();
+ report.real.paginationAndSelection = true;
+ for (const [width, height] of [[1920,1080],[1440,900],[1280,720],[1024,640],[820,600],[390,844],[640,360],[760,480]]) {
+  await page.setViewportSize({ width, height });
+  await page.locator('.preview-panel').scrollIntoViewIfNeeded();
+  const metrics = await page.evaluate(() => { const panel = document.querySelector('.preview-scroll').getBoundingClientRect(); const action = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === '下载文件').getBoundingClientRect(); return { width: innerWidth, height: innerHeight, scrollWidth: document.documentElement.scrollWidth, scrollHeight: document.documentElement.scrollHeight, listHeight: panel.height, actionBottom: action.bottom }; });
+  report.layouts.push(metrics);
+  assert(metrics.scrollWidth <= width && metrics.scrollHeight <= height && metrics.actionBottom <= height && metrics.listHeight >= 99, JSON.stringify(metrics));
+  await page.screenshot({ path: path.join(output, `export-${width}x${height}.png`) });
+ }
+ await page.setViewportSize({ width: 1440, height: 900 });
+ for (const scale of [1.25, 1.5]) {
+  await page.evaluate(scale => document.documentElement.style.fontSize = `${16 * scale}px`, scale);
+  await page.getByRole('button', { name: '下载文件' }).scrollIntoViewIfNeeded();
+  const rect = await page.getByRole('button', { name: '下载文件' }).boundingBox();
+  assert(rect && rect.y + rect.height <= 900);
+ }
+ await page.evaluate(() => document.documentElement.style.fontSize = '');
+ await page.getByRole('tab', { name: '文件内容', exact: true }).click();
+ assert.equal(await page.locator('.preview-line').count(), 200);
+ await page.getByRole('button', { name: '下一页', exact: true }).click();
+ assert.equal(await page.locator('.line-number').first().innerText(), '201');
+ for (const [label, format] of [['Clash / Mihomo YAML','clash'],['Mihomo Rule Provider','provider'],['sing-box Source Rule Set v3','singbox']]) {
+  await page.getByRole('combobox', { name: '输出格式', exact: true }).click(); await page.getByRole('option', { name: label, exact: true }).click(); await ready();
+  const content = latest.content;
+  if (format === 'singbox') assert.equal(JSON.parse(content).version, 3);
+  const promise = page.waitForEvent('download'); await page.getByRole('button', { name: '下载文件', exact: true }).click(); const file = await promise;
+  assert.equal(await fs.readFile(await file.path(), 'utf8'), content, 'download differs from complete response');
+  await page.getByRole('button', { name: '复制内容', exact: true }).click();
+  assert.equal((await page.evaluate(() => navigator.clipboard.readText())).replace(/\r\n/g,'\n'), content.replace(/\r\n/g,'\n'));
+ }
+ report.real.completeDownloads = ['clash','provider','singbox'];
+ await page.screenshot({ path: path.join(output, 'file-preview.png') });
+ await page.getByRole('tab', { name: '条目与来源', exact: true }).click();
+ const available = await page.evaluate(async () => (await (await fetch('/api/rules/categories')).json()).data);
+ const largest = available.reduce((a, b) => a.rule_count > b.rule_count ? a : b);
+ await category.fill(largest.name);
+ const started = performance.now();
+ await page.getByRole('option', { name: new RegExp(`^${largest.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} ${largest.source}`) }).click();
+ await category.press('Escape'); await ready();
+ assert(latest.entries.length >= largest.rule_count, 'large real category was truncated');
+ report.real.largeCategory = { id: largest.id, rules: largest.rule_count, previewEntries: latest.entries.length, elapsedMs: Math.round(performance.now() - started) };
+ report.real.sources = await page.evaluate(async () => (await (await fetch('/api/rules/sources')).json()).data.map(s => ({ id: s.id, version: s.version, category_count: s.category_count })));
+ await page.getByRole('button', { name: '关闭导出', exact: true }).click();
+ await page.getByRole('button', { name: '清空工作区', exact: true }).click();
+ await page.getByText('等待首次发现', { exact: true }).waitFor();
+ assert.equal(await page.getByRole('textbox', { name: '要分析的网站' }).inputValue(), '');
+ await page.reload(); await page.getByText('等待首次发现', { exact: true }).waitFor();
+ assert(await page.getByRole('button', { name: '预览与导出规则' }).isDisabled());
+ await page.getByRole('button', { name: '扫描历史', exact: true }).click();
+ await page.getByRole('button', { name: '打开', exact: true }).first().click();
+ await page.getByRole('button', { name: '预览与导出规则', exact: true }).click(); await ready();
+ report.real.resetAndHistory = true;
+ const content = Array.from({ length: 5000 }, (_, i) => `  - DOMAIN,fixture-${i}.example.com,Proxy`).join('\n')+'\n';
+ const dense = { ...latest, content, final_rules: 5000, entries: Array.from({ length: 5000 }, (_, i) => ({ rule_type:'DOMAIN', rule_value:`fixture-${i}.example.com`, label:'本次抓取', selected:true, origins:[] })) };
+ await page.getByRole('button', { name: '关闭导出', exact: true }).click();
+ await page.route('**/api/export', route => route.fulfill({ json: { data: dense } }));
+ await page.getByRole('button', { name: '预览与导出规则', exact: true }).click(); await ready();
+ assert.equal(await page.getByRole('checkbox', { name: /^导出 DOMAIN/ }).count(), 30);
+ await page.getByRole('textbox', { name: '搜索预览条目' }).fill('fixture-4999');
+ assert.equal(await page.getByRole('checkbox', { name: /^导出 DOMAIN/ }).count(), 1);
+ report.fixture = { explicitlySynthetic: true, entries: 5000, renderedPerPage: 30, tailSearch: true };
+ const settingsButton = page.getByRole('button', { name: '导出设置', exact: true });
+ await settingsButton.hover(); await page.mouse.down();
+ await page.waitForFunction(() => { const b = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === '导出设置'); const t = getComputedStyle(b).transform; return t.startsWith('matrix(') && Number(t.slice(7).split(',')[0]) <= .971; });
+ await page.mouse.up();
+ await page.emulateMedia({ reducedMotion: 'reduce' });
+ assert.equal(await page.locator('.motion-panel').evaluate(e => getComputedStyle(e).animationName), 'none');
+ await page.getByRole('button', { name: '关闭导出', exact: true }).click();
+ await page.getByRole('button', { name: '高级设置', exact: true }).click();
+ assert.equal(await page.locator('.MuiSwitch-switchBase').first().evaluate(e => getComputedStyle(e).transitionDuration), '0s');
+ await page.emulateMedia({ reducedMotion: 'no-preference' });
+ assert.notEqual(await page.locator('.MuiSwitch-switchBase').first().evaluate(e => getComputedStyle(e).transitionDuration), '0s');
+ report.motion = { heldButtonFeedback: true, normalSwitchTransition: true, reducedMotion: true };
+ assert.equal(errors.length, 0, JSON.stringify(errors)); report.passed = true;
+ console.log(JSON.stringify(report));
+} finally {
+ await fs.writeFile(path.join(output, 'acceptance.json'), JSON.stringify(report, null, 2));
+ await browser.close();
+}
