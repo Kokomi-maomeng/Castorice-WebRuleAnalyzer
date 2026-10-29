@@ -1,10 +1,27 @@
 package portable
 
 import (
+	"github.com/castorice/Castorice-WebRuleAnalyzer/backend/internal/exportname"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
+
+func TestGeneratedUnicodeExportAndAttributionSave(t *testing.T) {
+	p, err := Open(filepath.Join(t.TempDir(), "软件.exe"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, raw := range []string{strings.Repeat("中", 60), strings.Repeat("界", 200)} {
+		name := exportname.Filename(raw, ".yaml")
+		for _, n := range []string{name, name, name + ".sources.txt", name + ".sources.txt"} {
+			if _, err = p.SaveExport(n, "test"); err != nil {
+				t.Fatalf("generated name rejected (%d bytes): %v", len(n), err)
+			}
+		}
+	}
+}
 
 func TestPortableExportsAndTemp(t *testing.T) {
 	root := t.TempDir()

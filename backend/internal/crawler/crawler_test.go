@@ -19,3 +19,23 @@ func TestSafeNavigation(t *testing.T) {
 		}
 	}
 }
+
+func TestCanonicalOriginBoundary(t *testing.T) {
+	for _, c := range []struct {
+		from, to string
+		ok       bool
+	}{
+		{"http://example.com/", "https://www.example.com/", true},
+		{"http://example.com:8080/", "http://www.example.com:8080/", true},
+		{"https://example.com/", "http://www.example.com/", false},
+		{"https://example.com/", "https://evil.example/", false},
+		{"http://example.com:8080/", "http://www.example.com:8081/", false},
+	} {
+		a, _ := url.Parse(c.from)
+		b, _ := url.Parse(c.to)
+		_, ok := CanonicalOrigin(a, b)
+		if ok != c.ok {
+			t.Fatal(c.from, c.to, ok)
+		}
+	}
+}

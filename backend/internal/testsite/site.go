@@ -8,7 +8,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
@@ -99,5 +98,3 @@ func Handler(mappedHosts bool) http.Handler {
 	})
 	return mux
 }
-
-func Port(raw string) int { u, _ := url.Parse(raw); n, _ := strconv.Atoi(u.Port()); return n }

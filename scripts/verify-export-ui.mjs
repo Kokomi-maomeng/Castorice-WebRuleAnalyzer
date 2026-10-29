@@ -17,7 +17,13 @@ const errors = [];
 page.on('pageerror', e => errors.push(e.message));
 page.on('console', e => { if (e.type() === 'error') errors.push(e.text()); });
 let latest;
-page.on('response', async response => { if (response.url().endsWith('/api/export') && response.ok()) latest = (await response.json()).data; });
+let closing = false;
+page.on('response', async response => {
+ if (response.url().endsWith('/api/export') && response.ok()) {
+  try { latest = (await response.json()).data; }
+  catch (error) { if (!closing) errors.push(error.message); }
+ }
+});
 const report = { passed: false, real: {}, layouts: [], fixture: {}, motion: {}, errors };
 async function ready() { await page.getByRole('button', { name: '下载文件', exact: true }).waitFor(); await page.waitForFunction(() => [...document.querySelectorAll('button')].some(b => b.textContent.trim() === '下载文件' && !b.disabled)); }
 try {
@@ -136,6 +142,7 @@ try {
  assert.equal(errors.length, 0, JSON.stringify(errors)); report.passed = true;
  console.log(JSON.stringify(report));
 } finally {
+ closing = true;
  await fs.writeFile(path.join(output, 'acceptance.json'), JSON.stringify(report, null, 2));
  await browser.close();
 }

@@ -1,6 +1,6 @@
 module github.com/castorice/Castorice-WebRuleAnalyzer/backend
 
-go 1.26.0
+go 1.26.10
 
 require (
 	github.com/chromedp/cdproto v0.0.0-20250724212937-08a3db8b4327
@@ -8,7 +8,7 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/jchv/go-webview2 v0.0.0-20260205173254-56598839c808
 	go.yaml.in/yaml/v3 v3.0.5
-	golang.org/x/net v0.61.0
+	golang.org/x/net v0.62.0
 	golang.org/x/sys v0.49.0
 	modernc.org/sqlite v1.60.1
 )

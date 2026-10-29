@@ -1,6 +1,8 @@
 package matcher
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/castorice/Castorice-WebRuleAnalyzer/backend/internal/model"
@@ -19,34 +21,34 @@ func observed(values ...string) []model.DomainRecord {
 }
 func TestGeminiNotGenericGoogle(t *testing.T) {
 	categories := []model.RuleCategory{category("Gemini", false, suffix("gemini.google.com"), suffix("deepmind.google")), category("Google", true, suffix("google.com"), suffix("gstatic.com"), suffix("googleapis.com"))}
-	matches, recommendation, _ := Match("gemini.google.com", observed("gemini.google.com", "accounts.google.com", "fonts.gstatic.com", "generativelanguage.googleapis.com"), categories)
+	matches, recommendation, _, _ := Match("gemini.google.com", observed("gemini.google.com", "accounts.google.com", "fonts.gstatic.com", "generativelanguage.googleapis.com"), categories)
 	if recommendation != "test:Gemini" || len(matches) != 2 || matches[0].Confidence != "high" {
 		t.Fatalf("wrong recommendation: %s %+v", recommendation, matches)
 	}
-	_, recommendation, _ = Match("gemini.google.com", observed("gemini.google.com", "accounts.google.com", "fonts.gstatic.com"), categories[1:])
+	_, recommendation, _, _ = Match("gemini.google.com", observed("gemini.google.com", "accounts.google.com", "fonts.gstatic.com"), categories[1:])
 	if recommendation != "" {
 		t.Fatal("generic Google auto selected")
 	}
 }
 func TestSharedUnknownAndAmbiguous(t *testing.T) {
 	cats := []model.RuleCategory{category("one", false, suffix("accounts.google.com")), category("two", false, suffix("accounts.google.com"))}
-	_, recommended, _ := Match("unrelated.example.com", observed("accounts.google.com", "fonts.gstatic.com"), cats)
+	_, recommended, _, _ := Match("unrelated.example.com", observed("accounts.google.com", "fonts.gstatic.com"), cats)
 	if recommended != "" {
 		t.Fatal("shared auth identifies app")
 	}
-	matches, recommended, _ := Match("new.example.com", observed("new.example.com"), cats)
+	matches, recommended, _, _ := Match("new.example.com", observed("new.example.com"), cats)
 	if recommended != "" || len(matches) != 0 {
 		t.Fatal("unknown app matched")
 	}
 	// Distinct categories both claim an explicit target label: ambiguity must be
 	// resolved by the user, even when each category looks strong independently.
 	cats = []model.RuleCategory{category("alpha", false, suffix("alpha.beta.example.com")), category("beta", false, suffix("alpha.beta.example.com"))}
-	matches, recommended, _ = Match("alpha.beta.example.com", observed("alpha.beta.example.com"), cats)
+	matches, recommended, _, _ = Match("alpha.beta.example.com", observed("alpha.beta.example.com"), cats)
 	if recommended != "" || matches[0].Suitable {
 		t.Fatal("close candidates auto selected")
 	}
 	cats = []model.RuleCategory{category("advert", false, model.RuleEntry{Type: model.Keyword, Value: "example"})}
-	_, recommended, _ = Match("alpha.example.com", observed("alpha.example.com"), cats)
+	_, recommended, _, _ = Match("alpha.example.com", observed("alpha.example.com"), cats)
 	if recommended != "" {
 		t.Fatal("keyword inferred identity")
 	}
@@ -59,7 +61,7 @@ func TestGeminiDotComIsNotGoogleGeminiOrSharedAI(t *testing.T) {
 		category("OpenAI", false, suffix("www.google.com")),
 		category("Google", true, suffix("google.com")),
 	}
-	matches, recommendation, _ := Match("gemini.com", observed("gemini.com", "www.google.com", "www.googletagmanager.com"), cats)
+	matches, recommendation, _, _ := Match("gemini.com", observed("gemini.com", "www.google.com", "www.googletagmanager.com"), cats)
 	if recommendation != "" {
 		t.Fatal("unrelated Gemini application recommended")
 	}
@@ -68,7 +70,7 @@ func TestGeminiDotComIsNotGoogleGeminiOrSharedAI(t *testing.T) {
 			t.Fatalf("shared hit misrepresented: %+v", hit)
 		}
 	}
-	_, recommendation, _ = Match("gemini.google.com", observed("gemini.google.com", "www.google.com"), cats)
+	_, recommendation, _, _ = Match("gemini.google.com", observed("gemini.google.com", "www.google.com"), cats)
 	if recommendation != "test:Gemini" {
 		t.Fatal("actual Google Gemini not identified", recommendation)
 	}
@@ -76,12 +78,23 @@ func TestGeminiDotComIsNotGoogleGeminiOrSharedAI(t *testing.T) {
 
 func TestSuffixBoundaryKeywordAndLargeApp(t *testing.T) {
 	cats := []model.RuleCategory{category("Facebook", false, suffix("facebook.com")), category("Keyword", false, model.RuleEntry{Type: model.Keyword, Value: "facebook"})}
-	matches, recommended, _ := Match("facebook.com.evil.example", observed("facebook.com.evil.example"), cats)
+	matches, recommended, _, _ := Match("facebook.com.evil.example", observed("facebook.com.evil.example"), cats)
 	if recommended != "" || len(matches) != 1 || matches[0].Relation == "target" {
 		t.Fatal("suffix boundary or keyword used as identity", matches)
 	}
-	matches, recommended, _ = Match("www.facebook.com", observed("www.facebook.com"), cats)
+	matches, recommended, _, _ = Match("www.facebook.com", observed("www.facebook.com"), cats)
 	if recommended != "test:Facebook" || matches[0].Evidence[0].Value != "facebook.com" {
 		t.Fatal("specific suffix not identified", matches)
+	}
+}
+
+func TestMatchTruncationIsExplicit(t *testing.T) {
+	cats := []model.RuleCategory{}
+	for i := 0; i < 70; i++ {
+		cats = append(cats, model.RuleCategory{ID: fmt.Sprint(i), Name: "shared", Loaded: true, Rules: []model.RuleEntry{{Type: model.Domain, Value: "example.com"}}})
+	}
+	hits, _, note, total := Match("example.com", []model.DomainRecord{{Hostname: "example.com", Kind: "domain"}}, cats)
+	if total != 70 || len(hits) != 60 || !strings.Contains(note, "70") {
+		t.Fatal("hidden truncation", len(hits), total, note)
 	}
 }

@@ -2,8 +2,6 @@ package model
 
 import "time"
 
-const Version = "v1.3"
-
 type ScanOptions struct {
 	DNSMode           string `json:"dns_mode"`
 	Mode              string `json:"mode"`
@@ -42,24 +40,26 @@ type PageRecord struct {
 }
 
 type ScanTask struct {
-	TestMode            bool         `json:"test_mode"`
-	ID                  string       `json:"id"`
-	TargetURL           string       `json:"target_url"`
-	Status              string       `json:"status"`
-	Options             ScanOptions  `json:"options"`
-	StartedAt           time.Time    `json:"started_at"`
-	EndedAt             *time.Time   `json:"ended_at,omitempty"`
-	EndReason           string       `json:"end_reason,omitempty"`
-	Error               string       `json:"error,omitempty"`
-	Browser             string       `json:"browser,omitempty"`
-	CurrentPage         string       `json:"current_page,omitempty"`
-	RequestCount        int          `json:"request_count"`
-	DomainCount         int          `json:"domain_count"`
-	IPCount             int          `json:"ip_count"`
-	Pages               []PageRecord `json:"pages"`
-	Matches             []RuleMatch  `json:"matches"`
-	RecommendedCategory string       `json:"recommended_category,omitempty"`
-	MatchNote           string       `json:"match_note,omitempty"`
+	TestMode             bool         `json:"test_mode"`
+	ID                   string       `json:"id"`
+	TargetURL            string       `json:"target_url"`
+	Status               string       `json:"status"`
+	Options              ScanOptions  `json:"options"`
+	StartedAt            time.Time    `json:"started_at"`
+	EndedAt              *time.Time   `json:"ended_at,omitempty"`
+	EndReason            string       `json:"end_reason,omitempty"`
+	Error                string       `json:"error,omitempty"`
+	Browser              string       `json:"browser,omitempty"`
+	CurrentPage          string       `json:"current_page,omitempty"`
+	RequestCount         int          `json:"request_count"`
+	DomainCount          int          `json:"domain_count"`
+	IPCount              int          `json:"ip_count"`
+	Pages                []PageRecord `json:"pages"`
+	Matches              []RuleMatch  `json:"matches"`
+	RecommendedCategory  string       `json:"recommended_category,omitempty"`
+	MatchNote            string       `json:"match_note,omitempty"`
+	MatchedCategoryCount int          `json:"matched_category_count"`
+	MatchesTruncated     bool         `json:"matches_truncated"`
 }
 
 func (s ScanTask) Active() bool {
@@ -191,16 +191,17 @@ type RuleEvidence struct {
 }
 
 type ExportJob struct {
-	TaskID      string   `json:"task_id"`
-	Mode        string   `json:"mode"`
-	CategoryIDs []string `json:"category_ids"`
-	Format      string   `json:"format"`
-	Policy      string   `json:"policy"`
-	Filename    string   `json:"filename"`
-	ListOnly    bool     `json:"list_only"`
-	UseSuffix   bool     `json:"use_suffix"`
-	Domains     []string `json:"domains"`
-	Excluded    []string `json:"excluded"`
+	CategoryVersions map[string]string `json:"category_versions,omitempty"`
+	TaskID           string            `json:"task_id"`
+	Mode             string            `json:"mode"`
+	CategoryIDs      []string          `json:"category_ids"`
+	Format           string            `json:"format"`
+	Policy           string            `json:"policy"`
+	Filename         string            `json:"filename"`
+	ListOnly         bool              `json:"list_only"`
+	UseSuffix        bool              `json:"use_suffix"`
+	Domains          []string          `json:"domains"`
+	Excluded         []string          `json:"excluded"`
 }
 
 type PreviewEntry struct {

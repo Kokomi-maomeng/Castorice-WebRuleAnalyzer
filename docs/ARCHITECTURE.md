@@ -1,4 +1,4 @@
-# v1.2 技术设计与接口
+# 技术设计与接口
 
 ## 数据流
 
@@ -120,3 +120,12 @@ Linux 默认启动回环 HTTP 服务并打开浏览器；Windows 默认原生 We
 7. 强制结束监督进程时 Windows 自动关闭 Job 句柄并回收所属进程；没有机会执行的磁盘清理在下次启动时完成，SQLite 标记异常中断的扫描。
 
 不以进程名全局结束 Chrome/Edge/WebView2。系统自身的事件记录、Prefetch 及共享 Runtime 的系统更新不属于应用可重定向的数据。未签名的便携包不包含静默安装器。
+
+## v1.4 一致性与资源边界
+
+`VERSION` 经 `scripts/sync-version.mjs` 同步前端、Go、package/lock 根版本与 Win32 资源；CI 用 `--check` 阻止漂移。
+`GET /api/scans/active` 独立返回活动任务或 null，查看历史不再影响停止入口。
+合并导出接受可选的 `category_versions` 映射（`version:content_hash`），不匹配返回 409 `rules_changed`。GUI 在预览、复制、下载三个阶段传入此快照；历史和旧 API 客户端保持兼容。
+规则原文编辑保留脏草稿，仅依赖所选来源版本刷新。清缓存事务保留 AutoUpdate，自动更新仍按用户开关工作。
+DLC 解析限制每分类 100,000 规则、10,000 提示、1,000,000 工作单元、24 层 include；每次解析有上下文取消与子树记忆化，并校验缓存子树深度。
+规范探索仅允许相同主机或 www 变体、同端口或标准 HTTP→HTTPS，先通过目标安全校验；其他跨站跳转以 origin_changed 明确结束探索。

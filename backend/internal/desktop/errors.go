@@ -1,6 +1,8 @@
 package desktop
 
 import (
+	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -37,4 +39,15 @@ func reportedError(logDir, fallback string) string {
 		return fallback
 	}
 	return strings.TrimSpace(string(b)) + "\n\n详细记录位于软件目录 data/logs。"
+}
+
+// Read before deleting: the worker's precise startup failure must survive all
+// supervisor cleanup, even though its temporary error file is consumed once.
+func consumeWorkerExit(logDir string, exitErr error) error {
+	defer os.Remove(filepath.Join(logDir, workerErrorFile))
+	if exitErr == nil {
+		return nil
+	}
+	fallback := fmt.Sprintf("桌面窗口异常退出，请查看软件目录 data/logs 下的日志: %v", exitErr)
+	return errors.New(reportedError(logDir, fallback))
 }

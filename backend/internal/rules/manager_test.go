@@ -71,7 +71,7 @@ func TestLiveRuleSourcesAndOfflineCache(t *testing.T) {
 	// This is explicitly constructed observation metadata, paired with the real
 	// downloaded rule data; it is not represented as a browser capture.
 	observation := []model.DomainRecord{{Hostname: "gemini.google.com", Kind: "domain"}, {Hostname: "accounts.google.com", Kind: "domain"}, {Hostname: "fonts.gstatic.com", Kind: "domain"}, {Hostname: "generativelanguage.googleapis.com", Kind: "domain"}}
-	matches, recommendation, _ := matcher.Match("gemini.google.com", observation, manager.Categories(true))
+	matches, recommendation, _, _ := matcher.Match("gemini.google.com", observation, manager.Categories(true))
 	if recommendation != "blackmatrix7:Gemini" && recommendation != "v2fly:google-gemini" {
 		t.Fatalf("real categories misidentified Gemini: %s %+v", recommendation, matches)
 	}

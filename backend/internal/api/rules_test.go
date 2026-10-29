@@ -6,10 +6,41 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/castorice/Castorice-WebRuleAnalyzer/backend/internal/model"
 	"github.com/castorice/Castorice-WebRuleAnalyzer/backend/internal/rules"
 )
+
+func TestMergedExportRejectsStaleSelectedVersion(t *testing.T) {
+	s, _ := testAPI(t)
+	task := model.ScanTask{ID: "snapshot", Status: "completed", StartedAt: time.Now()}
+	if err := s.Store.Save(task, []model.NetworkRequest{}, []model.DomainRecord{{Hostname: "example.com", Kind: "domain"}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	c := model.RuleCategory{ID: "v2fly:app", Name: "app", Source: "v2fly", Version: "new", ContentHash: "hash", Loaded: true, Rules: []model.RuleEntry{{Type: model.Domain, Value: "example.com"}}}
+	if err := s.Store.SaveSource(model.RuleSource{ID: "v2fly", Version: "new"}, []model.RuleCategory{c}, true); err != nil {
+		t.Fatal(err)
+	}
+	var err error
+	s.Rules, err = rules.NewManager(s.Store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, snapshot := range []string{"old:hash", "new:hash"} {
+		body, _ := json.Marshal(model.ExportJob{TaskID: task.ID, Mode: "merged", CategoryIDs: []string{c.ID}, CategoryVersions: map[string]string{c.ID: snapshot}, Format: "clash", Policy: "existing"})
+		r := request(t, s, "POST", "/api/export", string(body), true)
+		data, _ := io.ReadAll(r.Body)
+		r.Body.Close()
+		want := 200
+		if snapshot == "old:hash" {
+			want = 409
+		}
+		if r.StatusCode != want {
+			t.Fatalf("snapshot %s: status=%d body=%s", snapshot, r.StatusCode, data)
+		}
+	}
+}
 
 func TestRuleContentSearchAndUpdatePreference(t *testing.T) {
 	s, _ := testAPI(t)

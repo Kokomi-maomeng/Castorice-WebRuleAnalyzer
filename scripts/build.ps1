@@ -2,8 +2,9 @@
 param([switch]$SkipTests, [switch]$BrowserTests, [switch]$SkipInstall)
 $ErrorActionPreference = 'Stop'
 $projectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+$releaseTag='v'+((Get-Content -LiteralPath (Join-Path $projectRoot 'VERSION') -Raw).Trim() -replace '\.0$','')
 $outputRoot = Join-Path $projectRoot 'dist'
-$packageName = 'Castorice-WebRuleAnalyzer-v1.3-windows-amd64'
+$packageName = ("Castorice-WebRuleAnalyzer-$releaseTag-windows-amd64")
 $packageDir = Join-Path $outputRoot $packageName
 foreach ($runtimeFolder in @('data', 'exports')) {
     if (Test-Path -LiteralPath (Join-Path $packageDir $runtimeFolder)) { throw '发布目录包含运行数据，请先将其备份并换用干净构建目录。' }

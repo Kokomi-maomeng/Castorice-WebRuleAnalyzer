@@ -105,6 +105,9 @@ func wallTime(t *cdp.TimeSinceEpoch) time.Time {
 }
 
 func (r *runtimeTask) add(id network.RequestID, raw, method, resource, source, init string, wall time.Time, mono float64) {
+	// A new redirect hop owns this ID. If it cannot be recorded, later events
+	// must not be attributed to the previous hop.
+	delete(r.active, id)
 	u, err := url.Parse(raw)
 	if err != nil || !(u.Scheme == "http" || u.Scheme == "https" || u.Scheme == "ws" || u.Scheme == "wss") {
 		return

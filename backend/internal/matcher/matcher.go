@@ -1,6 +1,7 @@
 package matcher
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 
@@ -43,7 +44,7 @@ func family(name string) string {
 	return strings.ToLower(name)
 }
 
-func Match(target string, observed []model.DomainRecord, categories []model.RuleCategory) ([]model.RuleMatch, string, string) {
+func Match(target string, observed []model.DomainRecord, categories []model.RuleCategory) ([]model.RuleMatch, string, string, int) {
 	target = strings.TrimSuffix(strings.ToLower(target), ".")
 	hosts := []string{}
 	seen := map[string]bool{}
@@ -168,8 +169,10 @@ func Match(target string, observed []model.DomainRecord, categories []model.Rule
 			}
 		}
 	}
-	if len(out) > 60 {
+	total := len(out)
+	if total > 60 {
+		note += fmt.Sprintf(" 当前显示前 60 个，共 %d 个命中分类；其余可在规则库中检索。", total)
 		out = out[:60]
 	}
-	return out, recommended, note
+	return out, recommended, note, total
 }

@@ -3,7 +3,8 @@ param([Parameter(Mandatory=$true)][string]$OutputFile)
 $ErrorActionPreference='Stop'
 $projectRoot=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $text=[Text.StringBuilder]::new()
-[void]$text.AppendLine('Castorice-WebRuleAnalyzer v1.1 - bundled third-party license texts')
+$releaseTag='v'+((Get-Content -LiteralPath (Join-Path $projectRoot 'VERSION') -Raw).Trim() -replace '\.0$','')
+[void]$text.AppendLine("Castorice-WebRuleAnalyzer $releaseTag - bundled third-party license texts")
 [void]$text.AppendLine('External rule datasets are downloaded separately and retain their own licenses.')
 function Add-LicenseDirectory([string]$Component,[string]$Directory) {
     if(-not (Test-Path -LiteralPath $Directory)){return}

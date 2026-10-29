@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/castorice/Castorice-WebRuleAnalyzer/backend/internal/exportname"
 )
 
 type Paths struct {
@@ -63,14 +65,10 @@ func (p Paths) Environment() error {
 
 // SaveExport uses exclusive creation, keeping previous exports intact.
 func (p Paths) SaveExport(name, content string) (string, error) {
-	if name == "" || len(name) > 180 || strings.TrimSpace(name) != name || strings.ContainsAny(name, "/\\:*?\"<>|\x00") || filepath.Base(name) != name || strings.HasSuffix(name, ".") {
+	if !exportname.Valid(name) || filepath.Base(name) != name {
 		return "", errors.New("导出文件名不合法")
 	}
 	ext := strings.ToLower(filepath.Ext(name))
-	base := strings.ToUpper(strings.TrimSuffix(name, filepath.Ext(name)))
-	if base == "CON" || base == "PRN" || base == "AUX" || base == "NUL" || (len(base) == 4 && (strings.HasPrefix(base, "COM") || strings.HasPrefix(base, "LPT")) && base[3] >= '1' && base[3] <= '9') {
-		return "", errors.New("不能使用 Windows 设备保留名称")
-	}
 	if ext != ".yaml" && ext != ".yml" && ext != ".json" && ext != ".txt" {
 		return "", errors.New("只允许 YAML、JSON 或来源说明 TXT")
 	}

@@ -10,10 +10,13 @@ from pathlib import Path
 import re
 import subprocess
 import zipfile
+import tarfile
 
 ROOT = Path(__file__).resolve().parents[1]
 PATTERNS = {
     "github_token": rb"\bgh[pousr]_[A-Za-z0-9]{30,}\b",
+    "github_fine_grained_token": rb"\bgithub_pat_[A-Za-z0-9_]{40,}\b",
+    "google_api_key": rb"\bAIza[A-Za-z0-9_-]{30,}\b",
     "openai_key": rb"\bsk-(?:proj-)?[A-Za-z0-9_-]{32,}\b",
     "aws_access_key": rb"\bAKIA[A-Z0-9]{16}\b",
     "private_key": rb"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----",
@@ -32,6 +35,7 @@ def git(*args):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--zip", type=Path)
+    parser.add_argument("--tar", type=Path)
     parser.add_argument("--output", type=Path, default=ROOT / ".runtime/release-privacy.json")
     args = parser.parse_args()
     findings = []
@@ -82,6 +86,18 @@ def main():
                     findings.append({"file": info.filename, "rule": "runtime_or_private_file"})
                 check("zip:" + info.filename, archive.read(info))
                 counts["zip_files"] += 1
+    if args.tar:
+        counts['tar_files'] = 0
+        with tarfile.open(args.tar, 'r:gz') as archive:
+            for info in archive.getmembers():
+                if info.isdir():
+                    continue
+                parts = Path(info.name).parts
+                if not info.isfile() or any(p in {'data', 'exports', '.runtime', 'node_modules', '.git'} for p in parts) or info.name.endswith(('.db', '.db-wal', '.db-shm', '.log', '.pem', '.key')):
+                    findings.append({'file': info.name, 'rule': 'runtime_or_private_file'})
+                if info.isfile():
+                    check('tar:' + info.name, archive.extractfile(info).read())
+                    counts['tar_files'] += 1
     report = {"counts": counts, "findings": findings, "passed": not findings}
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")

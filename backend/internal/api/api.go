@@ -63,6 +63,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/session", func(w http.ResponseWriter, r *http.Request) { respond(w, 200, map[string]string{"token": s.Token}) })
 	mux.HandleFunc("GET /api/browsers", func(w http.ResponseWriter, r *http.Request) { respond(w, 200, browser.Detect()) })
 	mux.HandleFunc("POST /api/scans", s.createScan)
+	mux.HandleFunc("GET /api/scans/active", func(w http.ResponseWriter, r *http.Request) {
+		respond(w, 200, s.Scans.Active())
+	})
 	mux.HandleFunc("GET /api/scans", func(w http.ResponseWriter, r *http.Request) {
 		tasks, err := s.Scans.List()
 		if handleError(w, err) {
@@ -225,9 +228,7 @@ func (s *Server) Handler() http.Handler {
 			Filename string `json:"filename"`
 			Content  string `json:"content"`
 		}
-		r.Body = http.MaxBytesReader(w, r.Body, 17<<20)
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			fail(w, 400, "invalid_export", "导出内容不合法或过大")
+		if !decodeLimit(w, r, &body, 17<<20) {
 			return
 		}
 		path, err := s.SaveExport(body.Filename, body.Content)
@@ -380,6 +381,10 @@ func (s *Server) export(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			categories = append(categories, c)
+			if expected, supplied := job.CategoryVersions[id]; supplied && expected != c.Version+":"+c.ContentHash {
+				fail(w, 409, "rules_changed", "规则已更新，请等待预览重新计算后再导出")
+				return
+			}
 		}
 	}
 	result, err := exporter.Build(job, domains, categories)

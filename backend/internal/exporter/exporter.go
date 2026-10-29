@@ -4,11 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"sort"
 	"strings"
-	"unicode"
 
+	"github.com/castorice/Castorice-WebRuleAnalyzer/backend/internal/exportname"
 	"github.com/castorice/Castorice-WebRuleAnalyzer/backend/internal/model"
 	"github.com/castorice/Castorice-WebRuleAnalyzer/backend/internal/rules"
 	"go.yaml.in/yaml/v3"
@@ -22,26 +21,7 @@ func ValidatePolicy(policy string) error {
 }
 
 func Filename(raw, ext string) string {
-	raw = strings.TrimSpace(filepath.Base(strings.ReplaceAll(raw, "\\", "/")))
-	raw = strings.TrimSuffix(raw, filepath.Ext(raw))
-	raw = strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) || strings.ContainsRune(`<>:"/\|?*`, r) {
-			return '-'
-		}
-		return r
-	}, raw)
-	raw = strings.Trim(raw, " .")
-	if raw == "" || raw == "." || raw == ".." {
-		raw = "castorice-rules"
-	}
-	if len([]rune(raw)) > 100 {
-		raw = string([]rune(raw)[:100])
-	}
-	stem := strings.ToUpper(strings.Split(raw, ".")[0])
-	if stem == "CON" || stem == "PRN" || stem == "AUX" || stem == "NUL" || len(stem) == 4 && (strings.HasPrefix(stem, "COM") || strings.HasPrefix(stem, "LPT")) {
-		raw = "rules-" + raw
-	}
-	return raw + ext
+	return exportname.Filename(raw, ext)
 }
 
 func Build(job model.ExportJob, observed []model.DomainRecord, categories []model.RuleCategory) (model.ExportResult, error) {

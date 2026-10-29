@@ -254,6 +254,26 @@ func (e Engine) run(ctx context.Context, r *runtimeTask, target string) (string,
 			r.log("WARN", "explore", "本页链接发现失败，继续处理队列")
 		} else {
 			base, _ := url.Parse(current)
+			if base == nil {
+				return "navigation_failed", errors.New("无法读取最终页面地址")
+			}
+			if err = policy.Validate(ctx, base); err != nil {
+				return "unsafe_target", err
+			}
+			r.mu.Lock()
+			r.task.CurrentPage = security.RedactPageURL(current)
+			r.revision++
+			r.mu.Unlock()
+			if domain.Origin(base) != origin {
+				canonical, allowed := crawler.CanonicalOrigin(startURL, base)
+				if !allowed {
+					r.log("WARN", "explore", "跳转到不同站点，仅观察当前页；可使用最终页面地址重新分析。")
+					return "origin_changed", nil
+				}
+				origin = canonical
+				seen[current] = true
+				r.log("INFO", "explore", "已采用通过地址校验的规范来源继续同源探索: "+security.RedactPageURL(current))
+			}
 			for _, raw := range rawLinks {
 				if len(seen) >= 2000 {
 					break

@@ -262,7 +262,19 @@ func (s *Store) SaveSource(source model.RuleSource, categories []model.RuleCateg
 	}
 	return tx.Commit()
 }
-func (s *Store) ClearRules() error {
-	_, err := s.DB.Exec(`DELETE FROM rule_categories; DELETE FROM rule_sources;`)
-	return err
+func (s *Store) ClearRules(sources []model.RuleSource) error {
+	tx, err := s.DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err = tx.Exec(`DELETE FROM rule_categories; DELETE FROM rule_sources;`); err != nil {
+		return err
+	}
+	for _, source := range sources {
+		if _, err = tx.Exec(`INSERT INTO rule_sources VALUES(?,?)`, source.ID, data(source)); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
