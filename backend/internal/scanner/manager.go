@@ -153,7 +153,7 @@ func (m *Manager) execute(ctx context.Context, r *runtimeTask, target, host stri
 	// Downloads never extend a stopped task. Automatic matching only uses the
 	// existing cache; explicit source updates/load actions live in the rules UI.
 	categories := m.rules.Categories(true)
-	matches, recommended, note := matcher.Match(host, r.domainList(), categories)
+	matches, recommended, note, total := matcher.Match(host, r.domainList(), categories)
 	now := time.Now().UTC()
 	r.mu.Lock()
 	r.task.Status = status
@@ -162,6 +162,8 @@ func (m *Manager) execute(ctx context.Context, r *runtimeTask, target, host stri
 	r.task.Matches = matches
 	r.task.RecommendedCategory = recommended
 	r.task.MatchNote = note
+	r.task.MatchedCategoryCount = total
+	r.task.MatchesTruncated = total > len(matches)
 	if err != nil {
 		r.task.Error = security.RedactText(err.Error())
 	}
@@ -331,6 +333,18 @@ func (m *Manager) Revision(id string) int64 {
 	}
 	return -1
 }
+
+// Active returns the live task independently of the history item being viewed.
+func (m *Manager) Active() *model.ScanTask {
+	m.mu.Lock()
+	r := m.active
+	m.mu.Unlock()
+	if r == nil {
+		return nil
+	}
+	task := r.snapshot()
+	return &task
+}
 func (m *Manager) Rematch(id string) (model.ScanTask, error) {
 	task, err := m.Task(id)
 	if err != nil {
@@ -344,10 +358,12 @@ func (m *Manager) Rematch(id string) (model.ScanTask, error) {
 		return task, err
 	}
 	u, _ := url.Parse(task.TargetURL)
-	matches, recommended, note := matcher.Match(u.Hostname(), domains, m.rules.Categories(true))
+	matches, recommended, note, total := matcher.Match(u.Hostname(), domains, m.rules.Categories(true))
 	task.Matches = matches
 	task.RecommendedCategory = recommended
 	task.MatchNote = note
+	task.MatchedCategoryCount = total
+	task.MatchesTruncated = total > len(matches)
 	err = m.store.Save(task, nil, nil, nil)
 	return task, err
 }

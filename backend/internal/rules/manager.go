@@ -477,7 +477,10 @@ func (m *Manager) syncV2fly(ctx context.Context) ([]model.RuleCategory, string, 
 		if err := ctx.Err(); err != nil {
 			return nil, "", err
 		}
-		entries, warnings, e := parser.Parse(name)
+		entries, warnings, e := parser.ParseContext(ctx, name)
+		if ctx.Err() != nil {
+			return nil, "", ctx.Err()
+		}
 		c := model.RuleCategory{ID: "v2fly:" + name, Name: name, Source: "v2fly", Version: version, Path: "data/" + name, Raw: string(files[name]), Format: "text", Loaded: e == nil, Rules: entries, RuleCount: len(entries), Broad: Broad(name, len(entries)), Warnings: warnings}
 		if e != nil {
 			c.Warnings = append(c.Warnings, e.Error())
@@ -531,39 +534,29 @@ func (m *Manager) Load(ctx context.Context, id string) (model.RuleCategory, erro
 	return c, nil
 }
 
-// Target-specific names can load relevant Blackmatrix categories without
-// downloading hundreds of unrelated files. A missing source is not a scan error.
-func (m *Manager) LoadForTarget(ctx context.Context, host string) {
-	names := strings.Split(host, ".")
-	for _, c := range m.Categories(false) {
-		if c.Loaded || c.Source != "blackmatrix7" {
-			continue
-		}
-		wanted := false
-		for _, part := range names {
-			if len(part) > 2 && strings.EqualFold(part, c.Name) {
-				wanted = true
-			}
-		}
-		if wanted {
-			_, _ = m.Load(ctx, c.ID)
-		}
-	}
-}
-
 func (m *Manager) Clear() error {
 	if !m.operation.TryLock() {
 		return errors.New("规则库正在操作，暂时不能清理")
 	}
-	defer m.operation.Unlock()
+	defer func() {
+		m.operation.Unlock()
+		select {
+		case m.wake <- struct{}{}:
+		default:
+		}
+	}()
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if err := m.store.ClearRules(); err != nil {
+	sources := defaults()
+	for i := range sources {
+		sources[i].AutoUpdate = m.sources[sources[i].ID].AutoUpdate
+	}
+	if err := m.store.ClearRules(sources); err != nil {
 		return err
 	}
 	m.categories = map[string]model.RuleCategory{}
 	m.sources = map[string]model.RuleSource{}
-	for _, s := range defaults() {
+	for _, s := range sources {
 		m.sources[s.ID] = s
 	}
 	return nil

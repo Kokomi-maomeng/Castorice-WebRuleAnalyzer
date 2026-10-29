@@ -133,6 +133,7 @@ func Supervisor() error {
 		_ = cmd.Process.Kill()
 	}
 	waitErr := cmd.Wait()
+	workerExit := consumeWorkerExit(p.Logs, waitErr)
 	// Allow a short normal Runtime shutdown before enforcing the owned job.
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
@@ -161,7 +162,6 @@ func Supervisor() error {
 		}
 	}
 	_ = os.Remove(filepath.Join(p.Data, "runtime.json"))
-	_ = os.Remove(filepath.Join(p.Logs, workerErrorFile))
 	report := struct {
 		Version                                       string `json:"version"`
 		SupervisorPID, WorkerPID                      int
@@ -171,8 +171,8 @@ func Supervisor() error {
 		CleanupErrors                                 []string `json:"cleanup_errors"`
 	}{model.Version, os.Getpid(), cmd.Process.Pid, started, time.Now().UTC(), cmd.ProcessState.ExitCode(), before, remaining, cleanupErrors}
 	_ = writeJSON(filepath.Join(p.Logs, "last-exit.json"), report)
-	if waitErr != nil {
-		return errors.New(reportedError(p.Logs, fmt.Sprintf("桌面窗口异常退出，请查看软件目录 data/logs 下的日志: %v", waitErr)))
+	if workerExit != nil {
+		return workerExit
 	}
 	if remaining != 0 || len(cleanupErrors) > 0 {
 		return errors.New("退出清理未完整完成，请查看 data/logs/last-exit.json")

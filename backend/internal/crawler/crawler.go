@@ -11,6 +11,23 @@ import (
 
 var unsafePath = regexp.MustCompile(`(?i)(^|[/_.-])(logout|signout|delete|remove|purchase|checkout|payment|pay|send|unsubscribe|reset|confirm|activate|cart|add-to-cart|download)([/_.-]|$)`)
 
+// CanonicalOrigin only accepts same-host / www changes and HTTP upgrades on
+// the same or standard ports. Arbitrary cross-site redirects remain observation-only.
+func CanonicalOrigin(initial, current *url.URL) (string, bool) {
+	if current == nil || initial == nil || (current.Scheme != "http" && current.Scheme != "https") ||
+		initial.Scheme == "https" && current.Scheme != "https" ||
+		strings.TrimPrefix(initial.Hostname(), "www.") != strings.TrimPrefix(current.Hostname(), "www.") {
+		return "", false
+	}
+	standardPort := func(u *url.URL) bool {
+		return u.Port() == "" || u.Scheme == "https" && u.Port() == "443" || u.Scheme == "http" && u.Port() == "80"
+	}
+	if initial.Port() != current.Port() && !(standardPort(initial) && standardPort(current)) {
+		return "", false
+	}
+	return domain.Origin(current), true
+}
+
 // Navigation never clicks arbitrary controls. Reject query-bearing links and
 // known action routes as a conservative first-release policy.
 func SafeLink(base *url.URL, raw, origin string) (string, string) {

@@ -2,7 +2,8 @@
 param([switch]$SkipFrontend)
 $ErrorActionPreference='Stop'
 $projectRoot=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-$packageDir=Join-Path $projectRoot 'dist/Castorice-WebRuleAnalyzer-v1.3-linux-amd64'
+$releaseTag='v'+((Get-Content -LiteralPath (Join-Path $projectRoot 'VERSION') -Raw).Trim() -replace '\.0$','')
+$packageDir=Join-Path $projectRoot ("dist/Castorice-WebRuleAnalyzer-$releaseTag-linux-amd64")
 foreach($runtimeFolder in @('data','exports')){if(Test-Path -LiteralPath (Join-Path $packageDir $runtimeFolder)){throw '发布目录包含运行数据，请先备份并换用干净构建目录。'}}
 if(-not $SkipFrontend){
  Push-Location (Join-Path $projectRoot 'frontend')
@@ -29,3 +30,5 @@ Copy-Item -LiteralPath (Join-Path $projectRoot 'deploy/castorice-browser.apparmo
 $hash=(Get-FileHash -LiteralPath (Join-Path $packageDir 'castorice') -Algorithm SHA256).Hash.ToLowerInvariant()
 [IO.File]::WriteAllText((Join-Path $packageDir 'SHA256SUMS.txt'),$hash+'  castorice'+"`n")
 Write-Host "Linux package: $packageDir (Linux: chmod +x castorice start.sh)"
+& python (Join-Path $PSScriptRoot 'package-linux.py') $packageDir
+if($LASTEXITCODE -ne 0){throw 'Linux archive failed'}

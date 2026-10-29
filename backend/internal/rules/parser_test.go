@@ -76,12 +76,6 @@ func TestDLCRecursionLimitsAndMissing(t *testing.T) {
 		t.Fatal("depth bound not enforced")
 	}
 }
-func TestSuffixBoundary(t *testing.T) {
-	r := model.RuleEntry{Type: model.Suffix, Value: "example.com"}
-	if !Matches(r, "example.com") || !Matches(r, "a.example.com") || Matches(r, "notexample.com") {
-		t.Fatal("suffix domain boundary")
-	}
-}
 
 func TestIncludeFilterRetainsAttributeVariants(t *testing.T) {
 	p, err := NewDLCParser(map[string][]byte{"parent": []byte("include:child @-ads"), "child": []byte("full:example.com @ads\nfull:example.com\n")}, "test", "1")

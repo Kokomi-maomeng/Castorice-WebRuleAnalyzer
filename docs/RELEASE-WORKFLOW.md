@@ -66,9 +66,11 @@ python scripts/audit-release.py --zip ./dist/Castorice-WebRuleAnalyzer-v1.3-wind
 1. 更新版本、变更记录、用户说明、架构、安全边界和测试报告。
 2. 使用公开贡献者 Git 身份提交；检查推送目标和可见性，不能夹带其他项目资料。
 3. 推送分支后等待 CI；需要修复则重新验证，不能以绿色健康接口替代失败检查。
-4. 发布对应标签的 GitHub Release，并上传 Windows 便携 ZIP 和 SHA256。后续版本继续沿用此形式。
+4. 发布对应标签的 GitHub Release，同时上传 Windows 便携 ZIP、Linux amd64 tar.gz 和二者的 SHA256。版本来源为根 VERSION，CI 检查同步结果。
 5. 从 GitHub 下载附件，比较 SHA256，再次解压启动真实成品。确认 Release 标签与附件对应相同源码版本。
 6. 保存脱敏报告。关闭本次临时服务与测试浏览器；验证虚拟机原有服务未被改动。不要停止用户日常浏览器、代理或无关容器。
+
+v1.4 起，隐私检查同时接受 `--zip` 和 `--tar`；Linux 打包脚本设置可执行权限并排除运行目录。构建后运行源码与成品 govulncheck、npm audit；下载 GitHub 附件后再次比对完整哈希并执行。
 
 ## v1.3 之后复用的针对性检查
 

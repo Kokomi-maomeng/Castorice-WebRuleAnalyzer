@@ -2,6 +2,7 @@ package rules
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"sort"
@@ -15,6 +16,8 @@ import (
 const MaxFileBytes = 2 << 20
 const MaxIncludeDepth = 24
 const MaxCategoryRules = 100000
+const MaxParseWork = 1000000
+const MaxCategoryWarnings = 10000
 
 func Normalize(entry model.RuleEntry) (model.RuleEntry, error) {
 	entry.Value = strings.ToLower(strings.TrimSpace(entry.Value))
@@ -38,22 +41,31 @@ func Normalize(entry model.RuleEntry) (model.RuleEntry, error) {
 func Unique(entries []model.RuleEntry) []model.RuleEntry {
 	result := []model.RuleEntry{}
 	index := map[string]int{}
+	origins := map[int]map[model.RuleOrigin]bool{}
+	attributes := map[int]map[string]bool{}
 	for _, r := range entries {
 		if i, ok := index[r.Key()]; ok {
-			for _, o := range r.Origins {
-				found := false
-				for _, existing := range result[i].Origins {
-					if existing == o {
-						found = true
-						break
-					}
+			if origins[i] == nil {
+				origins[i] = map[model.RuleOrigin]bool{}
+				for _, o := range result[i].Origins {
+					origins[i][o] = true
 				}
-				if !found {
+				result[i].Origins = append([]model.RuleOrigin{}, result[i].Origins...)
+				attributes[i] = map[string]bool{}
+				for _, a := range result[i].Attributes {
+					attributes[i][a] = true
+				}
+				result[i].Attributes = append([]string{}, result[i].Attributes...)
+			}
+			for _, o := range r.Origins {
+				if !origins[i][o] {
+					origins[i][o] = true
 					result[i].Origins = append(result[i].Origins, o)
 				}
 			}
 			for _, a := range r.Attributes {
-				if !contains(result[i].Attributes, a) {
+				if !attributes[i][a] {
+					attributes[i][a] = true
 					result[i].Attributes = append(result[i].Attributes, a)
 				}
 			}
@@ -254,33 +266,98 @@ func (p *DLCParser) Names() []string {
 	return out
 }
 func (p *DLCParser) Parse(name string) ([]model.RuleEntry, []string, error) {
-	entries, warnings, err := p.resolve(name, map[string]bool{}, 0)
+	return p.ParseContext(context.Background(), name)
+}
+
+type resolvedFile struct {
+	entries  []model.RuleEntry
+	warnings []string
+	depth    int
+}
+type parseState struct {
+	ctx  context.Context
+	work int
+	memo map[string]resolvedFile
+}
+
+func (s *parseState) consume(n int) error {
+	if err := s.ctx.Err(); err != nil {
+		return err
+	}
+	s.work += n
+	if s.work > MaxParseWork {
+		return errors.New("规则解析工作量超过限制")
+	}
+	return nil
+}
+
+func (p *DLCParser) ParseContext(ctx context.Context, name string) ([]model.RuleEntry, []string, error) {
+	state := &parseState{ctx: ctx, memo: map[string]resolvedFile{}}
+	entries, warnings, _, err := p.resolve(state, name, map[string]bool{}, 0)
+	if err != nil {
+		return nil, warnings, err
+	}
+	if err = state.consume(len(entries)); err != nil {
+		return nil, warnings, err
+	}
 	return Unique(entries), warnings, err
 }
-func (p *DLCParser) resolve(name string, stack map[string]bool, depth int) ([]model.RuleEntry, []string, error) {
+func (p *DLCParser) resolve(state *parseState, name string, stack map[string]bool, depth int) ([]model.RuleEntry, []string, int, error) {
+	if err := state.consume(1); err != nil {
+		return nil, nil, 0, err
+	}
 	if depth > MaxIncludeDepth {
-		return nil, nil, errors.New("include 超过最大嵌套深度")
+		return nil, nil, 0, errors.New("include 超过最大嵌套深度")
 	}
 	if stack[name] {
-		return nil, nil, fmt.Errorf("include 循环引用: %s", name)
+		return nil, nil, 0, fmt.Errorf("include 循环引用: %s", name)
+	}
+	if cached, ok := state.memo[name]; ok {
+		if depth+cached.depth > MaxIncludeDepth {
+			return nil, nil, 0, errors.New("include 超过最大嵌套深度")
+		}
+		return cached.entries, cached.warnings, cached.depth, nil
 	}
 	f := p.files[name]
 	if f == nil {
-		return nil, nil, fmt.Errorf("include 文件不存在: %s", name)
+		return nil, nil, 0, fmt.Errorf("include 文件不存在: %s", name)
+	}
+	if len(f.entries) > MaxCategoryRules {
+		return nil, nil, 0, errors.New("分类规则数超过限制")
+	}
+	if len(f.warnings) > MaxCategoryWarnings {
+		return nil, nil, 0, errors.New("分类转换提示超过限制")
+	}
+	if err := state.consume(len(f.entries) + len(f.warnings)); err != nil {
+		return nil, nil, 0, err
 	}
 	stack[name] = true
 	defer delete(stack, name)
 	result := append([]model.RuleEntry{}, f.entries...)
 	warnings := append([]string{}, f.warnings...)
+	maxDepth := 0
 	for _, inc := range f.includes {
-		entries, notes, err := p.resolve(inc.name, stack, depth+1)
+		entries, notes, childDepth, err := p.resolve(state, inc.name, stack, depth+1)
 		if err != nil {
-			return nil, warnings, err
+			return nil, warnings, 0, err
+		}
+		maxDepth = max(maxDepth, childDepth+1)
+		if err := state.consume(len(notes)); err != nil {
+			return nil, warnings, 0, err
+		}
+		if len(warnings)+len(notes) > MaxCategoryWarnings {
+			return nil, warnings, 0, errors.New("分类转换提示超过限制")
 		}
 		warnings = append(warnings, notes...)
 		for _, entry := range entries {
+			if err := state.consume(1); err != nil {
+				return nil, warnings, 0, err
+			}
 			include := true
 			for _, filter := range inc.filters {
+				if err := state.consume(1 + len(entry.Attributes)); err != nil {
+					return nil, warnings, 0, err
+				}
 				neg := strings.HasPrefix(filter, "-")
 				attr := strings.TrimPrefix(filter, "-")
 				has := contains(entry.Attributes, attr)
@@ -290,33 +367,41 @@ func (p *DLCParser) resolve(name string, stack map[string]bool, depth int) ([]mo
 				}
 			}
 			if include {
+				if len(result) >= MaxCategoryRules {
+					return nil, warnings, 0, errors.New("分类规则数超过限制")
+				}
 				result = append(result, entry)
 			}
 		}
 		if len(result) > MaxCategoryRules {
-			return nil, warnings, errors.New("分类规则数超过限制")
+			return nil, warnings, 0, errors.New("分类规则数超过限制")
 		}
 	}
 	// Attribute variants must stay separate until every include filter has run.
 	// Unioning @ads with an untagged duplicate before @-ads filtering would
 	// incorrectly drop the otherwise valid untagged rule.
 	seen := map[string]int{}
+	originSets := map[int]map[model.RuleOrigin]bool{}
 	variants := []model.RuleEntry{}
 	for _, entry := range result {
+		if err := state.consume(1 + len(entry.Attributes) + len(entry.Origins)); err != nil {
+			return nil, warnings, 0, err
+		}
 		attrs := append([]string{}, entry.Attributes...)
 		sort.Strings(attrs)
 		key := entry.Key() + "|" + strings.Join(attrs, ",")
 		if index, ok := seen[key]; ok {
-			origins := append([]model.RuleOrigin{}, variants[index].Origins...)
-			for _, origin := range entry.Origins {
-				found := false
-				for _, existing := range origins {
-					if existing == origin {
-						found = true
-						break
-					}
+			origins := variants[index].Origins
+			if originSets[index] == nil {
+				origins = append([]model.RuleOrigin{}, origins...)
+				originSets[index] = map[model.RuleOrigin]bool{}
+				for _, origin := range origins {
+					originSets[index][origin] = true
 				}
-				if !found {
+			}
+			for _, origin := range entry.Origins {
+				if !originSets[index][origin] {
+					originSets[index][origin] = true
 					origins = append(origins, origin)
 				}
 			}
@@ -326,17 +411,6 @@ func (p *DLCParser) resolve(name string, stack map[string]bool, depth int) ([]mo
 			variants = append(variants, entry)
 		}
 	}
-	return variants, warnings, nil
-}
-
-func Matches(rule model.RuleEntry, host string) bool {
-	switch rule.Type {
-	case model.Domain:
-		return host == rule.Value
-	case model.Suffix:
-		return host == rule.Value || strings.HasSuffix(host, "."+rule.Value)
-	case model.Keyword:
-		return strings.Contains(host, rule.Value)
-	}
-	return false
+	state.memo[name] = resolvedFile{entries: variants, warnings: warnings, depth: maxDepth}
+	return variants, warnings, maxDepth, nil
 }

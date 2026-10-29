@@ -3,7 +3,7 @@
 FROM debian:13-slim
 RUN apt-get update && apt-get install -y --no-install-recommends chromium chromium-sandbox ca-certificates fonts-noto-cjk && rm -rf /var/lib/apt/lists/* \
     && useradd --uid 10001 --create-home app && mkdir /data && chown app:app /data
-COPY castorice /usr/local/bin/castorice
+COPY --chmod=755 castorice /usr/local/bin/castorice
 ENV CHROME_DEVEL_SANDBOX=/usr/lib/chromium/chrome-sandbox
 USER app
 EXPOSE 19110

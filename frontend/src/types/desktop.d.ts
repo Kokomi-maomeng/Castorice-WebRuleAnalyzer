@@ -3,4 +3,6 @@ interface CastoriceDesktop {
   dataDir: string;
   exportDir: string;
 }
-interface Window { castoriceDesktop?: CastoriceDesktop }
+interface Window {
+  castoriceDesktop?: CastoriceDesktop;
+}

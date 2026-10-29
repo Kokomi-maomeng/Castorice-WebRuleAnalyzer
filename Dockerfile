@@ -4,9 +4,13 @@ COPY frontend/package*.json frontend/
 RUN cd frontend && npm ci --no-audit --no-fund
 COPY frontend/ frontend/
 COPY scripts/clean-frontend.mjs scripts/clean-frontend.mjs
+COPY scripts/prepare-frontend.mjs scripts/sync-version.mjs scripts/
+COPY VERSION VERSION
+COPY backend/internal/model/version.go backend/internal/model/version.go
+COPY backend/cmd/castorice/winres/winres.json backend/cmd/castorice/winres/winres.json
 RUN cd frontend && npm run build
 
-FROM golang:1.26-bookworm AS backend
+FROM golang:1.26.10-bookworm AS backend
 WORKDIR /src/backend
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download

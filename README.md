@@ -1,4 +1,4 @@
-# Castorice-WebRuleAnalyzer v1.3
+# Castorice-WebRuleAnalyzer v1.4
 
 Web 分流规则分析器。输入网址，用独立 Chrome / Edge / Chromium 采集实际网络请求，查看域名与规则命中，导出 Clash/Mihomo、Rule Provider 或 sing-box 规则。
 
@@ -8,13 +8,12 @@ Web 分流规则分析器。输入网址，用独立 Chrome / Edge / Chromium �
 
 软件数据存于 EXE 旁的 `data/`，导出文件存于 `exports/`。解压到可写目录，移动整个目录即可携带数据。关闭主窗口会取消扫描并关闭本次创建的子进程。请先退出旧版再替换 EXE，保留自己的 `data/` 与 `exports/`；先备份数据目录。不能在 ZIP 内直接运行。
 
-## v1.3 的改动
+## v1.4 的改动
 
-- **合并导出可直接初始化**：未下载规则库时显示原因，提供两套来源的依次下载、进度与重试；分类完成后自动出现。未选分类时保留观察预览，明确阻止空分类的合并下载。
-- **大列表分页**：条目默认每页 30 条，可选 60/100；支持搜索规则或来源、筛选勾选状态、选择本页、恢复全选，翻页搜索保留选择。文件每页 200 行，可选 100/500；复制、下载始终输出完整文件。
-- **可收起设置**：窄窗口收起导出设置，为预览留出空间；下载按钮固定保留。优化大型分类的后缀覆盖查询，保留取消上层规则后恢复子项的行为。
-- **清空工作区**：点击按钮，或清空网址后回车，恢复初始页面；保留历史、规则缓存与设置，刷新后仍保持空白。采集中先停止再清空。
-- **Material 动效**：补齐设置展开、按钮按压与长按反馈、开关、翻页与选中态过渡；遵循系统“减少动态效果”。
+- 修复审计发现的 17 项问题：历史查看时保留停止入口；规范域名跳转继续探索；规则更新保留编辑草稿，并使合并预览和下载重新校验。
+- 修复中文长文件名、桌面启动错误、清缓存后的自动更新偏好，以及请求上限、分类数量和 JSON 校验边界。
+- 更新 Go 安全工具链和依赖，限制规则解析工作量；提升预览对比度，清理遗留代码，统一版本来源。
+- 同时提供 Windows ZIP 与 Linux amd64 tar.gz；补充[导出接入说明](docs/EXPORT-INTEGRATION.md)。
 
 `gemini.com` 与 `gemini.google.com` 是不同网站。规则库中的 Google Gemini 分类需实际命中其对应域名，名称相似不会生成规则或自动识别。
 
@@ -39,7 +38,7 @@ Web 分流规则分析器。输入网址，用独立 Chrome / Edge / Chromium �
 
 ## Linux
 
-解压 Linux amd64 包，在有 Chromium/Chrome 的系统中运行：
+从同一 Release 下载 `Castorice-WebRuleAnalyzer-v1.4-linux-amd64.tar.gz`，解压后在有 Chromium/Chrome 的系统中运行：
 
 ```sh
 chmod +x castorice start.sh
@@ -61,7 +60,7 @@ Compose 默认仅绑定宿主回环地址，使用持久卷保存数据。Chromi
 
 如修改映射端口/域名，需要通过 `--public-url` 配置**精确来源**，保持 Host/Origin 校验。可用 SSH 转发访问远程主机的回环端口；不要修改系统代理、DNS 或防火墙来迁就测试。没有图形会话的容器不提供可见浏览器辅助模式。
 
-Linux 发布目录也附带 `Dockerfile`，可在该目录 `docker build -t castorice:1.3 .`，使用已编译的同版二进制构建运行镜像。仓库根 Dockerfile 可从源码完整构建。
+Linux 发布目录也附带 `Dockerfile`，可在该目录 `docker build -t castorice:1.4 .`，使用已编译的同版二进制构建运行镜像。仓库根 Dockerfile 可从源码完整构建。
 
 Ubuntu 23.10+ 等限制无特权用户命名空间的宿主机，还需加载仅供本容器使用的 AppArmor 配置，然后指定它启动：
 
@@ -74,7 +73,7 @@ CASTORICE_APPARMOR_PROFILE=castorice-browser docker compose up -d --build
 
 ## 开发与验证
 
-需要 Go 1.26+、Node 24+；依赖版本锁定。
+需要 Go 1.26.10+、Node 24+；依赖版本锁定。
 
 ```powershell
 ./scripts/test.ps1 -Browser -LiveRules -LiveDNS
@@ -83,7 +82,14 @@ CASTORICE_APPARMOR_PROFILE=castorice-browser docker compose up -d --build
 # 启动独立测试服务后验证真实页面、规则原文及响应布局
 $env:CASTORICE_TEST_URL='http://127.0.0.1:19120'
 node scripts/verify-ui.mjs
-python scripts/audit-release.py --zip ./dist/Castorice-WebRuleAnalyzer-v1.3-windows-amd64.zip
+python scripts/audit-release.py --zip ./dist/Castorice-WebRuleAnalyzer-v1.4-windows-amd64.zip
+```
+
+`VERSION` 是版本号唯一来源；前端构建前自动同步 UI、Go 与 Windows 资源，CI 检查漂移。`npm run format` / `format:check` 维护源码格式。Linux 可原生构建：
+
+```sh
+cd frontend && npm ci && npm run build
+cd ../backend && CGO_ENABLED=0 go build -trimpath -o castorice ./cmd/castorice
 ```
 
 `verify-ui.mjs` 使用系统 Chrome，先在测试服务下载规则库；普通 Go 测试不自动下载规则或运行浏览器。浏览器/上游实测通过显式开关启用。测试站只使用精确、临时注入的 `.test` 白名单，生产扫描始终阻止私网/回环/元数据目标。
@@ -97,6 +103,6 @@ python scripts/audit-release.py --zip ./dist/Castorice-WebRuleAnalyzer-v1.3-wind
 - 默认禁用 QUIC，保护代理支持 HTTP(S)/WebSocket；没有声称采集原生 HTTP/3。
 - 系统 DNS 含已知 Fake-IP 且其余均为公网地址时，自动模式使用固定 Cloudflare HTTPS DNS 重新验证公网地址；真实私网及其与公网混合的答案继续拒绝。不修改系统网络配置。
 - Windows 包没有代码签名。未在全新无 WebView2 的 Windows 10/11 安装上实测；第三方登录、支付等流程未执行。
-- 历史保存当时的匹配，重新匹配使用当前缓存。缓存清理后需重新下载；外部仓库、网络及规则本身不由本项目保证。
+- 历史保存当时的匹配，重新匹配使用当前缓存。清缓存保留自动更新开关，已开启的来源会重新下载；外部仓库、网络及规则本身不由本项目保证。
 
 本项目采用 MIT。

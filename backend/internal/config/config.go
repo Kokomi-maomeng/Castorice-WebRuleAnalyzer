@@ -1,21 +1,11 @@
 package config
 
 import (
-	"os"
-	"path/filepath"
-
 	"github.com/castorice/Castorice-WebRuleAnalyzer/backend/internal/exporter"
 	"github.com/castorice/Castorice-WebRuleAnalyzer/backend/internal/model"
 	"github.com/castorice/Castorice-WebRuleAnalyzer/backend/internal/scanner"
 )
 
-func DataDir() (string, error) {
-	executable, err := os.Executable()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(filepath.Dir(executable), "data"), nil
-}
 func Validate(s model.Settings) error {
 	if err := scanner.ValidateOptions(s.Scan); err != nil {
 		return err
