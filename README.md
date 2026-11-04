@@ -1,4 +1,4 @@
-# Castorice-WebRuleAnalyzer v1.4.1
+# Castorice-WebRuleAnalyzer v1.5
 
 Web 分流规则分析器。输入网址，用独立 Chrome / Edge / Chromium 采集实际网络请求，查看域名与规则命中，导出 Clash/Mihomo、Rule Provider 或 sing-box 规则。
 
@@ -7,6 +7,15 @@ Web 分流规则分析器。输入网址，用独立 Chrome / Edge / Chromium �
 从 [GitHub Releases](https://github.com/Kokomi-maomeng/Castorice-WebRuleAnalyzer/releases/latest) 下载 Windows 便携 ZIP，**解压后双击 `Castorice-WebRuleAnalyzer.exe`**。无需 Go、Node 或安装器。Windows 10/11 x64 需要 Edge WebView2 Runtime 和 Chrome/Edge；本次在 Windows 11 上完成实测。发行包不带个人数据或外部规则缓存。
 
 软件数据存于 EXE 旁的 `data/`，导出文件存于 `exports/`。解压到可写目录，移动整个目录即可携带数据。关闭主窗口会取消扫描并关闭本次创建的子进程。请先退出旧版再替换 EXE，保留自己的 `data/` 与 `exports/`；先备份数据目录。不能在 ZIP 内直接运行。
+
+## v1.5 的改动
+
+- 精简预览与导出面板，抓取风险和 DOMAIN-SUFFIX 说明改为支持悬停、点击和键盘的提示图标。
+- 分类输入后才显示搜索结果；修复轮询清空输入、选择分类跳动和多分类挤占输入空间的问题。
+- 条目按本次抓取、被覆盖、规则库补充筛选；仅抓取模式隐藏规则库补充选项。
+- 优化高缩放、短窗口的列表空间，统一输入框、复选框和工具栏间距；预览重算时保留列表，禁止导出过期结果。
+
+验收与缩放模拟范围见 [v1.5 报告](docs/audits/v1.5-修复与发布验收报告.md)。
 
 ## v1.4.1 的改动
 
@@ -48,7 +57,7 @@ Web 分流规则分析器。输入网址，用独立 Chrome / Edge / Chromium �
 
 ## Linux
 
-从同一 Release 下载 `Castorice-WebRuleAnalyzer-v1.4-linux-amd64.tar.gz`，解压后在有 Chromium/Chrome 的系统中运行：
+从同一 Release 下载 `Castorice-WebRuleAnalyzer-v1.5-linux-amd64.tar.gz`，解压后在有 Chromium/Chrome 的系统中运行：
 
 ```sh
 chmod +x castorice start.sh

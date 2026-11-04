@@ -8,7 +8,8 @@ const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const require = createRequire(path.join(root, 'frontend/package.json'));
 const { chromium } = require(process.env.CASTORICE_PLAYWRIGHT_MODULE || 'playwright-core');
 const base = process.env.CASTORICE_TEST_URL || 'http://127.0.0.1:19131';
-const output = process.env.CASTORICE_UI_OUTPUT || path.join(root, '.runtime/v1.3-export-ui');
+const releaseTag = 'v' + (await fs.readFile(path.join(root, 'VERSION'), 'utf8')).trim().replace(/\.0$/, '');
+const output = process.env.CASTORICE_UI_OUTPUT || path.join(root, `.runtime/${releaseTag}-export-ui`);
 await fs.mkdir(output, { recursive: true });
 const browser = process.env.CASTORICE_UI_CDP ? await chromium.connectOverCDP(process.env.CASTORICE_UI_CDP) : await chromium.launch({ channel: 'chrome', headless: true });
 const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, permissions: ['clipboard-read', 'clipboard-write'] });
@@ -55,9 +56,14 @@ try {
   report.real.initialization = true;
  }
  const category = page.getByRole('combobox', { name: '规则分类', exact: true });
+ await category.click();
+ assert.equal(await page.getByRole('listbox').count(), 0, 'empty category input showed arbitrary options');
  await category.fill('Facebook');
+ await page.waitForTimeout(6500); // Cross two real library polls, including new JSON objects.
+ assert.equal(await category.inputValue(), 'Facebook', 'library polling erased search');
  await page.getByRole('option', { name: /^Facebook blackmatrix7/ }).click();
- await category.press('Escape'); await ready();
+ await ready();
+ assert.equal(await page.getByRole('button', { name: '导出设置', exact: true }).getAttribute('aria-expanded'), 'true');
  assert.equal(await page.getByRole('checkbox', { name: /^导出 DOMAIN/ }).count(), 30);
  report.real.previewEntries = latest.entries.length;
  assert(latest.entries.length > 500 && latest.content.includes('facebook.com'), 'real category content missing');
@@ -77,7 +83,7 @@ try {
  await page.getByRole('textbox', { name: '搜索预览条目' }).fill('');
  await page.getByRole('button', { name: '恢复全选', exact: true }).click(); await ready();
  report.real.paginationAndSelection = true;
- for (const [width, height] of [[1920,1080],[1440,900],[1280,720],[1024,640],[820,600],[390,844],[640,360],[760,480]]) {
+ for (const [width, height] of [[1920,1080],[1440,900],[1280,800],[1280,720],[1024,640],[820,600],[390,844],[640,360],[760,480]]) {
   await page.setViewportSize({ width, height });
   await page.locator('.preview-panel').scrollIntoViewIfNeeded();
   const metrics = await page.evaluate(() => { const panel = document.querySelector('.preview-scroll').getBoundingClientRect(); const action = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === '下载文件').getBoundingClientRect(); return { width: innerWidth, height: innerHeight, scrollWidth: document.documentElement.scrollWidth, scrollHeight: document.documentElement.scrollHeight, listHeight: panel.height, actionBottom: action.bottom }; });
@@ -114,7 +120,7 @@ try {
  await category.fill(largest.name);
  const started = performance.now();
  await page.getByRole('option', { name: new RegExp(`^${largest.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} ${largest.source}`) }).click();
- await category.press('Escape'); await ready();
+ await ready();
  assert(latest.entries.length >= largest.rule_count, 'large real category was truncated');
  report.real.largeCategory = { id: largest.id, rules: largest.rule_count, previewEntries: latest.entries.length, elapsedMs: Math.round(performance.now() - started) };
  report.real.sources = await page.evaluate(async () => (await (await fetch('/api/rules/sources')).json()).data.map(s => ({ id: s.id, version: s.version, category_count: s.category_count })));
@@ -151,6 +157,9 @@ try {
  report.motion = { heldButtonFeedback: true, normalSwitchTransition: true, reducedMotion: true };
  assert.equal(errors.length, 0, JSON.stringify(errors)); report.passed = true;
  console.log(JSON.stringify(report));
+} catch (error) {
+ await page.screenshot({ path: path.join(output, 'failure.png') }).catch(() => {});
+ throw error;
 } finally {
  closing = true;
  await fs.writeFile(path.join(output, 'acceptance.json'), JSON.stringify(report, null, 2));
