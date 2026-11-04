@@ -46,6 +46,8 @@ beforeEach(() => {
     if (path === "/settings") return defaultSettings;
     if (path === "/health") return { visible_browser: true };
     if (path === "/scans") return [task];
+    if (path.startsWith("/scans/history?"))
+      return { items: [task], total: 1, finished_count: 1 };
     if (path === "/scans/saved") return task;
     if (path.endsWith("/domains"))
       return [
@@ -69,15 +71,51 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 describe("清空工作区", () => {
+  it("新地址未启动时明确标识上一任务结果，不把旧结果当作新分析", async () => {
+    const original = mockAPI.getMockImplementation()!;
+    mockAPI.mockImplementation(
+      (path: string, method?: string, ...args: unknown[]) => {
+        if (path === "/scans" && method === "POST")
+          return Promise.reject(
+            Object.assign(new Error("系统解析返回回环地址"), {
+              diagnostic: {
+                code: "dns_non_public",
+                stage: "safety",
+                message: "系统解析返回回环地址",
+                hint: "请运行网络诊断",
+              },
+            }),
+          );
+        return original(path, method, ...args);
+      },
+    );
+    render(<App />);
+    await screen.findByRole("button", { name: "example.com" });
+    fireEvent.change(screen.getByRole("textbox", { name: "要分析的网站" }), {
+      target: { value: "facebook.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "开始分析" }));
+    await screen.findByText(/本次未启动；下方仍显示上一任务/);
+    expect(screen.getByText("请运行网络诊断")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "example.com" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/结果来源：https:\/\/example.com/),
+    ).toBeInTheDocument();
+  });
+
   it("查看历史时仍可停止后台采集任务", async () => {
     const live = { ...task, id: "live", status: "running" };
     const original = mockAPI.getMockImplementation()!;
     mockAPI.mockImplementation((path: string, ...args: unknown[]) =>
-      path === "/scans"
-        ? Promise.resolve([live, task])
-        : path === "/scans/active" || path === "/scans/live"
-          ? Promise.resolve(live)
-          : original(path, ...args),
+      path.startsWith("/scans/history?")
+        ? Promise.resolve({ items: [live, task], total: 2, finished_count: 1 })
+        : path === "/scans"
+          ? Promise.resolve([live, task])
+          : path === "/scans/active" || path === "/scans/live"
+            ? Promise.resolve(live)
+            : original(path, ...args),
     );
     render(<App />);
     await screen.findByRole("button", { name: "停止采集" });

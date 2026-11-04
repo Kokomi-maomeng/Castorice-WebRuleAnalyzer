@@ -64,7 +64,7 @@ export default function DomainPanel(p: Props) {
   return (
     <Paper
       component="section"
-      className="domain-panel"
+      className="domain-panel motion-surface"
       sx={{
         border: 1,
         borderColor: "divider",
@@ -151,6 +151,7 @@ export default function DomainPanel(p: Props) {
           list.slice(0, limit).map((d) => (
             <Box
               key={d.hostname}
+              className="motion-row"
               sx={{
                 display: "flex",
                 alignItems: "center",

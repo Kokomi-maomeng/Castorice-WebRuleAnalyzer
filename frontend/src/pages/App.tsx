@@ -1,3 +1,5 @@
+import DiagnosticAlert from "../components/DiagnosticAlert";
+import NetworkDialog from "../components/NetworkDialog";
 import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
@@ -6,6 +8,7 @@ import {
   Button,
   Chip,
   CircularProgress,
+  Collapse,
   CssBaseline,
   IconButton,
   Snackbar,
@@ -33,13 +36,19 @@ import SettingsDialog from "../components/SettingsDialog";
 import HistoryDialog from "../components/HistoryDialog";
 import RuleLibrary from "../components/RuleLibrary";
 import ExportDialog from "../components/ExportDialog";
-import type { RequestFilter, ScanTask, Settings } from "../types";
+import type {
+  Diagnostic,
+  HistoryDeletion,
+  RequestFilter,
+  ScanTask,
+  Settings,
+} from "../types";
 import { makeTheme } from "../theme";
 import { useScan } from "../hooks/useScan";
 import { useActiveScan } from "../hooks/useActiveScan";
 import { APP_VERSION } from "../version";
 import { api } from "../services/api";
-import { active, defaultSettings, errorMessage } from "../utils/format";
+import { active, defaultSettings, errorMessage, date } from "../utils/format";
 export default function App() {
   const [settings, setSettings] = useState<Settings>(defaultSettings);
   const [options, setOptions] = useState(defaultSettings.scan);
@@ -50,8 +59,21 @@ export default function App() {
   const [initializing, setInitializing] = useState(true);
   const [canShowBrowser, setCanShowBrowser] = useState(true);
   const [error, setError] = useState("");
+  const [diagnostic, setDiagnostic] = useState<Diagnostic>();
+  const [failedAttempt, setFailedAttempt] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
   const [notice, notify] = useState("");
   const [dialog, setDialog] = useState("");
+  function openDialog(name: string) {
+    setDialog(name);
+    setDialogOpen(true);
+  }
+  function closeDialog() {
+    setDialogOpen(false);
+  }
+  function dialogExited() {
+    if (!dialogOpen) setDialog("");
+  }
   const [tab, setTab] = useState(0);
   const [mobilePanel, setMobilePanel] = useState("domains");
   const [libraryCategory, setLibraryCategory] = useState("");
@@ -124,14 +146,17 @@ export default function App() {
     if (id) localStorage.setItem("castorice.lastScan", id);
   }, [id]);
   const running = !!currentActive;
-  function reset() {
-    if (running || busy || initializing) return;
+  function reset(keepDialog = false) {
+    if ((!keepDialog && running) || active(task) || busy || initializing)
+      return;
     setID("");
     setTask(undefined);
     setURL("");
     setError("");
+    setDiagnostic(undefined);
+    setFailedAttempt(false);
     notify("");
-    setDialog("");
+    if (!keepDialog) closeDialog();
     setResetCount((v) => v + 1);
     setTab(0);
     setMobilePanel("domains");
@@ -157,6 +182,8 @@ export default function App() {
   async function start() {
     setBusy(true);
     setError("");
+    setDiagnostic(undefined);
+    setFailedAttempt(false);
     try {
       const scan = await api<ScanTask>("/scans", "POST", { url, options });
       setID(scan.id);
@@ -165,6 +192,9 @@ export default function App() {
       setTab(0);
     } catch (e) {
       setError(errorMessage(e));
+      setFailedAttempt(true);
+      if (e && typeof e === "object" && "diagnostic" in e)
+        setDiagnostic(e.diagnostic as Diagnostic);
     } finally {
       setBusy(false);
     }
@@ -210,7 +240,7 @@ export default function App() {
   }
   function openLibrary(category = "") {
     setLibraryCategory(category);
-    setDialog("rules");
+    openDialog("rules");
   }
   return (
     <ThemeProvider theme={theme}>
@@ -254,7 +284,7 @@ export default function App() {
             <Tooltip title="扫描历史">
               <IconButton
                 aria-label="扫描历史"
-                onClick={() => setDialog("history")}
+                onClick={() => openDialog("history")}
               >
                 <HistoryRounded />
               </IconButton>
@@ -270,7 +300,7 @@ export default function App() {
             <Tooltip title="软件设置">
               <IconButton
                 aria-label="软件设置"
-                onClick={() => setDialog("settings")}
+                onClick={() => openDialog("settings")}
               >
                 <SettingsRounded />
               </IconButton>
@@ -284,11 +314,28 @@ export default function App() {
               <Typography variant="body2">连接本地服务…</Typography>
             </Stack>
           )}
-          {error && (
-            <Alert severity="error" onClose={() => setError("")}>
-              {error}
-            </Alert>
-          )}
+          <Collapse in={!!error} unmountOnExit>
+            <Box>
+              {diagnostic ? (
+                <DiagnosticAlert diagnostic={diagnostic} />
+              ) : (
+                <Alert severity="error" onClose={() => setError("")}>
+                  {error}
+                </Alert>
+              )}
+              {failedAttempt && (
+                <Typography
+                  variant="body2"
+                  color="text.secondary"
+                  sx={{ mb: 1 }}
+                >
+                  {task
+                    ? `本次未启动；下方仍显示上一任务 ${task.target_url} 的结果。`
+                    : "本次未启动，尚未产生采集结果。"}
+                </Typography>
+              )}
+            </Box>
+          </Collapse>
           <ScanControls
             url={url}
             setURL={setURL}
@@ -301,6 +348,27 @@ export default function App() {
             onStop={() => void stop()}
             onReset={reset}
           />
+          <Stack
+            direction="row"
+            sx={{ gap: 1, alignItems: "center", flexShrink: 0 }}
+          >
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}
+            >
+              {task
+                ? `结果来源：${task.target_url} · ${date(task.started_at)}`
+                : "独立浏览器采集，结果按任务保存"}
+            </Typography>
+            <Button
+              size="small"
+              onClick={() => openDialog("network")}
+              disabled={busy || initializing}
+            >
+              网络诊断
+            </Button>
+          </Stack>
           {currentActive && currentActive.id !== id && (
             <Alert
               severity="info"
@@ -359,7 +427,7 @@ export default function App() {
                 <Button
                   size="small"
                   startIcon={<RestartAltRounded />}
-                  onClick={reset}
+                  onClick={() => reset()}
                   disabled={running || busy || initializing}
                 >
                   清空工作区
@@ -389,7 +457,7 @@ export default function App() {
               }
               mode={mode}
               setMode={setMode}
-              onExport={() => setDialog("export")}
+              onExport={() => openDialog("export")}
               onRequests={(host) => {
                 setFilter({ ...filter, host, page: 0 });
                 setTab(1);
@@ -422,17 +490,25 @@ export default function App() {
         </Box>
         {dialog === "settings" && (
           <SettingsDialog
+            open={dialogOpen}
+            onExited={dialogExited}
             canShowBrowser={canShowBrowser}
             settings={settings}
             onSave={save}
-            onClose={() => setDialog("")}
+            onClose={closeDialog}
             onLibrary={() => openLibrary()}
             notify={notify}
           />
         )}
         {dialog === "history" && (
           <HistoryDialog
-            onClose={() => setDialog("")}
+            open={dialogOpen}
+            onExited={dialogExited}
+            notify={notify}
+            onDeleted={(result: HistoryDeletion) => {
+              if (result.ids.includes(id)) reset(true);
+            }}
+            onClose={closeDialog}
             onOpen={(t) => {
               setID(t.id);
               setURL(t.target_url);
@@ -443,21 +519,36 @@ export default function App() {
         )}
         {dialog === "rules" && (
           <RuleLibrary
+            open={dialogOpen}
+            onExited={dialogExited}
             initialCategory={libraryCategory}
-            onClose={() => setDialog("")}
+            onClose={closeDialog}
             notify={notify}
             onRematch={() => void rematch()}
           />
         )}
         {dialog === "export" && task && (
           <ExportDialog
+            open={dialogOpen}
+            onExited={dialogExited}
             task={task}
             domains={chosenDomains}
             mode={mode}
             settings={settings}
-            onClose={() => setDialog("")}
+            onClose={closeDialog}
             notify={notify}
             onRematch={() => void rematch()}
+          />
+        )}
+        {dialog === "network" && (
+          <NetworkDialog
+            open={dialogOpen}
+            onClose={closeDialog}
+            onExited={dialogExited}
+            url={url}
+            options={options}
+            onApply={setOptions}
+            notify={notify}
           />
         )}
         <Snackbar

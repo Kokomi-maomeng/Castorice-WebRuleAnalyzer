@@ -53,14 +53,14 @@ func (m *Manager) Close() {
 
 func (m *Manager) Start(ctx context.Context, raw string, options model.ScanOptions) (model.ScanTask, error) {
 	if err := ValidateOptions(options); err != nil {
-		return model.ScanTask{}, err
+		return model.ScanTask{}, security.Fail("invalid_options", "input", err.Error(), "请检查本次扫描参数及网络设置。", "", err)
 	}
 	if (options.Visible || options.Mode == "interactive") && !browser.VisibleSupported() {
 		return model.ScanTask{}, errors.New("当前服务没有图形会话，请使用快速扫描或自动探索并关闭可见浏览器")
 	}
 	u, err := domain.NormalizeURL(raw)
 	if err != nil {
-		return model.ScanTask{}, err
+		return model.ScanTask{}, security.Fail("invalid_url", "input", err.Error(), "请输入有效的 HTTP(S) 网站地址。", "", err)
 	}
 	policy, closeResolver := m.engine.policyFor(options)
 	defer closeResolver()
@@ -157,6 +157,20 @@ func (m *Manager) execute(ctx context.Context, r *runtimeTask, target, host stri
 	now := time.Now().UTC()
 	r.mu.Lock()
 	r.task.Status = status
+	if status == "timed_out" {
+		r.task.Diagnostic = security.Explain(security.Fail("time_limit", "scan", "达到最大扫描时间，结果尚不完整", "可增加扫描时间或使用辅助交互继续观察。", host, nil))
+	}
+	if status == "cancelled" {
+		r.task.Diagnostic = nil
+	}
+	if status == "completed" {
+		for _, page := range r.task.Pages {
+			if page.Status == "failed" || page.Status == "blocked" {
+				r.task.Status = "partial"
+				break
+			}
+		}
+	}
 	r.task.EndReason = reason
 	r.task.EndedAt = &now
 	r.task.Matches = matches
@@ -166,6 +180,9 @@ func (m *Manager) execute(ctx context.Context, r *runtimeTask, target, host stri
 	r.task.MatchesTruncated = total > len(matches)
 	if err != nil {
 		r.task.Error = security.RedactText(err.Error())
+		if r.task.Diagnostic == nil {
+			r.task.Diagnostic = security.Explain(err)
+		}
 	}
 	for i, p := range r.task.Pages {
 		if p.Status == "queued" || p.Status == "visiting" {
@@ -207,6 +224,7 @@ func (m *Manager) flush(r *runtimeTask) error {
 	r.flushMu.Lock()
 	defer r.flushMu.Unlock()
 	r.mu.Lock()
+	r.task.Summary = r.summaryLocked()
 	task := cloneTask(r.task)
 	reqs := []model.NetworkRequest{}
 	doms := []model.DomainRecord{}

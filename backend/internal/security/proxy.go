@@ -3,6 +3,7 @@ package security
 import (
 	"context"
 	"errors"
+	"github.com/castorice/Castorice-WebRuleAnalyzer/backend/internal/model"
 	"io"
 	"net"
 	"net/http"
@@ -24,6 +25,7 @@ type GuardProxy struct {
 	conns     map[net.Conn]bool
 	slots     chan struct{}
 	onBlock   func(string)
+	failures  map[string]*model.Diagnostic
 }
 
 func StartProxy(parent context.Context, p Policy, onBlock func(string)) (*GuardProxy, error) {
@@ -32,7 +34,7 @@ func StartProxy(parent context.Context, p Policy, onBlock func(string)) (*GuardP
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(parent)
-	proxy := &GuardProxy{Address: listener.Addr().String(), policy: p, ctx: ctx, cancel: cancel, conns: map[net.Conn]bool{}, slots: make(chan struct{}, 64), onBlock: onBlock}
+	proxy := &GuardProxy{Address: listener.Addr().String(), policy: p, ctx: ctx, cancel: cancel, conns: map[net.Conn]bool{}, slots: make(chan struct{}, 64), onBlock: onBlock, failures: map[string]*model.Diagnostic{}}
 	proxy.transport = &http.Transport{DialContext: p.DialContext, Proxy: nil, MaxIdleConns: 64, MaxConnsPerHost: 16, IdleConnTimeout: 20 * time.Second, ResponseHeaderTimeout: 30 * time.Second, ForceAttemptHTTP2: false}
 	proxy.server = &http.Server{Handler: proxy, ReadHeaderTimeout: 10 * time.Second, MaxHeaderBytes: 64 << 10, BaseContext: func(net.Listener) context.Context { return ctx }}
 	go func() { _ = proxy.server.Serve(listener) }()
@@ -60,10 +62,38 @@ func (p *GuardProxy) track(c net.Conn, add bool) {
 	}
 }
 func (p *GuardProxy) block(w http.ResponseWriter, err error) {
+	d := Explain(err)
+	if d.Host != "" {
+		p.mu.Lock()
+		if len(p.failures) >= 1024 {
+			p.failures = map[string]*model.Diagnostic{}
+		}
+		p.failures[d.Host] = d
+		p.mu.Unlock()
+	}
 	if p.onBlock != nil {
 		p.onBlock(RedactText(err.Error()))
 	}
-	http.Error(w, "目标被安全策略阻止或连接失败", http.StatusBadGateway)
+	http.Error(w, d.Message, http.StatusBadGateway)
+}
+
+func (p *GuardProxy) FailureFor(host string) *model.Diagnostic {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if d := p.failures[host]; d != nil {
+		copy := *d
+		return &copy
+	}
+	return nil
+}
+func (p *GuardProxy) connected(address string) {
+	host, _, err := net.SplitHostPort(address)
+	if err != nil {
+		return
+	}
+	p.mu.Lock()
+	delete(p.failures, host)
+	p.mu.Unlock()
 }
 
 func (p *GuardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -89,6 +119,7 @@ func (p *GuardProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		defer upstream.Close()
+		p.connected(destination)
 		hijacker, ok := w.(http.Hijacker)
 		if !ok {
 			return

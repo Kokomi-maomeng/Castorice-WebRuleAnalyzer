@@ -1,5 +1,7 @@
 export interface ScanOptions {
-  dns_mode?: "auto" | "system";
+  dns_mode?: "auto" | "system" | "secure";
+  dns_provider?: "cloudflare" | "google";
+  upstream_proxy?: string;
   mode: "quick" | "explore" | "interactive";
   max_seconds: number;
   max_depth: number;
@@ -23,6 +25,7 @@ export interface PageRecord {
   depth: number;
   status: string;
   reason?: string;
+  diagnostic?: Diagnostic;
 }
 export interface RuleEvidence {
   hostname: string;
@@ -46,6 +49,10 @@ export interface RuleMatch {
   broad: boolean;
 }
 export interface ScanTask {
+  diagnostic?: Diagnostic;
+  summary?: RequestSummary;
+  page_title?: string;
+  main_status?: number;
   test_mode?: boolean;
   id: string;
   target_url: string;
@@ -185,4 +192,48 @@ export interface RequestFilter {
   type: string;
   status: string;
   page: number;
+}
+
+export interface Diagnostic {
+  code: string;
+  stage: string;
+  message: string;
+  hint?: string;
+  host?: string;
+  addresses?: string[];
+  detail?: string;
+}
+export interface RequestSummary {
+  responded: number;
+  connection_failed: number;
+  http_error: number;
+  unfinished: number;
+  visited_pages: number;
+  failed_pages: number;
+  blocked_pages: number;
+  pending_pages: number;
+}
+export interface DNSCheck {
+  addresses: string[];
+  diagnostic?: Diagnostic;
+}
+export interface NetworkDiagnosis {
+  url: string;
+  host: string;
+  dns_mode: string;
+  dns_provider: string;
+  route: string;
+  system: DNSCheck;
+  secure: DNSCheck;
+  connected: boolean;
+  connection?: Diagnostic;
+}
+export interface HistoryPage {
+  items: ScanTask[];
+  total: number;
+  finished_count: number;
+}
+export interface HistoryDeletion {
+  deleted: number;
+  ids: string[];
 }

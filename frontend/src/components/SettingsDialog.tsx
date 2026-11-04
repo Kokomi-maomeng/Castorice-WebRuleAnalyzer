@@ -1,3 +1,4 @@
+import NetworkOptions from "./NetworkOptions";
 import { APP_VERSION } from "../version";
 import { useEffect, useState } from "react";
 import {
@@ -27,6 +28,8 @@ import type { ScanOptions, Settings } from "../types";
 import { api } from "../services/api";
 import { errorMessage, modeNames } from "../utils/format";
 interface Props {
+  open?: boolean;
+  onExited?: () => void;
   canShowBrowser: boolean;
   settings: Settings;
   onSave: (v: Settings) => void;
@@ -100,7 +103,13 @@ export default function SettingsDialog(p: Props) {
     }
   }
   return (
-    <Dialog open fullWidth maxWidth="md" onClose={p.onClose}>
+    <Dialog
+      open={p.open ?? true}
+      fullWidth
+      maxWidth="md"
+      onClose={p.onClose}
+      slotProps={{ transition: { onExited: p.onExited } }}
+    >
       <DialogTitle>
         软件设置
         <IconButton
@@ -179,23 +188,12 @@ export default function SettingsDialog(p: Props) {
           onChange={(e) => setScan("browser_path", e.target.value)}
           sx={{ mt: 2 }}
         />
-        <TextField
-          select
-          fullWidth
-          label="采集 DNS 解析"
-          value={draft.scan.dns_mode || "auto"}
-          onChange={(e) =>
-            setScan("dns_mode", e.target.value as "auto" | "system")
-          }
-          sx={{ mt: 2 }}
-        >
-          <MenuItem value="auto">系统 DNS + Fake-IP 安全回退</MenuItem>
-          <MenuItem value="system">仅系统 DNS</MenuItem>
-        </TextField>
-        <Typography variant="caption" color="text.secondary">
-          系统答案含已知 Fake-IP、且其余均为公网地址时，自动模式通过 Cloudflare
-          1.1.1.1 HTTPS DNS 查询域名，仍校验公网地址；不更改系统 DNS。
-        </Typography>
+        <Box sx={{ mt: 2 }}>
+          <NetworkOptions
+            options={draft.scan}
+            onChange={(scan) => setDraft((d) => ({ ...d, scan }))}
+          />
+        </Box>
         <FormControlLabel
           control={
             <Switch

@@ -329,3 +329,28 @@ func TestBrowserExplorationLimits(t *testing.T) {
 	}
 	assertClean(t, sessions)
 }
+
+func TestBrowserHTTPDiagnosticsAndLoadedDocumentTimeout(t *testing.T) {
+	m, base, _ := fixtureManager(t)
+	for _, tc := range []struct {
+		path   string
+		status int
+		code   string
+	}{{"/bad", 503, "http_503"}, {"/missing", 404, "http_404"}, {"/resource-hang", 200, "navigation_timeout"}} {
+		t.Run(tc.code, func(t *testing.T) {
+			o := options()
+			o.NavigationSeconds = 1
+			task, err := m.Start(context.Background(), base+tc.path, o)
+			if err != nil {
+				t.Fatal(err)
+			}
+			done := waitTask(t, m, task.ID)
+			if done.Status != "failed" || done.MainStatus != tc.status || done.Diagnostic == nil || done.Diagnostic.Code != tc.code {
+				t.Fatalf("incorrect page evidence: %+v", done)
+			}
+			if tc.status == 200 && done.PageTitle != "Main document loaded" {
+				t.Fatalf("title from loaded document was lost: %+v", done)
+			}
+		})
+	}
+}

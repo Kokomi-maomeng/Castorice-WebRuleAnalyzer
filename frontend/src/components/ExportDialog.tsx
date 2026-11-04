@@ -52,6 +52,8 @@ import { api, copy, download } from "../services/api";
 import { errorMessage } from "../utils/format";
 
 interface Props {
+  open?: boolean;
+  onExited?: () => void;
   task: ScanTask;
   domains: DomainRecord[];
   mode: "observed" | "merged";
@@ -420,7 +422,8 @@ export default function ExportDialog(p: Props) {
 
   return (
     <Dialog
-      open
+      slotProps={{ transition: { onExited: p.onExited } }}
+      open={p.open ?? true}
       onClose={p.onClose}
       maxWidth="lg"
       fullWidth
@@ -440,6 +443,23 @@ export default function ExportDialog(p: Props) {
         dividers
         sx={{ display: "flex", flexDirection: "column", minHeight: 0 }}
       >
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          sx={{ mb: 1, overflowWrap: "anywhere" }}
+        >
+          结果来源：{p.task.target_url}
+        </Typography>
+        {(p.task.status !== "completed" ||
+          (p.task.summary &&
+            (p.task.summary.connection_failed > 0 ||
+              p.task.summary.http_error > 0 ||
+              p.task.summary.unfinished > 0))) && (
+          <Alert severity="warning" sx={{ mb: 1 }}>
+            本次包含失败或未完成的请求。导出的是观察域名，可用于分流排障，不代表网站已成功访问或规则覆盖完整。
+          </Alert>
+        )}
+
         <Stack
           direction="row"
           sx={{ alignItems: "center", gap: 1, mb: 1, flexShrink: 0 }}

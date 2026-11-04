@@ -57,7 +57,9 @@ describe("实时任务隔离", () => {
     act(() => old.emit("one"));
     expect(result.current.task?.id).toBe("two");
     expect(old.close).toHaveBeenCalledOnce();
-    act(() => FakeEventSource.instances[1].emit("two"));
+    await act(async () => {
+      FakeEventSource.instances[1].emit("two");
+    });
     expect(result.current.task?.id).toBe("two");
   });
   it("实时断开时展示可恢复的连接状态", async () => {

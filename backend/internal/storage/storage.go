@@ -43,7 +43,7 @@ func Open(path string) (*Store, error) {
 		return nil, err
 	}
 	// A browser cannot survive a crashed server as an active task in history.
-	tasks, err := s.ListScans(500)
+	tasks, err := queryJSON[model.ScanTask](s.DB, `SELECT payload FROM scans WHERE status IN ('starting','running','stopping')`)
 	if err != nil {
 		db.Close()
 		return nil, err

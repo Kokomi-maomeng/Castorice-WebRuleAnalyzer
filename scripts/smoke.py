@@ -29,7 +29,7 @@ for attempt in range(20):
         if attempt == 19:
             raise
         time.sleep(0.5)
-assert health["version"] == "v1.4"
+assert health["version"] == "v" + (Path(__file__).resolve().parents[1] / "VERSION").read_text().strip().removesuffix(".0")
 token = request("/api/session")["token"]
 options = request("/api/settings")["scan"]
 options.update(mode="quick", visible=False, max_seconds=40, navigation_seconds=20, observe_seconds=3, quiet_millis=600)

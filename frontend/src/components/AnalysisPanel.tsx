@@ -1,3 +1,4 @@
+import DiagnosticAlert from "./DiagnosticAlert";
 import { type ReactNode, useState } from "react";
 import {
   Alert,
@@ -36,6 +37,8 @@ import {
   HubRounded,
   RadioButtonCheckedRounded,
   RouteRounded,
+  WarningAmberRounded,
+  StopCircleRounded,
 } from "@mui/icons-material";
 import type {
   NetworkRequest,
@@ -100,7 +103,7 @@ export default function AnalysisPanel(p: Props) {
   return (
     <Paper
       component="section"
-      className="analysis-panel"
+      className="analysis-panel motion-surface"
       sx={{
         border: 1,
         borderColor: "divider",
@@ -129,17 +132,25 @@ export default function AnalysisPanel(p: Props) {
               ? "primary"
               : t?.status === "failed"
                 ? "error"
-                : t
+                : t?.status === "completed"
                   ? "success"
-                  : "default"
+                  : t?.status === "timed_out" || t?.status === "partial"
+                    ? "warning"
+                    : "default"
           }
           icon={
             running ? (
               <RadioButtonCheckedRounded
                 sx={{ animation: "pulse 1.5s infinite" }}
               />
-            ) : (
+            ) : t?.status === "completed" ? (
               <CheckCircleRounded />
+            ) : t?.status === "failed" ||
+              t?.status === "timed_out" ||
+              t?.status === "partial" ? (
+              <WarningAmberRounded />
+            ) : (
+              <StopCircleRounded />
             )
           }
         />
@@ -171,7 +182,7 @@ export default function AnalysisPanel(p: Props) {
         />
       </Tabs>
       {p.tab === 0 && (
-        <Box className="analysis-body" sx={{ p: 2 }}>
+        <Box className="analysis-body motion-panel" sx={{ p: 2 }}>
           {!t ? (
             <Stack
               sx={{
@@ -204,7 +215,7 @@ export default function AnalysisPanel(p: Props) {
             <>
               <Stack direction="row" sx={{ mb: 1, gap: 1 }}>
                 {[
-                  ["实际域名", t.domain_count],
+                  ["观察域名", t.domain_count],
                   ["网络请求", t.request_count],
                   ["已访问页面", visited],
                 ].map(([label, value]) => (
@@ -230,14 +241,52 @@ export default function AnalysisPanel(p: Props) {
                   当前任务启用了显式测试白名单，仅用于本地验收站。
                 </Alert>
               )}
-              {t.error && (
-                <Alert severity="error" sx={{ mb: 2 }}>
-                  {t.error}
-                </Alert>
+              {t.diagnostic ? (
+                <DiagnosticAlert
+                  diagnostic={t.diagnostic}
+                  severity={t.status === "failed" ? "error" : "warning"}
+                />
+              ) : (
+                t.error && (
+                  <Alert severity="error" sx={{ mb: 2 }}>
+                    {t.error}
+                  </Alert>
+                )
               )}
+              {t.summary && (
+                <Typography
+                  variant="body2"
+                  color="text.secondary"
+                  sx={{ mb: 1.5 }}
+                >
+                  已取得响应 {t.summary.responded} · 连接失败{" "}
+                  {t.summary.connection_failed} · HTTP 异常{" "}
+                  {t.summary.http_error} · 未完成 {t.summary.unfinished}
+                </Typography>
+              )}
+              {!running &&
+                t.summary &&
+                (t.summary.failed_pages > 0 ||
+                  t.summary.blocked_pages > 0 ||
+                  t.summary.pending_pages > 0) && (
+                  <Alert severity="warning" sx={{ mb: 1.5 }}>
+                    页面覆盖不完整：访问失败 {t.summary.failed_pages}，受阻{" "}
+                    {t.summary.blocked_pages}，未访问 {t.summary.pending_pages}
+                    。观察域名可用于排障，不能据此判定网站可用。
+                  </Alert>
+                )}
               <Typography variant="body2" sx={{ overflowWrap: "anywhere" }}>
                 <b>当前页面</b>　{t.current_page || t.target_url}
               </Typography>
+              {t.page_title || t.main_status ? (
+                <Typography
+                  variant="body2"
+                  sx={{ mt: 0.5, overflowWrap: "anywhere" }}
+                >
+                  {t.page_title}
+                  {t.main_status ? ` · HTTP ${t.main_status}` : ""}
+                </Typography>
+              ) : null}
               <Typography
                 variant="caption"
                 color="text.secondary"
@@ -249,8 +298,20 @@ export default function AnalysisPanel(p: Props) {
               </Typography>
               {t.end_reason && (
                 <Alert
-                  icon={<CheckCircleRounded fontSize="small" />}
-                  severity={t.status === "failed" ? "warning" : "info"}
+                  icon={
+                    t.status === "completed" ? (
+                      <CheckCircleRounded fontSize="small" />
+                    ) : (
+                      <WarningAmberRounded fontSize="small" />
+                    )
+                  }
+                  severity={
+                    t.status === "failed" ||
+                    t.status === "partial" ||
+                    t.status === "timed_out"
+                      ? "warning"
+                      : "info"
+                  }
                   sx={{ mt: 1 }}
                 >
                   {reasonNames[t.end_reason] || t.end_reason}
@@ -350,7 +411,7 @@ export default function AnalysisPanel(p: Props) {
         </Box>
       )}
       {p.tab === 1 && (
-        <Box className="analysis-body requests-body">
+        <Box className="analysis-body requests-body motion-panel">
           <Stack direction="row" sx={{ p: 1.5, gap: 1, flexWrap: "wrap" }}>
             <TextField
               label="域名过滤"
@@ -444,6 +505,7 @@ export default function AnalysisPanel(p: Props) {
               <TableBody>
                 {p.requests.map((req) => (
                   <TableRow
+                    className="motion-row"
                     hover
                     key={req.id}
                     onClick={() => setDetail(req)}
@@ -522,7 +584,7 @@ export default function AnalysisPanel(p: Props) {
         </Box>
       )}
       {p.tab === 2 && (
-        <Box className="analysis-body logs-body" sx={{ p: 2 }}>
+        <Box className="analysis-body logs-body motion-panel" sx={{ p: 2 }}>
           <Stack direction="row" sx={{ mb: 2, gap: 1, alignItems: "center" }}>
             <TextField
               select
@@ -622,7 +684,9 @@ export default function AnalysisPanel(p: Props) {
           </Box>
         </Box>
       )}
-      {p.tab === 3 && <Box className="analysis-body">{p.matchContent}</Box>}
+      {p.tab === 3 && (
+        <Box className="analysis-body motion-panel">{p.matchContent}</Box>
+      )}
       <Dialog
         open={!!detail}
         onClose={() => setDetail(undefined)}

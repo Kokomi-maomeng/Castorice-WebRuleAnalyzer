@@ -1,4 +1,4 @@
-# Castorice-WebRuleAnalyzer v1.4
+# Castorice-WebRuleAnalyzer v1.4.1
 
 Web 分流规则分析器。输入网址，用独立 Chrome / Edge / Chromium 采集实际网络请求，查看域名与规则命中，导出 Clash/Mihomo、Rule Provider 或 sing-box 规则。
 
@@ -7,6 +7,16 @@ Web 分流规则分析器。输入网址，用独立 Chrome / Edge / Chromium �
 从 [GitHub Releases](https://github.com/Kokomi-maomeng/Castorice-WebRuleAnalyzer/releases/latest) 下载 Windows 便携 ZIP，**解压后双击 `Castorice-WebRuleAnalyzer.exe`**。无需 Go、Node 或安装器。Windows 10/11 x64 需要 Edge WebView2 Runtime 和 Chrome/Edge；本次在 Windows 11 上完成实测。发行包不带个人数据或外部规则缓存。
 
 软件数据存于 EXE 旁的 `data/`，导出文件存于 `exports/`。解压到可写目录，移动整个目录即可携带数据。关闭主窗口会取消扫描并关闭本次创建的子进程。请先退出旧版再替换 EXE，保留自己的 `data/` 与 `exports/`；先备份数据目录。不能在 ZIP 内直接运行。
+
+## v1.4.1 的改动
+
+- 区分地址、DNS、地址安全、代理、TLS、HTTP 与超时错误；保留诊断详情、最终页面及主文档响应。
+- 增加网络诊断、独立安全 DNS、Cloudflare/Google 服务选择与本机 HTTP/SOCKS5 代理；每次目标连接仍校验并固定公网 IP。
+- 新输入未启动时明确标注上一任务结果，补充失败/未完成请求及页面覆盖统计，超时与停止使用不同于成功的状态样式。
+- 历史支持搜索、分页、单条/多选删除及清空全部已结束记录，活动任务保留。
+- 补齐面板、列表、状态过渡和弹窗退出动画，并继续遵循系统减少动态效果偏好。
+
+网络异常时，点击“网络诊断”比较系统解析与独立 HTTPS DNS。独立模式会替代系统解析答案，需明确选择；本机代理支持无认证的 HTTP/SOCKS5 回环 IP 地址，不能因此扫描私网目标。输入其他服务的合法域名不会被自动改写。
 
 ## v1.4 的改动
 

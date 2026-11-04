@@ -29,8 +29,14 @@ const sessionMarker = ".castorice-session"
 const sessionOwner = "Castorice-WebRuleAnalyzer\n"
 
 func ValidateOptions(o model.ScanOptions) error {
-	if o.DNSMode != "" && o.DNSMode != "auto" && o.DNSMode != "system" {
+	if o.DNSMode != "" && o.DNSMode != "auto" && o.DNSMode != "system" && o.DNSMode != "secure" {
 		return errors.New("未知 DNS 解析模式")
+	}
+	if !security.ValidDNSProvider(o.DNSProvider) {
+		return errors.New("未知安全 DNS 服务")
+	}
+	if err := security.ValidateProxy(o.UpstreamProxy); err != nil {
+		return err
 	}
 	if o.Mode != "quick" && o.Mode != "explore" && o.Mode != "interactive" {
 		return errors.New("未知扫描模式")
@@ -43,8 +49,9 @@ func ValidateOptions(o model.ScanOptions) error {
 
 func (e Engine) policyFor(o model.ScanOptions) (security.Policy, func()) {
 	p := e.Policy
+	p.UpstreamProxy = o.UpstreamProxy
 	if p.Resolver == nil && o.DNSMode != "system" {
-		resolver := security.NewAutoResolver()
+		resolver := security.NewResolver(o.DNSMode, o.DNSProvider, o.UpstreamProxy)
 		p.Resolver = resolver
 		return p, resolver.Close
 	}
@@ -62,7 +69,7 @@ func (e Engine) run(ctx context.Context, r *runtimeTask, target string) (string,
 	}
 	browserPath, err := browser.Find(o.BrowserPath)
 	if err != nil {
-		return "browser_start_failed", err
+		return "browser_start_failed", security.Fail("browser_start_failed", "browser", err.Error(), "请安装 Chrome、Edge 或 Chromium，或在软件设置中核对浏览器路径。", "", err)
 	}
 	if err = os.MkdirAll(e.SessionDir, 0700); err != nil {
 		return "profile_error", err
@@ -124,7 +131,15 @@ func (e Engine) run(ctx context.Context, r *runtimeTask, target string) (string,
 		}
 	})
 	r.log("INFO", "browser", "启动独立浏览器；临时 Profile；逐连接地址保护；不采集 Cookie、认证头或正文")
-	if err = chromedp.Run(tabCtx, network.Enable(), cdpbrowser.SetDownloadBehavior(cdpbrowser.SetDownloadBehaviorBehaviorDeny)); err != nil {
+	if err = chromedp.Run(tabCtx, network.Enable(), chromedp.ActionFunc(func(ctx context.Context) error {
+		tree, err := page.GetFrameTree().Do(ctx)
+		if err == nil {
+			r.mu.Lock()
+			r.mainFrame = tree.Frame.ID
+			r.mu.Unlock()
+		}
+		return err
+	}), cdpbrowser.SetDownloadBehavior(cdpbrowser.SetDownloadBehaviorBehaviorDeny)); err != nil {
 		return "browser_start_failed", fmt.Errorf("浏览器启动失败: %s", security.RedactText(err.Error()))
 	}
 	r.mu.Lock()
@@ -170,12 +185,17 @@ func (e Engine) run(ctx context.Context, r *runtimeTask, target string) (string,
 		}
 		if err = policy.Validate(ctx, u); err != nil {
 			r.page(item.raw, item.depth, "blocked", err.Error())
+			r.pageDiagnostic(item.raw, security.Explain(err))
 			if visited == 0 {
-				return "unsafe_target", err
+				return security.Explain(err).Code, err
 			}
 			continue
 		}
 		r.page(item.raw, item.depth, "visiting", "")
+		r.mu.Lock()
+		r.task.MainStatus = 0
+		r.task.PageTitle = ""
+		r.mu.Unlock()
 		r.log("INFO", "navigation", "访问 "+security.RedactURL(item.raw))
 		navCtx, cancel := context.WithTimeout(tabCtx, time.Duration(o.NavigationSeconds)*time.Second)
 		response, navErr := chromedp.RunResponse(navCtx, chromedp.Navigate(item.raw))
@@ -183,10 +203,47 @@ func (e Engine) run(ctx context.Context, r *runtimeTask, target string) (string,
 		if navErr == nil && response != nil && response.Status >= 400 {
 			navErr = fmt.Errorf("目标页面返回 HTTP %d", response.Status)
 		}
+		r.mu.Lock()
+		status := r.task.MainStatus
+		r.mu.Unlock()
+		if response != nil {
+			status = int(response.Status)
+		}
+		if response != nil {
+			r.mu.Lock()
+			r.task.MainStatus = status
+			if response.URL != "" {
+				r.task.CurrentPage = security.RedactPageURL(response.URL)
+			}
+			r.revision++
+			r.mu.Unlock()
+		}
+		if ctx.Err() == nil {
+			metadataCtx, metadataCancel := context.WithTimeout(tabCtx, 2*time.Second)
+			var title, current string
+			if chromedp.Run(metadataCtx, chromedp.Title(&title), chromedp.Location(&current)) == nil {
+				if len([]rune(title)) > 240 {
+					title = string([]rune(title)[:240])
+				}
+				if parsed, e := url.Parse(current); e == nil && (parsed.Scheme == "http" || parsed.Scheme == "https") {
+					r.mu.Lock()
+					r.task.PageTitle = security.RedactText(title)
+					r.task.CurrentPage = security.RedactPageURL(current)
+					r.mu.Unlock()
+				}
+			}
+			metadataCancel()
+		}
 		visited++
 		if navErr != nil {
+			d := security.NavigationFailure(navErr, status, u.Hostname())
+			if guarded := proxy.FailureFor(r.lastDocumentHost(u.Hostname())); guarded != nil {
+				d = guarded
+			}
+			navErr = &security.Failure{Diagnostic: *d, Cause: navErr}
 			navigationFailures++
 			r.page(item.raw, item.depth, "failed", security.RedactText(navErr.Error()))
+			r.pageDiagnostic(item.raw, d)
 			r.log("WARN", "navigation", "页面导航未完成: "+security.RedactText(navErr.Error()))
 			if ctx.Err() != nil {
 				return "interrupted", ctx.Err()
@@ -222,7 +279,7 @@ func (e Engine) run(ctx context.Context, r *runtimeTask, target string) (string,
 		}
 		if navErr != nil {
 			if o.Mode == "quick" {
-				return "navigation_failed", fmt.Errorf("目标页面未能完成导航: %s；已观察请求仍可查看和导出", security.RedactText(navErr.Error()))
+				return "navigation_failed", navErr
 			}
 			continue
 		}
@@ -310,6 +367,27 @@ func (e Engine) run(ctx context.Context, r *runtimeTask, target string) (string,
 
 // Kept separate to avoid network-idle hangs on polling/streaming/WebSockets. The
 // observation window is a hard per-page ceiling, even if requests never stop.
+func (r *runtimeTask) pageDiagnostic(raw string, d *model.Diagnostic) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	safe := security.RedactPageURL(raw)
+	for i, p := range r.task.Pages {
+		if p.URL == safe {
+			r.task.Pages[i].Diagnostic = d
+		}
+	}
+	r.task.Diagnostic = d
+	r.revision++
+}
+func (r *runtimeTask) lastDocumentHost(fallback string) string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.mainDocumentHost != "" {
+		return r.mainDocumentHost
+	}
+	return fallback
+}
+
 func waitObservation(ctx context.Context, r *runtimeTask, window, quiet time.Duration, lost <-chan struct{}) error {
 	started := time.Now()
 	timer := time.NewTimer(window)

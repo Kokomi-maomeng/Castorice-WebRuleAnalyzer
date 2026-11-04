@@ -436,3 +436,39 @@ body,
     padding: 8px 12px;
   }
 }
+
+/* Animate state changes and new keyed rows, not each SSE refresh. */
+@keyframes row-enter {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.motion-row {
+  animation: row-enter 160ms cubic-bezier(0.2, 0, 0, 1);
+}
+.motion-surface {
+  animation: panel-enter 180ms cubic-bezier(0.2, 0, 0, 1);
+}
+.app-shell,
+.app-shell .MuiPaper-root {
+  transition:
+    background-color 180ms cubic-bezier(0.2, 0, 0, 1),
+    color 180ms cubic-bezier(0.2, 0, 0, 1),
+    border-color 180ms cubic-bezier(0.2, 0, 0, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .motion-row,
+  .motion-surface,
+  .motion-panel {
+    animation: none !important;
+  }
+  .app-shell,
+  .app-shell .MuiPaper-root {
+    transition: none !important;
+  }
+}

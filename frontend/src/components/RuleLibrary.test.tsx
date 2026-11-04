@@ -3,7 +3,7 @@ import {
   fireEvent,
   render,
   screen,
-  waitFor,
+  act,
 } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import RuleLibrary from "./RuleLibrary";
@@ -16,8 +16,10 @@ vi.mock("../services/api", () => ({
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  vi.useRealTimers();
 });
 it("其他来源更新不重载编辑区，同源更新保留草稿直到明确采用", async () => {
+  vi.useFakeTimers();
   let own = "one",
     other = "one";
   const category = () => ({
@@ -46,8 +48,11 @@ it("其他来源更新不重载编辑区，同源更新保留草稿直到明确�
       notify={vi.fn()}
     />,
   );
-  const editor = await screen.findByRole("textbox", { name: "规则原文编辑区" });
-  await waitFor(() => expect(editor).toHaveValue("original one"));
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(250);
+  });
+  const editor = screen.getByRole("textbox", { name: "规则原文编辑区" });
+  expect(editor).toHaveValue("original one");
   fireEvent.change(editor, { target: { value: "my draft" } });
   const loads = mockAPI.mock.calls.filter(([path]) =>
     path.startsWith("/rules/content"),
@@ -56,9 +61,10 @@ it("其他来源更新不重载编辑区，同源更新保留草稿直到明确�
   fireEvent.change(screen.getByRole("textbox", { name: "搜索规则分类" }), {
     target: { value: "app" },
   });
-  await waitFor(() =>
-    expect(mockAPI).toHaveBeenCalledWith("/rules/categories?q=app"),
-  );
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(250);
+  });
+  expect(mockAPI).toHaveBeenCalledWith("/rules/categories?q=app");
   expect(editor).toHaveValue("my draft");
   expect(
     mockAPI.mock.calls.filter(([path]) => path.startsWith("/rules/content")),
@@ -67,7 +73,10 @@ it("其他来源更新不重载编辑区，同源更新保留草稿直到明确�
   fireEvent.change(screen.getByRole("textbox", { name: "搜索规则分类" }), {
     target: { value: "app2" },
   });
-  const adopt = await screen.findByRole("button", { name: "采用新原文" });
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(250);
+  });
+  const adopt = screen.getByRole("button", { name: "采用新原文" });
   expect(screen.getByRole("textbox", { name: "规则原文编辑区" })).toHaveValue(
     "my draft",
   );

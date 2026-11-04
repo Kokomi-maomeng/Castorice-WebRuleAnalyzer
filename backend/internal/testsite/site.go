@@ -79,6 +79,10 @@ func Handler(mappedHosts bool) http.Handler {
 			w.WriteHeader(200)
 		}
 	})
+	mux.HandleFunc("/resource-hang", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = fmt.Fprint(w, `<!doctype html><html><head><title>Main document loaded</title></head><body><img src="/hang"></body></html>`)
+	})
 	upgrader := websocket.Upgrader{CheckOrigin: func(r *http.Request) bool {
 		u, err := url.Parse(r.Header.Get("Origin"))
 		return err == nil && (strings.HasSuffix(u.Hostname(), ".scan.test") || u.Hostname() == "scan.test" || u.Hostname() == "127.0.0.1")
