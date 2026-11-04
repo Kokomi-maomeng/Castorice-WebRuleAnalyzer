@@ -6,6 +6,7 @@ import {
   Button,
   Checkbox,
   Chip,
+  ClickAwayListener,
   CircularProgress,
   Collapse,
   Dialog,
@@ -27,6 +28,7 @@ import {
   TableRow,
   Tabs,
   TextField,
+  Tooltip,
   Typography,
   useMediaQuery,
 } from "@mui/material";
@@ -35,6 +37,7 @@ import {
   ContentCopyRounded,
   DownloadRounded,
   ExpandMoreRounded,
+  InfoOutlined,
   RefreshRounded,
   TuneRounded,
 } from "@mui/icons-material";
@@ -62,6 +65,45 @@ interface Props {
   notify: (s: string) => void;
   onRematch: () => void;
 }
+const suffixWarning =
+  "已主动选择 DOMAIN-SUFFIX：这会包含观察 Hostname 的全部子域名，扩大匹配范围。";
+const suffixHelp =
+  "后缀匹配会包含观察域名的全部子域名；默认精确 DOMAIN 更保守。";
+
+function Hint(p: { label: string; text: string; warning?: boolean }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <ClickAwayListener onClickAway={() => setOpen(false)}>
+      <Tooltip
+        title={p.text}
+        arrow
+        placement="bottom"
+        open={open}
+        slotProps={{
+          tooltip: { sx: { whiteSpace: "pre-line", maxWidth: 360 } },
+        }}
+        onOpen={() => setOpen(true)}
+        onClose={() => setOpen(false)}
+      >
+        <IconButton
+          size="small"
+          className="export-hint"
+          color={p.warning ? "warning" : "default"}
+          aria-label={p.label}
+          onClick={() => setOpen(true)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              setOpen(false);
+              e.stopPropagation();
+            }
+          }}
+        >
+          <InfoOutlined fontSize="small" />
+        </IconButton>
+      </Tooltip>
+    </ClickAwayListener>
+  );
+}
 function Pager(p: {
   count: number;
   page: number;
@@ -74,7 +116,7 @@ function Pager(p: {
     <Stack
       direction="row"
       className="preview-pager"
-      sx={{ gap: 1, alignItems: "center", flexWrap: "wrap", py: 1 }}
+      sx={{ gap: 1, alignItems: "center", flexWrap: "wrap", py: 0.75 }}
     >
       <Typography variant="caption" color="text.secondary" sx={{ mr: "auto" }}>
         {p.count ? p.page * p.size + 1 : 0}–
@@ -117,12 +159,10 @@ function Pager(p: {
 }
 export default function ExportDialog(p: Props) {
   const compact = useMediaQuery("(max-width:700px), (max-height:600px)");
-  const [settingsOpen, setSettingsOpen] = useState(
-    !compact || p.mode === "merged",
-  );
+  const [settingsOpen, setSettingsOpen] = useState(!compact);
   useEffect(() => {
-    setSettingsOpen(!compact || p.mode === "merged");
-  }, [compact, p.mode]);
+    setSettingsOpen(!compact);
+  }, [compact]);
   const [mode, setMode] = useState(p.mode);
   const [format, setFormat] = useState<ExportFormat>(p.settings.export_format);
   const [policy, setPolicy] = useState(p.settings.policy);
@@ -161,6 +201,11 @@ export default function ExportDialog(p: Props) {
   const [lineSize, setLineSize] = useState(200);
   const [query, setQuery] = useState("");
   const [stateFilter, setStateFilter] = useState("all");
+  const [categoryQuery, setCategoryQuery] = useState("");
+  const [categoryOpen, setCategoryOpen] = useState(false);
+  const categoryRequest = useRef(0);
+  const categoryLoading = useRef(false);
+  const committedCategories = useRef(categoryIDs);
   const mounted = useRef(false);
   const entryScroll = useRef<HTMLDivElement>(null);
   const contentScroll = useRef<HTMLDivElement>(null);
@@ -181,14 +226,20 @@ export default function ExportDialog(p: Props) {
           api<RuleSource[]>("/rules/sources"),
         ]);
         if (!disposed) {
-          setCategories(c);
+          // Preserve object identity when a poll has no actual cache changes.
+          setCategories((old) =>
+            JSON.stringify(old) === JSON.stringify(c) ? old : c,
+          );
           setSources(s);
           setLibraryError("");
-          setCategoryIDs((old) =>
-            old.every((id) => c.some((item) => item.id === id))
+          setCategoryIDs((old) => {
+            if (categoryLoading.current) return old;
+            const next = old.every((id) => c.some((item) => item.id === id))
               ? old
-              : old.filter((id) => c.some((item) => item.id === id)),
-          );
+              : old.filter((id) => c.some((item) => item.id === id));
+            committedCategories.current = next;
+            return next;
+          });
         }
       } catch (e) {
         if (!disposed) setLibraryError(errorMessage(e));
@@ -204,7 +255,12 @@ export default function ExportDialog(p: Props) {
     };
   }, [reload]);
 
+  const selectedCategories = useMemo(
+    () => categories.filter((c) => categoryIDs.includes(c.id)),
+    [categories, categoryIDs],
+  );
   const needsCategory = mode === "merged" && !categoryIDs.length;
+  const domainSnapshot = JSON.stringify(p.domains.map((d) => d.hostname));
   const categorySnapshot = JSON.stringify(
     Object.fromEntries(
       mode === "merged"
@@ -229,12 +285,12 @@ export default function ExportDialog(p: Props) {
       filename,
       list_only: listOnly,
       use_suffix: suffix,
-      domains: p.domains.map((d) => d.hostname),
+      domains: JSON.parse(domainSnapshot) as string[],
       excluded: [...excluded],
     }),
     [
       p.task.id,
-      p.domains,
+      domainSnapshot,
       mode,
       categoryIDs,
       categorySnapshot,
@@ -262,6 +318,7 @@ export default function ExportDialog(p: Props) {
     let disposed = false;
     setLoading(true);
     setError("");
+    if (loadingCategory) return;
     const timer = setTimeout(() => {
       void api<ExportResult>("/export", "POST", job)
         .then((result) => {
@@ -282,7 +339,7 @@ export default function ExportDialog(p: Props) {
       disposed = true;
       clearTimeout(timer);
     };
-  }, [job, scope, key]);
+  }, [job, scope, key, loadingCategory]);
 
   async function syncLibrary() {
     setSyncing(true);
@@ -306,6 +363,11 @@ export default function ExportDialog(p: Props) {
     else p.onRematch();
   }
   async function choose(values: RuleCategory[]) {
+    const request = ++categoryRequest.current;
+    categoryLoading.current = true;
+    setCategoryIDs(values.map((c) => c.id));
+    setCategoryQuery("");
+    setCategoryOpen(false);
     setLoadingCategory(true);
     setLibraryError("");
     try {
@@ -316,23 +378,30 @@ export default function ExportDialog(p: Props) {
             ? c
             : await api<RuleCategory>("/rules/load", "POST", { id: c.id }),
         );
-      if (!mounted.current) return;
-      setCategoryIDs(resolved.map((c) => c.id));
+      if (!mounted.current || categoryRequest.current !== request) return;
+      committedCategories.current = resolved.map((c) => c.id);
       setExcluded(new Set());
       setPage(0);
       setCategories((old) =>
         old.map((c) => resolved.find((r) => r.id === c.id) || c),
       );
-      if (compact && resolved.length) setSettingsOpen(false);
       p.onRematch();
     } catch (e) {
-      if (mounted.current) setLibraryError(errorMessage(e));
+      if (mounted.current && categoryRequest.current === request) {
+        setCategoryIDs(committedCategories.current);
+        setLibraryError(errorMessage(e));
+      }
     } finally {
-      if (mounted.current) setLoadingCategory(false);
+      if (mounted.current && categoryRequest.current === request) {
+        categoryLoading.current = false;
+        setLoadingCategory(false);
+      }
     }
   }
 
-  const result = preview?.scope === scope ? preview.result : undefined;
+  // Keep the last list in place during recomputation; stale output cannot be saved.
+  const result = preview?.result;
+  const currentScope = preview?.scope === scope && !loadingCategory;
   const fresh =
     !loading &&
     !loadingCategory &&
@@ -345,11 +414,14 @@ export default function ExportDialog(p: Props) {
     const q = query.trim().toLowerCase();
     return (
       result?.entries.filter((e) => {
-        const selected = !excluded.has(`${e.rule_type},${e.rule_value}`);
+        const observed =
+          e.label === "本次抓取" ||
+          e.label === "双方匹配" ||
+          e.origins.some((o) => o.source === "observed");
         return (
           (stateFilter === "all" ||
-            (stateFilter === "selected" && selected) ||
-            (stateFilter === "excluded" && !selected) ||
+            (stateFilter === "observed" && observed) ||
+            (stateFilter === "library" && !observed) ||
             (stateFilter === "covered" && !!e.covered_by)) &&
           (!q ||
             `${e.rule_type},${e.rule_value} ${e.label} ${e.origins.map((o) => `${o.source}/${o.source_category}`).join(" ")}`
@@ -358,7 +430,7 @@ export default function ExportDialog(p: Props) {
         );
       }) || []
     );
-  }, [result, query, stateFilter, excluded]);
+  }, [result, query, stateFilter]);
   const actualPage = Math.min(
     page,
     Math.max(0, Math.ceil(entries.length / pageSize) - 1),
@@ -392,14 +464,18 @@ export default function ExportDialog(p: Props) {
   }, [actualContentPage, lineSize]);
   const updating = syncing || sources.some((s) => s.status === "syncing");
   const missingSources = sources.filter((s) => !s.category_count);
-  const formatHelp =
-    format === "clash"
-      ? listOnly
-        ? "将规则列表项放入客户端 rules 段；策略组需已存在。"
-        : "导出包含 rules 段，合并到现有客户端配置；策略组需已存在。"
-      : format === "provider"
-        ? "这是 classical Rule Provider 文件，需在客户端 rule-providers 中引用。"
-        : "这是 sing-box source rule-set 文件，需在 rule_set 和路由规则中引用。";
+  const scopeWarnings = [
+    ...(p.task.status !== "completed" ||
+    (p.task.summary &&
+      (p.task.summary.connection_failed > 0 ||
+        p.task.summary.http_error > 0 ||
+        p.task.summary.unfinished > 0))
+      ? [
+          "本次包含失败或未完成的请求。导出的是观察域名，可用于分流排障，不代表网站已成功访问或规则覆盖完整。",
+        ]
+      : []),
+    ...(result?.warnings.filter((w) => w !== suffixWarning) || []),
+  ];
 
   function useFreshResult(action: (result: ExportResult) => Promise<unknown>) {
     if (!fresh || !result) return;
@@ -429,13 +505,34 @@ export default function ExportDialog(p: Props) {
       fullWidth
       className="export-dialog"
     >
-      <DialogTitle sx={{ py: 1.25 }}>
-        预览与导出规则
-        <IconButton
-          aria-label="关闭导出"
-          onClick={p.onClose}
-          sx={{ float: "right" }}
+      <DialogTitle className="export-title">
+        <Box component="span">预览与导出规则</Box>
+        {scopeWarnings.length > 0 && (
+          <Hint
+            label="查看抓取与范围提示"
+            text={scopeWarnings.join("\n\n")}
+            warning
+          />
+        )}
+        <Button
+          size="small"
+          startIcon={<TuneRounded />}
+          endIcon={
+            <ExpandMoreRounded
+              sx={{
+                transform: settingsOpen ? "rotate(180deg)" : "none",
+                transition: "transform 180ms",
+              }}
+            />
+          }
+          aria-expanded={settingsOpen}
+          aria-controls="export-settings"
+          sx={{ ml: "auto", flexShrink: 0 }}
+          onClick={() => setSettingsOpen((v) => !v)}
         >
+          导出设置
+        </Button>
+        <IconButton aria-label="关闭导出" onClick={p.onClose} size="small">
           <CloseRounded />
         </IconButton>
       </DialogTitle>
@@ -443,279 +540,250 @@ export default function ExportDialog(p: Props) {
         dividers
         sx={{ display: "flex", flexDirection: "column", minHeight: 0 }}
       >
-        <Typography
-          variant="caption"
-          color="text.secondary"
-          sx={{ mb: 1, overflowWrap: "anywhere" }}
-        >
-          结果来源：{p.task.target_url}
-        </Typography>
-        {(p.task.status !== "completed" ||
-          (p.task.summary &&
-            (p.task.summary.connection_failed > 0 ||
-              p.task.summary.http_error > 0 ||
-              p.task.summary.unfinished > 0))) && (
-          <Alert severity="warning" sx={{ mb: 1 }}>
-            本次包含失败或未完成的请求。导出的是观察域名，可用于分流排障，不代表网站已成功访问或规则覆盖完整。
-          </Alert>
-        )}
-
-        <Stack
-          direction="row"
-          sx={{ alignItems: "center", gap: 1, mb: 1, flexShrink: 0 }}
-        >
-          <Button
-            size="small"
-            startIcon={<TuneRounded />}
-            endIcon={
-              <ExpandMoreRounded
-                sx={{
-                  transform: settingsOpen ? "rotate(180deg)" : "none",
-                  transition: "transform 180ms",
-                }}
-              />
-            }
-            aria-expanded={settingsOpen}
-            onClick={() => setSettingsOpen((v) => !v)}
-          >
-            导出设置
-          </Button>
-          <Typography
-            variant="caption"
-            color="text.secondary"
-            sx={{ ml: "auto" }}
-          >
-            {mode === "merged"
-              ? `合并规则库 · ${categoryIDs.length} 个分类`
-              : "仅抓取结果"}{" "}
-            ·{" "}
-            {format === "clash"
-              ? "Clash / Mihomo"
-              : format === "provider"
-                ? "Rule Provider"
-                : "sing-box"}
-          </Typography>
-        </Stack>
-        <Typography variant="caption" color="text.secondary" sx={{ py: 0.5 }}>
-          {formatHelp}
-        </Typography>
         <Collapse in={settingsOpen} sx={{ flexShrink: 0 }}>
-          <Box className="export-options">
-            <TextField
-              select
-              label="导出范围"
-              value={mode}
-              onChange={(e) => {
-                setMode(e.target.value as typeof mode);
-                setExcluded(new Set());
-                setPage(0);
-              }}
-            >
-              <MenuItem value="observed">仅抓取结果</MenuItem>
-              <MenuItem value="merged">抓取 + 开源规则库</MenuItem>
-            </TextField>
-            <TextField
-              select
-              label="输出格式"
-              value={format}
-              onChange={(e) => setFormat(e.target.value as ExportFormat)}
-            >
-              <MenuItem value="clash">Clash / Mihomo YAML</MenuItem>
-              <MenuItem value="provider">Mihomo Rule Provider</MenuItem>
-              <MenuItem value="singbox">sing-box Source Rule Set v3</MenuItem>
-            </TextField>
-            <TextField
-              label="策略组名称"
-              value={policy}
-              helperText="需与客户端已有策略组名称一致"
-              onChange={(e) => setPolicy(e.target.value)}
-              disabled={format !== "clash"}
-            />
-            <TextField
-              label="文件名称（自动扩展名）"
-              value={filename}
-              onChange={(e) => setFilename(e.target.value)}
-            />
-          </Box>
-          {mode === "merged" && (
-            <Box sx={{ mt: 1.5 }}>
-              <Autocomplete
-                multiple
-                options={categories}
-                value={categories.filter((c) => categoryIDs.includes(c.id))}
-                disabled={loadingCategory}
-                loading={loadingLibrary}
-                loadingText="正在读取规则分类…"
-                noOptionsText={
-                  categories.length
-                    ? "没有匹配的分类，请换个名称搜索"
-                    : "尚未下载规则库，请点击下方下载按钮"
-                }
-                limitTags={3}
-                disableCloseOnSelect
-                getOptionLabel={(c) => `${c.name} · ${c.source}`}
-                getOptionKey={(c) => c.id}
-                isOptionEqualToValue={(a, b) => a.id === b.id}
-                filterOptions={(options, state) => {
-                  const q = state.inputValue.trim().toLowerCase();
-                  return options
-                    .filter(
-                      (c) =>
-                        !q || `${c.name} ${c.source}`.toLowerCase().includes(q),
-                    )
-                    .sort(
-                      (a, b) =>
-                        Number(b.name.toLowerCase() === q) -
-                          Number(a.name.toLowerCase() === q) ||
-                        Number(b.name.toLowerCase().startsWith(q)) -
-                          Number(a.name.toLowerCase().startsWith(q)),
-                    )
-                    .slice(0, 80);
+          <Box id="export-settings" className="export-settings">
+            <Box className="export-options">
+              <TextField
+                select
+                label="导出范围"
+                value={mode}
+                onChange={(e) => {
+                  setMode(e.target.value as typeof mode);
+                  setStateFilter("all");
+                  setExcluded(new Set());
+                  setPage(0);
                 }}
-                onChange={(_, values) => void choose(values)}
-                renderInput={(params) => (
-                  <TextField
-                    {...params}
-                    label="规则分类"
-                    placeholder="搜索分类名称，如 Facebook"
-                    helperText={
-                      loadingCategory
-                        ? "正在下载并验证分类…"
-                        : `${categories.length} 个本地分类 · 输入名称搜索，最多显示 80 个匹配项`
-                    }
-                  />
-                )}
-                renderOption={(props, option, state) => {
-                  const { key, ...rest } = props;
-                  return (
-                    <li key={key} {...rest}>
-                      <Checkbox
-                        checked={state.selected}
-                        size="small"
-                        tabIndex={-1}
-                        disableRipple
-                        sx={{ pointerEvents: "none" }}
-                      />
-                      <Box sx={{ minWidth: 0 }}>
-                        <Typography
-                          variant="body2"
-                          sx={{ overflowWrap: "anywhere" }}
-                        >
-                          {option.name}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          {option.source} ·{" "}
-                          {option.loaded
-                            ? `${option.rule_count} 条`
-                            : "按需下载"}
-                          {option.broad ? " · 通用集合" : ""}
-                        </Typography>
-                      </Box>
-                    </li>
-                  );
-                }}
+              >
+                <MenuItem value="observed">仅抓取结果</MenuItem>
+                <MenuItem value="merged">抓取 + 开源规则库</MenuItem>
+              </TextField>
+              <TextField
+                select
+                label="输出格式"
+                value={format}
+                onChange={(e) => setFormat(e.target.value as ExportFormat)}
+              >
+                <MenuItem value="clash">Clash / Mihomo YAML</MenuItem>
+                <MenuItem value="provider">Mihomo Rule Provider</MenuItem>
+                <MenuItem value="singbox">sing-box Source Rule Set v3</MenuItem>
+              </TextField>
+              <TextField
+                label="策略组名称"
+                value={policy}
+                onChange={(e) => setPolicy(e.target.value)}
+                disabled={format !== "clash"}
               />
-              {libraryError && (
-                <Alert
-                  severity="error"
-                  sx={{ mt: 1 }}
-                  action={
-                    <Button
-                      onClick={() => {
-                        setLoadingLibrary(true);
-                        setReload((v) => v + 1);
-                      }}
-                    >
-                      重试
-                    </Button>
-                  }
-                >
-                  {libraryError}
-                </Alert>
-              )}
-              {(!categories.length || missingSources.length > 0 || updating) &&
-                !loadingLibrary && (
-                  <Alert
-                    severity="info"
-                    sx={{ mt: 1 }}
-                    action={
-                      !updating && missingSources.length > 0 ? (
-                        <Button onClick={() => void syncLibrary()}>
-                          下载{categories.length ? "缺少的规则源" : "规则库"}
-                        </Button>
-                      ) : undefined
-                    }
-                  >
-                    {updating
-                      ? "正在下载规则库，完成后分类会自动显示。"
-                      : categories.length
-                        ? `${missingSources.map((s) => s.id).join("、")} 尚未下载，可补充此来源。`
-                        : "两套开源规则库尚未下载。下载后可搜索分类并合并。"}
-                    {updating && <LinearProgress sx={{ mt: 1 }} />}
-                    {sources
-                      .filter((s) => s.error)
-                      .map((s) => (
-                        <Typography
-                          key={s.id}
-                          variant="caption"
-                          sx={{ display: "block" }}
-                        >
-                          {s.id}：{s.error}
-                        </Typography>
-                      ))}
-                  </Alert>
-                )}
-              {needsCategory && (
-                <Typography
-                  variant="body2"
-                  color="text.secondary"
-                  sx={{ mt: 1 }}
-                  role="status"
-                >
-                  尚未选择规则分类，下面先预览抓取结果。请选择分类后导出合并规则，或切回“仅抓取结果”。
-                </Typography>
-              )}
+              <TextField
+                label="文件名称（自动扩展名）"
+                value={filename}
+                onChange={(e) => setFilename(e.target.value)}
+              />
             </Box>
-          )}
-          <Stack direction="row" sx={{ mt: 0.5, gap: 2, flexWrap: "wrap" }}>
-            <FormControlLabel
-              control={
-                <Checkbox
-                  checked={suffix}
-                  onChange={(_, checked) => {
-                    setSuffix(checked);
-                    setExcluded(new Set());
-                    setPage(0);
+            {mode === "merged" && (
+              <Box sx={{ mt: 1.25 }}>
+                <Autocomplete
+                  multiple
+                  options={categories}
+                  value={selectedCategories}
+                  inputValue={categoryQuery}
+                  onInputChange={(_, value, reason) => {
+                    // MUI's reset on new option/value objects must not erase typing.
+                    if (reason === "input" || reason === "clear")
+                      setCategoryQuery(value);
+                  }}
+                  open={categoryOpen && !!categoryQuery.trim()}
+                  onOpen={() => setCategoryOpen(true)}
+                  onClose={() => setCategoryOpen(false)}
+                  loading={loadingLibrary || loadingCategory}
+                  loadingText={
+                    loadingCategory
+                      ? "正在下载并验证分类…"
+                      : "正在读取规则分类…"
+                  }
+                  noOptionsText={
+                    categories.length
+                      ? "没有匹配的分类，请换个名称搜索"
+                      : "尚未下载规则库，请点击下方下载按钮"
+                  }
+                  getOptionLabel={(c) => `${c.name} · ${c.source}`}
+                  getOptionKey={(c) => c.id}
+                  isOptionEqualToValue={(a, b) => a.id === b.id}
+                  filterOptions={(options, state) => {
+                    const q = state.inputValue.trim().toLowerCase();
+                    if (!q) return [];
+                    return options
+                      .filter((c) =>
+                        `${c.name} ${c.source}`.toLowerCase().includes(q),
+                      )
+                      .sort(
+                        (a, b) =>
+                          Number(b.name.toLowerCase() === q) -
+                            Number(a.name.toLowerCase() === q) ||
+                          Number(b.name.toLowerCase().startsWith(q)) -
+                            Number(a.name.toLowerCase().startsWith(q)),
+                      )
+                      .slice(0, 80);
+                  }}
+                  onChange={(_, values) => void choose(values)}
+                  renderValue={(values, getItemProps) => (
+                    <Box className="export-category-tags">
+                      {values.map((c, index) => {
+                        const { key, ...props } = getItemProps({ index });
+                        return (
+                          <Chip
+                            key={key}
+                            {...props}
+                            label={`${c.name} · ${c.source}`}
+                            title={`${c.name} · ${c.source}`}
+                            size="small"
+                          />
+                        );
+                      })}
+                    </Box>
+                  )}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label="规则分类"
+                      required
+                      slotProps={{
+                        ...params.slotProps,
+                        htmlInput: {
+                          ...params.slotProps.htmlInput,
+                          "aria-label": "规则分类",
+                        },
+                      }}
+                      placeholder="搜索分类名称，如 Facebook"
+                    />
+                  )}
+                  renderOption={(props, option, state) => {
+                    const { key, ...rest } = props;
+                    return (
+                      <li key={key} {...rest}>
+                        <Checkbox
+                          checked={state.selected}
+                          size="small"
+                          tabIndex={-1}
+                          disableRipple
+                          sx={{ pointerEvents: "none" }}
+                        />
+                        <Box sx={{ minWidth: 0 }}>
+                          <Typography
+                            variant="body2"
+                            sx={{ overflowWrap: "anywhere" }}
+                          >
+                            {option.name}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {option.source} ·{" "}
+                            {option.loaded
+                              ? `${option.rule_count} 条`
+                              : "按需下载"}
+                            {option.broad ? " · 通用集合" : ""}
+                          </Typography>
+                        </Box>
+                      </li>
+                    );
                   }}
                 />
-              }
-              label={
-                <Typography variant="body2">
-                  观察域名使用 DOMAIN-SUFFIX
-                </Typography>
-              }
-            />
-            <FormControlLabel
-              control={
-                <Checkbox
-                  checked={listOnly}
-                  disabled={format !== "clash"}
-                  onChange={(_, checked) => setListOnly(checked)}
+                {libraryError && (
+                  <Alert
+                    severity="error"
+                    sx={{ mt: 1 }}
+                    action={
+                      <Button
+                        onClick={() => {
+                          setLoadingLibrary(true);
+                          setReload((v) => v + 1);
+                        }}
+                      >
+                        重试
+                      </Button>
+                    }
+                  >
+                    {libraryError}
+                  </Alert>
+                )}
+                {(!categories.length ||
+                  missingSources.length > 0 ||
+                  updating) &&
+                  !loadingLibrary && (
+                    <Alert
+                      severity="info"
+                      sx={{ mt: 1 }}
+                      action={
+                        !updating && missingSources.length > 0 ? (
+                          <Button onClick={() => void syncLibrary()}>
+                            下载{categories.length ? "缺少的规则源" : "规则库"}
+                          </Button>
+                        ) : undefined
+                      }
+                    >
+                      {updating
+                        ? "正在下载规则库，完成后分类会自动显示。"
+                        : categories.length
+                          ? `${missingSources.map((s) => s.id).join("、")} 尚未下载，可补充此来源。`
+                          : "两套开源规则库尚未下载。下载后可搜索分类并合并。"}
+                      {updating && <LinearProgress sx={{ mt: 1 }} />}
+                      {sources
+                        .filter((s) => s.error)
+                        .map((s) => (
+                          <Typography
+                            key={s.id}
+                            variant="caption"
+                            sx={{ display: "block" }}
+                          >
+                            {s.id}：{s.error}
+                          </Typography>
+                        ))}
+                    </Alert>
+                  )}
+              </Box>
+            )}
+            <Stack direction="row" className="export-toggles">
+              <Stack direction="row" sx={{ alignItems: "center" }}>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      size="small"
+                      checked={suffix}
+                      onChange={(_, checked) => {
+                        setSuffix(checked);
+                        setExcluded(new Set());
+                        setPage(0);
+                      }}
+                    />
+                  }
+                  label={
+                    <Typography variant="body2">
+                      观察域名使用 DOMAIN-SUFFIX
+                    </Typography>
+                  }
                 />
-              }
-              label={
-                <Typography variant="body2">
-                  只输出规则列表（不含 rules:）
-                </Typography>
-              }
-            />
-          </Stack>
+                <Hint
+                  label="查看 DOMAIN-SUFFIX 提示"
+                  text={suffix ? `${suffixWarning} ${suffixHelp}` : suffixHelp}
+                  warning={suffix}
+                />
+              </Stack>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    size="small"
+                    checked={listOnly}
+                    disabled={format !== "clash"}
+                    onChange={(_, checked) => setListOnly(checked)}
+                  />
+                }
+                label={
+                  <Typography variant="body2">
+                    只输出规则列表（不含 rules:）
+                  </Typography>
+                }
+              />
+            </Stack>
+          </Box>
         </Collapse>
-        {suffix && (
-          <Alert severity="warning" sx={{ mb: 1 }}>
-            后缀匹配会包含观察域名的全部子域名；默认精确 DOMAIN 更保守。
-          </Alert>
-        )}
         {error && (
           <Alert
             severity="error"
@@ -728,21 +796,13 @@ export default function ExportDialog(p: Props) {
           </Alert>
         )}
         {result && !error && (
-          <Stack direction="row" sx={{ my: 1, gap: 0.75, flexWrap: "wrap" }}>
+          <Stack direction="row" className="export-summary">
             <Chip label={`抓取 ${result.observed_domains} 个域名`} />
-            <Chip label={`规则库补充 ${result.added_rules} 条`} />
+            {mode === "merged" && (
+              <Chip label={`规则库补充 ${result.added_rules} 条`} />
+            )}
             <Chip label={`重复或覆盖 ${result.duplicate_or_covered} 条`} />
             <Chip label={`最终导出 ${result.final_rules} 条`} color="primary" />
-            {result.warnings.length > 0 && (
-              <Box component="details" sx={{ width: "100%", fontSize: 12 }}>
-                <summary>{result.warnings.length} 项范围提示</summary>
-                {result.warnings.map((w, i) => (
-                  <Alert key={i} severity="warning" sx={{ mt: 0.5 }}>
-                    {w}
-                  </Alert>
-                ))}
-              </Box>
-            )}
           </Stack>
         )}
         <Tabs
@@ -788,7 +848,7 @@ export default function ExportDialog(p: Props) {
             className="preview-panel"
             aria-busy={loading}
           >
-            <Stack direction="row" sx={{ gap: 1, pt: 1, flexWrap: "wrap" }}>
+            <Stack direction="row" className="preview-toolbar">
               <TextField
                 placeholder="搜索规则、域名或来源分类"
                 value={query}
@@ -810,9 +870,11 @@ export default function ExportDialog(p: Props) {
                 sx={{ minWidth: 130 }}
               >
                 <MenuItem value="all">全部条目</MenuItem>
-                <MenuItem value="selected">已勾选</MenuItem>
-                <MenuItem value="excluded">未勾选</MenuItem>
+                <MenuItem value="observed">本次抓取</MenuItem>
                 <MenuItem value="covered">被覆盖</MenuItem>
+                {mode === "merged" && (
+                  <MenuItem value="library">规则库补充</MenuItem>
+                )}
               </TextField>
               <Button
                 size="small"
@@ -823,19 +885,6 @@ export default function ExportDialog(p: Props) {
                 恢复全选
               </Button>
             </Stack>
-            <Typography
-              variant="caption"
-              color="text.secondary"
-              sx={{ py: 0.75 }}
-            >
-              共 {result.entries.length} 条 · 已取消{" "}
-              {
-                result.entries.filter((e) =>
-                  excluded.has(`${e.rule_type},${e.rule_value}`),
-                ).length
-              }{" "}
-              条 · 翻页与搜索保留选择
-            </Typography>
             <TableContainer ref={entryScroll} className="preview-scroll">
               <Table size="small" stickyHeader sx={{ tableLayout: "fixed" }}>
                 <TableHead>
@@ -849,7 +898,7 @@ export default function ExportDialog(p: Props) {
                         indeterminate={
                           pageSelected > 0 && pageSelected < pageEntries.length
                         }
-                        disabled={!pageEntries.length}
+                        disabled={!currentScope || !pageEntries.length}
                         size="small"
                         slotProps={{ input: { "aria-label": "选择本页" } }}
                         onChange={(_, checked) =>
@@ -885,6 +934,7 @@ export default function ExportDialog(p: Props) {
                         <TableCell padding="checkbox">
                           <Checkbox
                             size="small"
+                            disabled={!currentScope}
                             checked={!excluded.has(key)}
                             slotProps={{
                               input: { "aria-label": `导出 ${key}` },
@@ -922,9 +972,10 @@ export default function ExportDialog(p: Props) {
                             variant="outlined"
                           />
                           <Typography
+                            component="span"
                             variant="caption"
                             color="text.secondary"
-                            sx={{ display: "block" }}
+                            sx={{ ml: 0.75 }}
                           >
                             {entry.origins
                               .filter((o) => o.source !== "observed")

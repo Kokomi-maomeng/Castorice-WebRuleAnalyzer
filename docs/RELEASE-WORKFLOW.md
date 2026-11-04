@@ -80,4 +80,5 @@ v1.4 起，隐私检查同时接受 `--zip` 和 `--tar`；Linux 打包脚本设�
 - 界面脚本支持 `CASTORICE_UI_CDP` 与 `CASTORICE_PLAYWRIGHT_MODULE`，可在 Debian 内直接控制本机 GUI Chromium，避免新增转发；只连接专属测试 Profile。
 - Debian 临时浏览器需要与真实会话匹配；Wayland 使用 `--ozone-platform=wayland`。临时 Docker 必须连同 containerd 一起隔离在同一挂载命名空间，不能借用系统 containerd；记录并对比原有容器 PID/启动时间。
 - 原生关闭脚本使用稳定的“关闭导出”标签，截图前等待包含本机保存路径的通知消失。
+- `node scripts/verify-export-compact-ui.mjs` 使用 2560×1600 / 200% 的等效浏览器内容区，检查输入跨轮询保留、选择过程逐帧位移、提示浮窗、来源筛选和多分类输入宽度。`CASTORICE_UI_CHANNEL=msedge` 可检查 Edge；截图与报告放在 `.runtime/`。这不等于已在另一台物理笔记本实测。
 - 最终包的 EXE 先完成正常/扫描中/强制退出与恢复，文档更新后重新打包并检查 EXE SHA256 不变；ZIP 校验值放在包外，避免自引用。

@@ -4,6 +4,7 @@ import {
   render,
   screen,
   waitFor,
+  act,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import ExportDialog from "./ExportDialog";
@@ -86,8 +87,273 @@ beforeEach(() => {
     },
   );
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 describe("导出预览", () => {
+  const category: RuleCategory = {
+    id: "v2fly:example",
+    name: "Example",
+    source: "v2fly",
+    version: "one",
+    path: "data/example",
+    loaded: true,
+    broad: false,
+    rule_count: 1,
+    warnings: [],
+  };
+  function show(mode: "observed" | "merged" = "merged", current = task) {
+    return render(
+      <ExportDialog
+        task={current}
+        domains={domains}
+        mode={mode}
+        settings={defaultSettings}
+        onClose={vi.fn()}
+        notify={vi.fn()}
+        onRematch={vi.fn()}
+      />,
+    );
+  }
+  it("分类输入后才显示候选，轮询与新分类对象不清除搜索内容", async () => {
+    vi.useFakeTimers();
+    let version = "one";
+    mockAPI.mockImplementation(async (path: string) => {
+      if (path === "/rules/categories") return [{ ...category, version }];
+      if (path === "/rules/sources") return [];
+      return output;
+    });
+    show();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(200);
+    });
+    const input = screen.getByRole("combobox", { name: "规则分类" });
+    fireEvent.mouseDown(input);
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    fireEvent.change(input, { target: { value: "Exam" } });
+    expect(screen.getByRole("option", { name: /Example/ })).toBeInTheDocument();
+    version = "two";
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(9200);
+    });
+    expect(input).toHaveValue("Exam");
+    expect(screen.getByRole("option", { name: /Example/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("option", { name: /Example/ }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(200);
+    });
+    expect(screen.getByRole("button", { name: "导出设置" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    fireEvent.change(input, { target: { value: "Another" } });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(6200);
+    });
+    expect(input).toHaveValue("Another");
+    expect(screen.getByText("Example · v2fly")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "下载文件" })).toBeEnabled();
+  });
+  it("按需下载期间保留输入与原预览，未完成的新范围不能导出", async () => {
+    vi.useFakeTimers();
+    let loaded = false;
+    let finish: ((c: RuleCategory) => void) | undefined;
+    mockAPI.mockImplementation(async (path: string) => {
+      if (path === "/rules/categories") return [{ ...category, loaded }];
+      if (path === "/rules/sources") return [];
+      if (path === "/rules/load")
+        return new Promise<RuleCategory>((resolve) => {
+          finish = resolve;
+        });
+      return output;
+    });
+    show();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(200);
+    });
+    const row = screen.getByRole("checkbox", {
+      name: "导出 DOMAIN,example.com",
+    });
+    const input = screen.getByRole("combobox", { name: "规则分类" });
+    fireEvent.change(input, { target: { value: "Exam" } });
+    fireEvent.click(screen.getByRole("option", { name: /Example/ }));
+    fireEvent.change(input, { target: { value: "Still typing" } });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(6200);
+    });
+    expect(input).toHaveValue("Still typing");
+    expect(row).toBeInTheDocument();
+    expect(row).toBeDisabled();
+    expect(screen.getByRole("button", { name: "下载文件" })).toBeDisabled();
+    expect(
+      mockAPI.mock.calls.filter(([path]) => path === "/export"),
+    ).toHaveLength(1);
+    loaded = true;
+    await act(async () => {
+      finish!({ ...category, loaded });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(200);
+    });
+    expect(input).toHaveValue("Still typing");
+    expect(screen.getByRole("button", { name: "下载文件" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "导出设置" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+  });
+  it("按来源筛选包含双方匹配，取消选择不影响归属，观察模式隐藏规则库筛选", async () => {
+    const entries = [
+      output.entries[0],
+      {
+        ...output.entries[0],
+        rule_value: "both.example.com",
+        label: "双方匹配",
+      },
+      {
+        ...output.entries[0],
+        rule_value: "library.example.com",
+        label: "规则库补充",
+      },
+      {
+        ...output.entries[0],
+        rule_value: "covered.example.com",
+        label: "规则库补充",
+        covered_by: "DOMAIN-SUFFIX,example.com",
+      },
+    ];
+    mockAPI.mockImplementation(async (path: string) =>
+      path === "/rules/categories"
+        ? []
+        : path === "/rules/sources"
+          ? []
+          : { ...output, entries },
+    );
+    show();
+    await screen.findByRole("checkbox", { name: "导出 DOMAIN,example.com" });
+    const filter = screen.getByRole("combobox", { name: "显示条目" });
+    fireEvent.mouseDown(filter);
+    expect(
+      screen.queryByRole("option", { name: "已勾选" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("option", { name: "未勾选" }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("option", { name: "本次抓取" }));
+    expect(
+      screen.getAllByRole("checkbox", { name: /^导出 DOMAIN,/ }),
+    ).toHaveLength(2);
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: "导出 DOMAIN,example.com" }),
+    );
+    expect(
+      screen.getAllByRole("checkbox", { name: /^导出 DOMAIN,/ }),
+    ).toHaveLength(2);
+    fireEvent.mouseDown(filter);
+    fireEvent.click(screen.getByRole("option", { name: "规则库补充" }));
+    expect(
+      screen.getAllByRole("checkbox", { name: /^导出 DOMAIN,/ }),
+    ).toHaveLength(2);
+    fireEvent.mouseDown(filter);
+    fireEvent.click(screen.getByRole("option", { name: "被覆盖" }));
+    expect(
+      screen.getByRole("checkbox", { name: "导出 DOMAIN,covered.example.com" }),
+    ).toBeInTheDocument();
+    fireEvent.mouseDown(screen.getByRole("combobox", { name: "导出范围" }));
+    fireEvent.click(screen.getByRole("option", { name: "仅抓取结果" }));
+    fireEvent.mouseDown(filter);
+    expect(
+      screen.queryByRole("option", { name: "规则库补充" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "全部条目" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+  });
+  it("清空后改选另一分类，迟到的按需下载不能恢复旧选择", async () => {
+    vi.useFakeTimers();
+    const second = {
+      ...category,
+      id: "v2fly:other",
+      name: "Other",
+      loaded: false,
+    };
+    const pending = new Map<string, (value: RuleCategory) => void>();
+    mockAPI.mockImplementation(
+      async (path: string, _method: string, body?: { id?: string }) => {
+        if (path === "/rules/categories")
+          return [{ ...category, loaded: false }, second];
+        if (path === "/rules/sources") return [];
+        if (path === "/rules/load")
+          return new Promise<RuleCategory>((resolve) =>
+            pending.set(body!.id!, resolve),
+          );
+        return output;
+      },
+    );
+    show();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(200);
+    });
+    const input = screen.getByRole("combobox", { name: "规则分类" });
+    fireEvent.change(input, { target: { value: "Exam" } });
+    fireEvent.click(screen.getByRole("option", { name: /Example/ }));
+    fireEvent.click(screen.getByLabelText("Clear"));
+    fireEvent.change(input, { target: { value: "Other" } });
+    fireEvent.click(screen.getByRole("option", { name: /Other/ }));
+    await act(async () => {
+      pending.get(second.id)!({ ...second, loaded: true });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(200);
+    });
+    expect(screen.getByText("Other · v2fly")).toBeInTheDocument();
+    await act(async () => {
+      pending.get(category.id)!({ ...category, loaded: true });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(200);
+    });
+    expect(screen.queryByText("Example · v2fly")).not.toBeInTheDocument();
+    expect(
+      mockAPI.mock.calls.filter(([path]) => path === "/export").at(-1)?.[2]
+        .category_ids,
+    ).toEqual([second.id]);
+    expect(screen.getByRole("button", { name: "下载文件" })).toBeEnabled();
+  });
+  it("抓取与后缀提示默认收起，点击显示并可用 Escape 关闭", async () => {
+    show("observed", { ...task, status: "timeout" });
+    await screen.findByRole("checkbox", { name: "导出 DOMAIN,example.com" });
+    expect(screen.queryByText(/结果来源：/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("需与客户端已有策略组名称一致"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+    const hint = screen.getByRole("button", { name: "查看抓取与范围提示" });
+    fireEvent.click(hint);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+      "本次包含失败或未完成的请求",
+    );
+    fireEvent.keyDown(hint, { key: "Escape" });
+    await waitFor(() =>
+      expect(screen.queryByRole("tooltip")).not.toBeInTheDocument(),
+    );
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: "观察域名使用 DOMAIN-SUFFIX" }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "查看 DOMAIN-SUFFIX 提示" }),
+    );
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+      "已主动选择 DOMAIN-SUFFIX",
+    );
+    expect(screen.getByRole("tooltip")).toHaveTextContent(
+      "默认精确 DOMAIN 更保守",
+    );
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
   it("最终下载前拒绝已更新的分类，并刷新到新版本后才导出", async () => {
     let version = "one";
     const category = () => ({
@@ -194,7 +460,7 @@ describe("导出预览", () => {
         onRematch={vi.fn()}
       />,
     );
-    expect(await screen.findByText(/尚未选择规则分类/)).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: /规则分类/ })).toBeRequired();
     expect(
       await screen.findByRole("checkbox", { name: "导出 DOMAIN,example.com" }),
     ).toBeInTheDocument();
@@ -258,7 +524,13 @@ describe("导出预览", () => {
       />,
     );
     fireEvent.click(await screen.findByRole("button", { name: "下载规则库" }));
-    await screen.findByText(/1 个本地分类/);
+    await waitFor(() => expect(syncCalls).toHaveLength(2));
+    await waitFor(() =>
+      expect(
+        mockAPI.mock.calls.filter(([path]) => path === "/rules/categories")
+          .length,
+      ).toBeGreaterThan(1),
+    );
     expect(syncCalls).toEqual(["blackmatrix7", "v2fly"]);
     const input = screen.getByRole("combobox", { name: "规则分类" });
     fireEvent.change(input, { target: { value: "Exam" } });
