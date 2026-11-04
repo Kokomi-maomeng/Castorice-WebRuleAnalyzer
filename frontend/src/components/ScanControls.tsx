@@ -1,3 +1,4 @@
+import NetworkOptions from "./NetworkOptions";
 import { useState } from "react";
 import {
   Box,
@@ -161,6 +162,30 @@ export default function ScanControls(p: Props) {
           </Button>
         )}
       </Box>
+      {/^(?:https?:\/\/)?(?:www\.)?geminii?\.com(?:[/?#:]|$)/i.test(
+        p.url.trim(),
+      ) && (
+        <Box
+          sx={{
+            mt: 1,
+            display: "flex",
+            gap: 1,
+            alignItems: "center",
+            flexWrap: "wrap",
+          }}
+        >
+          <Typography variant="caption" color="text.secondary">
+            如果你要分析 Google Gemini，官方入口为 gemini.google.com。
+          </Typography>
+          <Button
+            size="small"
+            disabled={p.running || p.busy}
+            onClick={() => p.setURL("https://gemini.google.com/")}
+          >
+            使用 Google Gemini 地址
+          </Button>
+        </Box>
+      )}
       <Dialog
         open={advanced}
         onClose={() => setAdvanced(false)}
@@ -213,18 +238,9 @@ export default function ScanControls(p: Props) {
             {number("每页观察 / 秒", "observe_seconds", 1, 300)}
             {number("静默等待 / 毫秒", "quiet_millis", 100, 30000)}
             {number("页面间隔 / 毫秒", "interval_millis", 0, 30000)}
-            <TextField
-              select
-              label="DNS 解析"
-              value={p.options.dns_mode || "auto"}
-              disabled={p.running}
-              onChange={(e) =>
-                set("dns_mode", e.target.value as "auto" | "system")
-              }
-            >
-              <MenuItem value="auto">系统 + Fake-IP 回退</MenuItem>
-              <MenuItem value="system">仅系统 DNS</MenuItem>
-            </TextField>
+            <Box sx={{ gridColumn: "1 / -1" }}>
+              <NetworkOptions options={p.options} onChange={p.setOptions} />
+            </Box>
           </Box>
           <Stack sx={{ mt: 1 }}>
             <FormControlLabel

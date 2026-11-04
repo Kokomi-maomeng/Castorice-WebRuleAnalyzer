@@ -4,6 +4,8 @@ import "time"
 
 type ScanOptions struct {
 	DNSMode           string `json:"dns_mode"`
+	DNSProvider       string `json:"dns_provider,omitempty"`
+	UpstreamProxy     string `json:"upstream_proxy,omitempty"`
 	Mode              string `json:"mode"`
 	MaxSeconds        int    `json:"max_seconds"`
 	MaxDepth          int    `json:"max_depth"`
@@ -33,33 +35,38 @@ func DefaultSettings() Settings {
 }
 
 type PageRecord struct {
-	URL    string `json:"url"`
-	Depth  int    `json:"depth"`
-	Status string `json:"status"`
-	Reason string `json:"reason,omitempty"`
+	URL        string      `json:"url"`
+	Depth      int         `json:"depth"`
+	Status     string      `json:"status"`
+	Reason     string      `json:"reason,omitempty"`
+	Diagnostic *Diagnostic `json:"diagnostic,omitempty"`
 }
 
 type ScanTask struct {
-	TestMode             bool         `json:"test_mode"`
-	ID                   string       `json:"id"`
-	TargetURL            string       `json:"target_url"`
-	Status               string       `json:"status"`
-	Options              ScanOptions  `json:"options"`
-	StartedAt            time.Time    `json:"started_at"`
-	EndedAt              *time.Time   `json:"ended_at,omitempty"`
-	EndReason            string       `json:"end_reason,omitempty"`
-	Error                string       `json:"error,omitempty"`
-	Browser              string       `json:"browser,omitempty"`
-	CurrentPage          string       `json:"current_page,omitempty"`
-	RequestCount         int          `json:"request_count"`
-	DomainCount          int          `json:"domain_count"`
-	IPCount              int          `json:"ip_count"`
-	Pages                []PageRecord `json:"pages"`
-	Matches              []RuleMatch  `json:"matches"`
-	RecommendedCategory  string       `json:"recommended_category,omitempty"`
-	MatchNote            string       `json:"match_note,omitempty"`
-	MatchedCategoryCount int          `json:"matched_category_count"`
-	MatchesTruncated     bool         `json:"matches_truncated"`
+	Diagnostic           *Diagnostic     `json:"diagnostic,omitempty"`
+	Summary              *RequestSummary `json:"summary,omitempty"`
+	PageTitle            string          `json:"page_title,omitempty"`
+	MainStatus           int             `json:"main_status,omitempty"`
+	TestMode             bool            `json:"test_mode"`
+	ID                   string          `json:"id"`
+	TargetURL            string          `json:"target_url"`
+	Status               string          `json:"status"`
+	Options              ScanOptions     `json:"options"`
+	StartedAt            time.Time       `json:"started_at"`
+	EndedAt              *time.Time      `json:"ended_at,omitempty"`
+	EndReason            string          `json:"end_reason,omitempty"`
+	Error                string          `json:"error,omitempty"`
+	Browser              string          `json:"browser,omitempty"`
+	CurrentPage          string          `json:"current_page,omitempty"`
+	RequestCount         int             `json:"request_count"`
+	DomainCount          int             `json:"domain_count"`
+	IPCount              int             `json:"ip_count"`
+	Pages                []PageRecord    `json:"pages"`
+	Matches              []RuleMatch     `json:"matches"`
+	RecommendedCategory  string          `json:"recommended_category,omitempty"`
+	MatchNote            string          `json:"match_note,omitempty"`
+	MatchedCategoryCount int             `json:"matched_category_count"`
+	MatchesTruncated     bool            `json:"matches_truncated"`
 }
 
 func (s ScanTask) Active() bool {

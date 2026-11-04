@@ -28,6 +28,7 @@ export const statusNames: Record<string, string> = {
   running: "正在采集",
   stopping: "正在停止",
   completed: "扫描完成",
+  partial: "部分页面未成功",
   cancelled: "已停止",
   timed_out: "达到时间上限",
   failed: "扫描失败",

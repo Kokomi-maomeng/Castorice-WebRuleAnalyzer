@@ -30,6 +30,8 @@ import type { RuleCategory, RuleSource } from "../types";
 import { api, copy, download } from "../services/api";
 import { date, errorMessage } from "../utils/format";
 interface Props {
+  open?: boolean;
+  onExited?: () => void;
   onClose: () => void;
   notify: (s: string) => void;
   onRematch: () => void;
@@ -186,7 +188,8 @@ export default function RuleLibrary(p: Props) {
       : "";
   return (
     <Dialog
-      open
+      slotProps={{ transition: { onExited: p.onExited } }}
+      open={p.open ?? true}
       fullWidth
       maxWidth={false}
       onClose={p.onClose}

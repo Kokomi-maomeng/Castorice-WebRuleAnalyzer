@@ -17,15 +17,25 @@ const errors = [];
 page.on('pageerror', e => errors.push(e.message));
 page.on('console', e => { if (e.type() === 'error') errors.push(e.text()); });
 let latest;
+let latestJob;
 let closing = false;
 page.on('response', async response => {
  if (response.url().endsWith('/api/export') && response.ok()) {
-  try { latest = (await response.json()).data; }
+  try { const value=(await response.json()).data; latestJob=response.request().postDataJSON(); latest=value; }
   catch (error) { if (!closing) errors.push(error.message); }
  }
 });
 const report = { passed: false, real: {}, layouts: [], fixture: {}, motion: {}, errors };
-async function ready() { await page.getByRole('button', { name: '下载文件', exact: true }).waitFor(); await page.waitForFunction(() => [...document.querySelectorAll('button')].some(b => b.textContent.trim() === '下载文件' && !b.disabled)); }
+async function ready(expectedFormat) {
+ await page.getByRole('button', { name: '下载文件', exact: true }).waitFor();
+ await page.waitForFunction(() => [...document.querySelectorAll('button')].some(b => b.textContent.trim() === '下载文件' && !b.disabled));
+ // The response observer's JSON read can finish after the application enables download.
+ // Correlate the expected content with its request before comparing the downloaded file.
+ if (expectedFormat) {
+  for (let i=0;i<100 && latestJob?.format!==expectedFormat;i++) await new Promise(resolve=>setTimeout(resolve,20));
+  assert.equal(latestJob?.format,expectedFormat,'export observer did not receive the selected format');
+ }
+}
 try {
  await page.goto(base);
  await page.getByRole('button', { name: '预览与导出规则', exact: true }).waitFor();
@@ -88,7 +98,7 @@ try {
  await page.getByRole('button', { name: '下一页', exact: true }).click();
  assert.equal(await page.locator('.line-number').first().innerText(), '201');
  for (const [label, format] of [['Clash / Mihomo YAML','clash'],['Mihomo Rule Provider','provider'],['sing-box Source Rule Set v3','singbox']]) {
-  await page.getByRole('combobox', { name: '输出格式', exact: true }).click(); await page.getByRole('option', { name: label, exact: true }).click(); await ready();
+  await page.getByRole('combobox', { name: '输出格式', exact: true }).click(); await page.getByRole('option', { name: label, exact: true }).click(); await ready(format);
   const content = latest.content;
   if (format === 'singbox') assert.equal(JSON.parse(content).version, 3);
   const promise = page.waitForEvent('download'); await page.getByRole('button', { name: '下载文件', exact: true }).click(); const file = await promise;
@@ -132,7 +142,7 @@ try {
  await page.waitForFunction(() => { const b = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === '导出设置'); const t = getComputedStyle(b).transform; return t.startsWith('matrix(') && Number(t.slice(7).split(',')[0]) <= .971; });
  await page.mouse.up();
  await page.emulateMedia({ reducedMotion: 'reduce' });
- assert.equal(await page.locator('.motion-panel').evaluate(e => getComputedStyle(e).animationName), 'none');
+ assert.equal(await page.locator('.export-dialog .motion-panel').evaluate(e => getComputedStyle(e).animationName), 'none');
  await page.getByRole('button', { name: '关闭导出', exact: true }).click();
  await page.getByRole('button', { name: '高级设置', exact: true }).click();
  assert.equal(await page.locator('.MuiSwitch-switchBase').first().evaluate(e => getComputedStyle(e).transitionDuration), '0s');

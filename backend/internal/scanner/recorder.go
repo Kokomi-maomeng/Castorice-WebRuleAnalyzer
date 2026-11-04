@@ -19,24 +19,26 @@ const MaxRequests = 20000
 const MaxEvents = 2000
 
 type runtimeTask struct {
-	mu            sync.Mutex
-	task          model.ScanTask
-	requests      map[string]model.NetworkRequest
-	domains       map[string]model.DomainRecord
-	active        map[network.RequestID]string
-	starts        map[string]float64
-	dirtyRequests map[string]bool
-	dirtyDomains  map[string]bool
-	events        []model.Event
-	pendingEvents []model.Event
-	sequence      int64
-	revision      int64
-	lastRequest   time.Time
-	limit         bool
-	cancel        func()
-	done          chan struct{}
-	flushMu       sync.Mutex
-	flushError    error
+	mainFrame        cdp.FrameID
+	mainDocumentHost string
+	mu               sync.Mutex
+	task             model.ScanTask
+	requests         map[string]model.NetworkRequest
+	domains          map[string]model.DomainRecord
+	active           map[network.RequestID]string
+	starts           map[string]float64
+	dirtyRequests    map[string]bool
+	dirtyDomains     map[string]bool
+	events           []model.Event
+	pendingEvents    []model.Event
+	sequence         int64
+	revision         int64
+	lastRequest      time.Time
+	limit            bool
+	cancel           func()
+	done             chan struct{}
+	flushMu          sync.Mutex
+	flushError       error
 }
 
 func newRuntime(task model.ScanTask) *runtimeTask {
@@ -61,7 +63,39 @@ func (r *runtimeTask) logLocked(level, kind, message string) {
 func (r *runtimeTask) snapshot() model.ScanTask {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.task.Summary = r.summaryLocked()
 	return cloneTask(r.task)
+}
+
+func (r *runtimeTask) summaryLocked() *model.RequestSummary {
+	s := &model.RequestSummary{}
+	for _, req := range r.requests {
+		if req.StatusCode > 0 {
+			s.Responded++
+		}
+		if req.StatusCode >= 400 {
+			s.HTTPError++
+		}
+		if req.State == "failed" {
+			s.ConnectionFailed++
+		}
+		if req.State == "pending" || req.State == "responding" || req.State == "interrupted" {
+			s.Unfinished++
+		}
+	}
+	for _, page := range r.task.Pages {
+		switch page.Status {
+		case "visited":
+			s.VisitedPages++
+		case "failed":
+			s.FailedPages++
+		case "blocked":
+			s.BlockedPages++
+		case "queued", "pending", "visiting":
+			s.PendingPages++
+		}
+	}
+	return s
 }
 func cloneTask(t model.ScanTask) model.ScanTask {
 	t.Pages = append([]model.PageRecord{}, t.Pages...)
@@ -182,12 +216,21 @@ func (r *runtimeTask) onEvent(ev any) {
 	defer r.mu.Unlock()
 	switch e := ev.(type) {
 	case *network.EventRequestWillBeSent:
+		if e.Type == network.ResourceTypeDocument && e.FrameID == r.mainFrame {
+			if u, err := url.Parse(e.Request.URL); err == nil {
+				r.mainDocumentHost = u.Hostname()
+			}
+		}
 		if e.RedirectResponse != nil {
 			r.response(e.RequestID, e.RedirectResponse)
 			r.finish(e.RequestID, monotonic(e.Timestamp), "redirected", "")
 		}
 		r.add(e.RequestID, e.Request.URL, e.Request.Method, string(e.Type), e.DocumentURL, initiator(e.Initiator), wallTime(e.WallTime), monotonic(e.Timestamp))
 	case *network.EventResponseReceived:
+		if e.Type == network.ResourceTypeDocument && e.FrameID == r.mainFrame && e.Response != nil {
+			r.task.MainStatus = int(e.Response.Status)
+			r.task.CurrentPage = security.RedactPageURL(e.Response.URL)
+		}
 		r.response(e.RequestID, e.Response)
 	case *network.EventLoadingFinished:
 		r.finish(e.RequestID, monotonic(e.Timestamp), "finished", "")

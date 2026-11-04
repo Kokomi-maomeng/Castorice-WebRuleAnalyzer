@@ -1,10 +1,12 @@
 let token = "";
+import type { Diagnostic } from "../types";
 let session: Promise<void> | undefined;
 export class APIError extends Error {
   constructor(
     message: string,
     public status: number,
     public code: string,
+    public diagnostic?: Diagnostic,
   ) {
     super(message);
   }
@@ -42,7 +44,12 @@ export async function api<T>(
   } catch {
     throw new Error("无法连接本地服务，请确认程序仍在运行。");
   }
-  const result = await response.json();
+  let result;
+  try {
+    result = await response.json();
+  } catch {
+    throw new Error("本地服务返回了无法识别的数据，请确认程序仍在运行后重试。");
+  }
   if (!response.ok) {
     if (response.status === 403) {
       token = "";
@@ -52,6 +59,7 @@ export async function api<T>(
       result.error?.message || "操作失败",
       response.status,
       result.error?.code || "unknown",
+      result.error?.diagnostic,
     );
   }
   return result.data as T;

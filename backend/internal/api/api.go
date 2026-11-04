@@ -43,8 +43,9 @@ type envelope struct {
 	Error *apiError `json:"error,omitempty"`
 }
 type apiError struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
+	Code       string            `json:"code"`
+	Message    string            `json:"message"`
+	Diagnostic *model.Diagnostic `json:"diagnostic,omitempty"`
 }
 
 func New(store *storage.Store, scans *scanner.Manager, rules *rules.Manager, base, dev string) (*Server, error) {
@@ -63,6 +64,48 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/session", func(w http.ResponseWriter, r *http.Request) { respond(w, 200, map[string]string{"token": s.Token}) })
 	mux.HandleFunc("GET /api/browsers", func(w http.ResponseWriter, r *http.Request) { respond(w, 200, browser.Detect()) })
 	mux.HandleFunc("POST /api/scans", s.createScan)
+	mux.HandleFunc("GET /api/scans/history", func(w http.ResponseWriter, r *http.Request) {
+		limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+		offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+		result, err := s.Scans.History(r.URL.Query().Get("q"), limit, offset)
+		if !handleError(w, err) {
+			respond(w, 200, result)
+		}
+	})
+	mux.HandleFunc("DELETE /api/scans", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			IDs []string `json:"ids"`
+			All bool     `json:"all_finished"`
+		}
+		if !decode(w, r, &body) {
+			return
+		}
+		result, err := s.Scans.DeleteHistory(body.IDs, body.All)
+		if !handleError(w, err) {
+			respond(w, 200, result)
+		}
+	})
+	mux.HandleFunc("POST /api/network/diagnose", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			URL     string             `json:"url"`
+			Options *model.ScanOptions `json:"options"`
+		}
+		if !decode(w, r, &body) {
+			return
+		}
+		settings, err := s.Store.Settings()
+		if handleError(w, err) {
+			return
+		}
+		o := settings.Scan
+		if body.Options != nil {
+			o = *body.Options
+		}
+		result, err := s.Scans.Diagnose(r.Context(), body.URL, o)
+		if !handleError(w, err) {
+			respond(w, 200, result)
+		}
+	})
 	mux.HandleFunc("GET /api/scans/active", func(w http.ResponseWriter, r *http.Request) {
 		respond(w, 200, s.Scans.Active())
 	})
@@ -476,7 +519,7 @@ func respond(w http.ResponseWriter, status int, data any) {
 func fail(w http.ResponseWriter, status int, code, message string) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(envelope{Error: &apiError{code, message}})
+	_ = json.NewEncoder(w).Encode(envelope{Error: &apiError{Code: code, Message: message}})
 }
 func handleError(w http.ResponseWriter, err error) bool {
 	if err == nil {
@@ -486,8 +529,13 @@ func handleError(w http.ResponseWriter, err error) bool {
 		fail(w, 404, "not_found", "扫描任务不存在")
 	} else if errors.Is(err, scanner.ErrBusy) {
 		fail(w, 409, "scan_busy", err.Error())
+	} else if errors.Is(err, storage.ErrActiveHistory) {
+		fail(w, 409, "history_active", err.Error())
 	} else {
-		fail(w, 400, "operation_failed", security.RedactText(err.Error()))
+		d := security.Explain(err)
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(400)
+		_ = json.NewEncoder(w).Encode(envelope{Error: &apiError{Code: d.Code, Message: d.Message, Diagnostic: d}})
 	}
 	return true
 }

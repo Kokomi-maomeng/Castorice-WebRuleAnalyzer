@@ -3,7 +3,6 @@ package security
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net"
 	"net/netip"
 	"net/url"
@@ -19,7 +18,8 @@ type Resolver interface {
 	LookupNetIP(context.Context, string, string) ([]netip.Addr, error)
 }
 type Policy struct {
-	Resolver Resolver
+	Resolver      Resolver
+	UpstreamProxy string
 	// TestAllow is intentionally unavailable in settings/API. Only an explicit CLI test flag
 	// or a test harness can whitelist a literal loopback host:port.
 	TestAllow map[string]bool
@@ -64,8 +64,8 @@ func (p Policy) Resolve(ctx context.Context, host, port string) ([]netip.Addr, e
 			return []netip.Addr{ip}, nil
 		}
 	}
-	if !strings.Contains(host, ".") && !strings.Contains(host, ":") || strings.HasSuffix(host, ".localhost") || host == "localhost" || strings.HasSuffix(host, ".local") || strings.HasSuffix(host, ".internal") || strings.HasSuffix(host, ".home.arpa") {
-		return nil, errors.New("已阻止本机或内部网络目标")
+	if InternalHost(host) {
+		return nil, Fail("target_internal", "safety", "已阻止本机或内部网络目标", "仅支持公网网站，请检查输入的主机名。", host, nil)
 	}
 	var addresses []netip.Addr
 	if ip, e := netip.ParseAddr(host); e == nil {
@@ -79,17 +79,34 @@ func (p Policy) Resolve(ctx context.Context, host, port string) ([]netip.Addr, e
 		defer cancel()
 		addresses, err = resolver.LookupNetIP(lookupCtx, "ip", host)
 		if err != nil {
-			return nil, fmt.Errorf("DNS 解析失败: %s（%s）", host, RedactText(err.Error()))
+			return nil, DNSError(host, err)
 		}
 	}
 	if len(addresses) == 0 {
-		return nil, errors.New("DNS 未返回可用地址")
+		return nil, Fail("dns_no_address", "dns", "DNS 未返回可用的地址记录: "+host, "请核对域名，或运行网络诊断检查解析服务。", host, nil)
 	}
 	// Reject mixed public/private answers too. The connection below is pinned to a
 	// validated literal IP; no second name resolution can change its destination.
 	for _, ip := range addresses {
 		if !PublicIP(ip) {
-			return nil, fmt.Errorf("已阻止非公网目标: %s", host)
+			literal := false
+			if _, e := netip.ParseAddr(host); e == nil {
+				literal = true
+			}
+			message, hint, code := "DNS 返回受限地址，已停止连接: "+host, "系统解析可能受 Hosts、缓存或代理环境影响；运行网络诊断，或明确选择独立安全 DNS 重新校验。", "dns_non_public"
+			if ip.IsLoopback() {
+				message = "系统 DNS 将目标解析到回环地址，已停止连接: " + host
+			}
+			if literal {
+				message, hint, code = "已阻止非公网目标: "+host, "仅支持公网目标，回环、私网及保留地址不可用于扫描。", "target_non_public"
+			}
+			failure := Fail(code, "safety", message, hint, host, nil)
+			for _, a := range addresses {
+				if len(failure.Diagnostic.Addresses) < 16 {
+					failure.Diagnostic.Addresses = append(failure.Diagnostic.Addresses, a.String())
+				}
+			}
+			return nil, failure
 		}
 	}
 	return addresses, nil
@@ -120,10 +137,9 @@ func (p Policy) DialContext(ctx context.Context, network, address string) (net.C
 	// Literal-IP dialing has no hostname Happy Eyeballs. Prefer IPv4 to avoid
 	// spending multiple full timeouts on unusable IPv6 paths; IPv6-only still works.
 	sort.SliceStable(ips, func(i, j int) bool { return ips[i].Is4() && !ips[j].Is4() })
-	dialer := net.Dialer{Timeout: 10 * time.Second, KeepAlive: 20 * time.Second}
 	var last error
 	for _, ip := range ips {
-		c, e := dialer.DialContext(ctx, "tcp", net.JoinHostPort(ip.String(), port))
+		c, e := DialOutbound(ctx, p.UpstreamProxy, net.JoinHostPort(ip.String(), port))
 		if e == nil {
 			return c, nil
 		}
@@ -132,7 +148,15 @@ func (p Policy) DialContext(ctx context.Context, network, address string) (net.C
 			break
 		}
 	}
-	return nil, last
+	code, stage, message, hint := "connection_failed", "connection", "未能连接目标网站: "+host, "请检查目标端口和网络路径；连接失败不能证明域名不存在。"
+	if p.UpstreamProxy != "" {
+		code, stage, message, hint = "proxy_connection", "proxy", "本机代理未能建立到目标的连接: "+host, "请检查本机代理监听地址及代理节点连接。"
+	}
+	return nil, Fail(code, stage, message, hint, host, last)
+}
+
+func InternalHost(host string) bool {
+	return !strings.Contains(host, ".") && !strings.Contains(host, ":") || strings.HasSuffix(host, ".localhost") || host == "localhost" || strings.HasSuffix(host, ".local") || strings.HasSuffix(host, ".internal") || strings.HasSuffix(host, ".home.arpa")
 }
 
 var longSecret = regexp.MustCompile(`^[A-Za-z0-9_\-=+.]{48,}$`)

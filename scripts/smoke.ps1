@@ -1,10 +1,12 @@
 [CmdletBinding()]
 param([string]$BaseURL='http://127.0.0.1:19110', [string]$OutputDirectory='')
 $ErrorActionPreference='Stop'
+$expectedVersion='v'+((Get-Content -LiteralPath (Join-Path $PSScriptRoot '../VERSION') -Raw).Trim() -replace '\.0$','')
+
 $projectRoot=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 if(-not $OutputDirectory){$OutputDirectory=Join-Path $projectRoot '.runtime/smoke'}
 $health=(Invoke-RestMethod ($BaseURL+'/api/health')).data
-if($health.name -ne 'Castorice-WebRuleAnalyzer' -or $health.version -ne 'v1.4'){throw 'Unexpected server'}
+if($health.name -ne 'Castorice-WebRuleAnalyzer' -or $health.version -ne $expectedVersion){throw 'Unexpected server'}
 $session=(Invoke-RestMethod ($BaseURL+'/api/session')).data
 $headers=@{'X-Castorice-Token'=$session.token}
 function Post-JSON([string]$Path,$Value){return (Invoke-RestMethod ($BaseURL+$Path) -Method Post -ContentType 'application/json' -Headers $headers -Body ($Value|ConvertTo-Json -Depth 12 -Compress)).data}
