@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import ContextHelp from "./ContextHelp";
 import {
   Alert,
   Box,
@@ -188,6 +189,7 @@ export default function RuleLibrary(p: Props) {
       : "";
   return (
     <Dialog
+      aria-labelledby="rule-library-title"
       slotProps={{ transition: { onExited: p.onExited } }}
       open={p.open ?? true}
       fullWidth
@@ -197,9 +199,29 @@ export default function RuleLibrary(p: Props) {
     >
       <DialogTitle sx={{ py: 1, px: 2 }}>
         <Stack direction="row" sx={{ gap: 1, alignItems: "center" }}>
-          <Typography variant="h6" sx={{ flex: 1 }}>
+          <Typography variant="h6" id="rule-library-title" sx={{ flex: 1 }}>
             开源规则库
           </Typography>
+          <ContextHelp label="规则库术语说明">
+            <Box
+              component="dl"
+              sx={{
+                m: 0,
+                "& dd": { ml: 0, mb: 0.5 },
+                "& dt": { fontWeight: 700 },
+              }}
+            >
+              <dt>来源 · 版本</dt>
+              <dd>上游规则项目与本地内容对应的提交编号。</dd>
+              <dt>规则原文</dt>
+              <dd>
+                所选分类的上游文件。include:分类名
+                表示引用另一分类，可搜索该名称查看规则。
+              </dd>
+              <dt>域名 · 后缀 · 关键词</dt>
+              <dd>分别匹配完整主机名、指定域名及其子域名、主机名中的文字。</dd>
+            </Box>
+          </ContextHelp>
           <Button
             size="small"
             startIcon={<SettingsRounded />}
@@ -506,14 +528,15 @@ export default function RuleLibrary(p: Props) {
       </DialogContent>
       <Dialog
         open={settings}
+        aria-labelledby="rule-settings-title"
         onClose={() => setSettings(false)}
         fullWidth
         maxWidth="sm"
       >
-        <DialogTitle>规则库设置</DialogTitle>
+        <DialogTitle id="rule-settings-title">规则库设置</DialogTitle>
         <DialogContent dividers>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            开启后立即下载到本地，运行期间每天检查更新。失败时保留旧缓存；关闭软件后不在后台运行。
+            开启后立即下载，运行期间每天检查更新。更新失败时保留旧缓存。
           </Typography>
           {sources.map((s) => (
             <Box

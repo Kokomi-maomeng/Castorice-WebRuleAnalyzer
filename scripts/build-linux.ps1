@@ -18,8 +18,17 @@ try {
  if($LASTEXITCODE -ne 0){throw 'Linux build failed'}
 } finally {Pop-Location; $env:GOOS=$oldOS; $env:GOARCH=$oldArch; $env:CGO_ENABLED=$oldCGO}
 Copy-Item -LiteralPath (Join-Path $projectRoot 'README.md'),(Join-Path $projectRoot 'LICENSE'),(Join-Path $projectRoot 'CHANGELOG.md') -Destination $packageDir -Force
-Copy-Item -LiteralPath (Join-Path $projectRoot 'docs') -Destination $packageDir -Recurse -Force
-$launcher = '#!/bin/sh' + "`n" + 'set -eu' + "`n" + 'cd -- "$(dirname -- "$0")"' + "`n" + 'exec ./castorice --server --data-dir "$PWD/data" "$@"' + "`n"
+& (Join-Path $PSScriptRoot 'copy-release-docs.ps1') -PackageDirectory $packageDir
+$launcher = @'
+#!/bin/sh
+set -eu
+cd -- "$(dirname -- "$0")"
+if [ "$#" -eq 0 ] && [ -n "${WAYLAND_DISPLAY:-${DISPLAY:-}}" ]; then
+  exec ./castorice --desktop
+fi
+exec ./castorice --server --data-dir "$PWD/data" "$@"
+'@
+$launcher = $launcher.Replace("`r`n", "`n") + "`n"
 [IO.File]::WriteAllText((Join-Path $packageDir 'start.sh'),$launcher,[Text.UTF8Encoding]::new($false))
 $dockerfile=Join-Path $projectRoot 'deploy/Dockerfile.runtime'
 Copy-Item -LiteralPath $dockerfile -Destination (Join-Path $packageDir 'Dockerfile') -Force

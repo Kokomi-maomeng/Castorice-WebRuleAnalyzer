@@ -31,7 +31,7 @@ func TestObservedDefaultAndFormats(t *testing.T) {
 		t.Run(format, func(t *testing.T) {
 			j := job()
 			j.Format = format
-			result, err := Build(j, domainRecords("gemini.google.com", "accounts.google.com"), nil)
+			result, err := Build(j, domainRecords("app.example.com", "auth.example.org"), nil)
 			if err != nil {
 				t.Fatal(err)
 			}

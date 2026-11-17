@@ -1,4 +1,4 @@
-import { Box, MenuItem, TextField, Typography } from "@mui/material";
+import { Box, MenuItem, TextField } from "@mui/material";
 import type { ScanOptions } from "../types";
 
 export default function NetworkOptions({
@@ -14,7 +14,7 @@ export default function NetworkOptions({
     <Box
       sx={{
         display: "grid",
-        gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))",
+        gridTemplateColumns: "repeat(auto-fit,minmax(min(210px, 100%),1fr))",
         gap: 1.5,
       }}
     >
@@ -47,19 +47,8 @@ export default function NetworkOptions({
         value={options.upstream_proxy || ""}
         placeholder="http://127.0.0.1:端口"
         onChange={(e) => set("upstream_proxy", e.target.value.trim())}
-        helperText="支持 HTTP / SOCKS5 回环 IP，无认证；留空使用系统网络。"
         sx={{ gridColumn: "1 / -1" }}
       />
-      <Typography
-        variant="caption"
-        color="text.secondary"
-        sx={{ gridColumn: "1 / -1" }}
-      >
-        {options.dns_mode === "secure"
-          ? "独立模式使用所选 HTTPS DNS，替代系统解析答案；所有实际目标仍校验公网地址。"
-          : "自动模式只回退已知 Fake-IP，不覆盖回环或私网答案。"}{" "}
-        系统网络仍可由 TUN 接管。
-      </Typography>
     </Box>
   );
 }

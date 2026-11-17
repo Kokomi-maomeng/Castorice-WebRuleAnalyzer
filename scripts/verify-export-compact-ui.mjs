@@ -43,6 +43,8 @@ async function geometry() {
 }
 try {
   await page.goto(base);
+  await page.getByRole('button', { name: '扫描历史', exact: true }).click();
+  await page.getByRole('button', { name: '打开', exact: true }).first().click();
   await page.getByRole('button', { name: '预览与导出规则', exact: true }).click();
   await ready();
   const dialog = page.getByRole('dialog');

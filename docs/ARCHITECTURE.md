@@ -107,6 +107,12 @@ Linux 默认启动回环 HTTP 服务并打开浏览器；Windows 默认原生 We
 
 清空解除当前任务与 SSE，丢弃迟到请求，重置面板状态与请求总数；在本地保存明确空任务标记，不删除 SQLite 历史或设置。活动扫描禁止清空，保留停止入口。动效使用主题节奏、按压状态与 Collapse，系统减少动态效果同时影响主题与 CSS。
 
+## 统一窗口栏
+
+Windows WebView2、Linux GTK 3/WebKitGTK 和网页共用 `frontend/src/components/AppTitleBar.tsx`。桌面外壳只在内嵌回环页面的顶层注入 `castoriceWindow`。前端通过它请求移动、最小化、最大化/还原和关闭。外壳用 `castorice-window-state` 事件回传最大化状态；边缘缩放由系统窗口层处理。网页共用品牌与工具入口，窗口按键按桥接对象的可用性渲染。
+
+新桌面平台可沿用此桥接约定和同一前端。验收时覆盖拖动、双击、系统最大化/还原、边缘缩放、焦点、窗口关闭时的服务和扫描清理。Linux `--desktop` 用单实例锁和回环随机端口运行服务，GTK 窗口退出后关闭服务。Linux 服务模式和 Docker 沿用独立入口。
+
 ## Windows 桌面生命周期（实现细节）
 
 `cmd/castorice` 默认启动原生桌面；`--server` 显式保留独立 HTTP 开发模式。桌面不依赖 Rust/CGo，不执行 Node.js 开发服务器。

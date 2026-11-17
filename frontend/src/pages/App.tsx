@@ -1,33 +1,19 @@
 import DiagnosticAlert from "../components/DiagnosticAlert";
-import NetworkDialog from "../components/NetworkDialog";
 import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
-  AppBar,
   Box,
   Button,
-  Chip,
   CircularProgress,
   Collapse,
   CssBaseline,
-  IconButton,
   Snackbar,
   Stack,
   ThemeProvider,
-  Toolbar,
-  Tooltip,
   Typography,
   useMediaQuery,
 } from "@mui/material";
-import {
-  DarkModeRounded,
-  HistoryRounded,
-  HubRounded,
-  LightModeRounded,
-  MenuBookRounded,
-  RestartAltRounded,
-  SettingsRounded,
-} from "@mui/icons-material";
+import AppTitleBar from "../components/AppTitleBar";
 import ScanControls from "../components/ScanControls";
 import DomainPanel from "../components/DomainPanel";
 import AnalysisPanel from "../components/AnalysisPanel";
@@ -46,9 +32,8 @@ import type {
 import { makeTheme } from "../theme";
 import { useScan } from "../hooks/useScan";
 import { useActiveScan } from "../hooks/useActiveScan";
-import { APP_VERSION } from "../version";
 import { api } from "../services/api";
-import { active, defaultSettings, errorMessage, date } from "../utils/format";
+import { active, defaultSettings, errorMessage } from "../utils/format";
 export default function App() {
   const [settings, setSettings] = useState<Settings>(defaultSettings);
   const [options, setOptions] = useState(defaultSettings.scan);
@@ -64,6 +49,7 @@ export default function App() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [notice, notify] = useState("");
   const [dialog, setDialog] = useState("");
+  const [settingsLibrary, setSettingsLibrary] = useState(false);
   function openDialog(name: string) {
     setDialog(name);
     setDialogOpen(true);
@@ -112,10 +98,9 @@ export default function App() {
   useEffect(() => {
     void Promise.all([
       api<Settings>("/settings"),
-      api<ScanTask[]>("/scans"),
       api<{ visible_browser: boolean }>("/health"),
     ])
-      .then(([s, scans, capabilities]) => {
+      .then(([s, capabilities]) => {
         setCanShowBrowser(capabilities.visible_browser);
         setSettings(s);
         setOptions(
@@ -127,14 +112,6 @@ export default function App() {
                 visible: false,
               },
         );
-        const stored = localStorage.getItem("castorice.lastScan");
-        const restore =
-          scans.find(active) ||
-          (stored === null ? scans[0] : scans.find((t) => t.id === stored));
-        if (restore) {
-          setID(restore.id);
-          setURL(restore.target_url);
-        }
       })
       .catch((e) => setError(errorMessage(e)))
       .finally(() => setInitializing(false));
@@ -143,7 +120,6 @@ export default function App() {
     setExcluded(new Set());
     setFilter({ host: "", method: "", type: "", status: "", page: 0 });
     setMode("observed");
-    if (id) localStorage.setItem("castorice.lastScan", id);
   }, [id]);
   const running = !!currentActive;
   function reset(keepDialog = false) {
@@ -176,8 +152,6 @@ export default function App() {
             visible: false,
           },
     );
-    // An explicitly empty workspace survives reload without deleting history.
-    localStorage.setItem("castorice.lastScan", "");
   }
   async function start() {
     setBusy(true);
@@ -246,67 +220,13 @@ export default function App() {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <Box className="app-shell">
-        <AppBar
-          position="static"
-          color="transparent"
-          elevation={0}
-          sx={{
-            borderBottom: 1,
-            borderColor: "divider",
-            bgcolor: "background.paper",
-          }}
-        >
-          <Toolbar
-            sx={{ minHeight: "54px !important", px: { xs: 1, sm: 2 }, gap: 1 }}
-          >
-            <HubRounded color="primary" />
-            <Typography noWrap sx={{ fontSize: 15, fontWeight: 700, flex: 1 }}>
-              <Box component="span" className="brand-full">
-                Castorice-WebRuleAnalyzer
-              </Box>
-              <Box component="span" className="brand-short">
-                Web规则分析器
-              </Box>
-              <Typography
-                component="span"
-                variant="caption"
-                color="text.secondary"
-                sx={{ ml: 1 }}
-              >
-                {APP_VERSION}
-              </Typography>
-            </Typography>
-            <Tooltip title="开源规则库">
-              <IconButton aria-label="开源规则库" onClick={() => openLibrary()}>
-                <MenuBookRounded />
-              </IconButton>
-            </Tooltip>
-            <Tooltip title="扫描历史">
-              <IconButton
-                aria-label="扫描历史"
-                onClick={() => openDialog("history")}
-              >
-                <HistoryRounded />
-              </IconButton>
-            </Tooltip>
-            <Tooltip title="切换主题">
-              <IconButton
-                aria-label="切换主题"
-                onClick={() => void toggleTheme()}
-              >
-                {dark ? <LightModeRounded /> : <DarkModeRounded />}
-              </IconButton>
-            </Tooltip>
-            <Tooltip title="软件设置">
-              <IconButton
-                aria-label="软件设置"
-                onClick={() => openDialog("settings")}
-              >
-                <SettingsRounded />
-              </IconButton>
-            </Tooltip>
-          </Toolbar>
-        </AppBar>
+        <AppTitleBar
+          dark={dark}
+          onTheme={() => void toggleTheme()}
+          onLibrary={() => openLibrary()}
+          onHistory={() => openDialog("history")}
+          onSettings={() => openDialog("settings")}
+        />
         <Box component="main" className="app-main">
           {initializing && (
             <Stack direction="row" sx={{ alignItems: "center", gap: 1 }}>
@@ -347,28 +267,8 @@ export default function App() {
             onStart={() => void start()}
             onStop={() => void stop()}
             onReset={reset}
+            notify={notify}
           />
-          <Stack
-            direction="row"
-            sx={{ gap: 1, alignItems: "center", flexShrink: 0 }}
-          >
-            <Typography
-              variant="caption"
-              color="text.secondary"
-              sx={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}
-            >
-              {task
-                ? `结果来源：${task.target_url} · ${date(task.started_at)}`
-                : "独立浏览器采集，结果按任务保存"}
-            </Typography>
-            <Button
-              size="small"
-              onClick={() => openDialog("network")}
-              disabled={busy || initializing}
-            >
-              网络诊断
-            </Button>
-          </Stack>
           {currentActive && currentActive.id !== id && (
             <Alert
               severity="info"
@@ -384,63 +284,26 @@ export default function App() {
                 </Button>
               }
             >
-              正在查看历史；另一个任务仍在采集，可随时停止。
+              {task ? "另一个任务正在采集。" : "有任务正在采集。"}
             </Alert>
           )}
           {connection && <Alert severity="warning">{connection}</Alert>}
-          <Stack
-            direction="row"
-            className="workspace-toolbar"
-            sx={{ gap: 0.5, alignItems: "center" }}
-          >
-            <Box className="mobile-switch">
-              <Button
-                size="small"
-                variant={mobilePanel === "domains" ? "contained" : "text"}
-                onClick={() => setMobilePanel("domains")}
-              >
-                域名
-              </Button>
-              <Button
-                size="small"
-                variant={mobilePanel === "analysis" ? "contained" : "text"}
-                onClick={() => setMobilePanel("analysis")}
-              >
-                分析 / 规则命中
-              </Button>
-            </Box>
-            <Typography
-              variant="caption"
-              color="text.secondary"
-              className="privacy-note"
-            >
-              独立浏览器 · URL 脱敏 · 本地保存
-            </Typography>
-            <Tooltip
-              title={
-                running
-                  ? "先停止采集，再清空工作区"
-                  : "恢复初始页面，保留扫描历史和软件设置"
-              }
-            >
-              <span style={{ marginLeft: "auto" }}>
-                <Button
-                  size="small"
-                  startIcon={<RestartAltRounded />}
-                  onClick={() => reset()}
-                  disabled={running || busy || initializing}
-                >
-                  清空工作区
-                </Button>
-              </span>
-            </Tooltip>
-            <Chip
+          <Box className="mobile-switch">
+            <Button
               size="small"
-              className="workspace-status"
-              label={running ? "正在采集" : "本地工作区"}
-              variant="outlined"
-            />
-          </Stack>
+              variant={mobilePanel === "domains" ? "contained" : "text"}
+              onClick={() => setMobilePanel("domains")}
+            >
+              域名
+            </Button>
+            <Button
+              size="small"
+              variant={mobilePanel === "analysis" ? "contained" : "text"}
+              onClick={() => setMobilePanel("analysis")}
+            >
+              分析 / 规则命中
+            </Button>
+          </Box>
           <Box className="workspace" data-mobile-panel={mobilePanel}>
             <DomainPanel
               key={`domains:${id}:${resetCount}`}
@@ -496,9 +359,17 @@ export default function App() {
             settings={settings}
             onSave={save}
             onClose={closeDialog}
-            onLibrary={() => openLibrary()}
+            onLibrary={() => setSettingsLibrary(true)}
             notify={notify}
-          />
+          >
+            {settingsLibrary && (
+              <RuleLibrary
+                onClose={() => setSettingsLibrary(false)}
+                notify={notify}
+                onRematch={() => void rematch()}
+              />
+            )}
+          </SettingsDialog>
         )}
         {dialog === "history" && (
           <HistoryDialog
@@ -538,17 +409,6 @@ export default function App() {
             onClose={closeDialog}
             notify={notify}
             onRematch={() => void rematch()}
-          />
-        )}
-        {dialog === "network" && (
-          <NetworkDialog
-            open={dialogOpen}
-            onClose={closeDialog}
-            onExited={dialogExited}
-            url={url}
-            options={options}
-            onApply={setOptions}
-            notify={notify}
           />
         )}
         <Snackbar

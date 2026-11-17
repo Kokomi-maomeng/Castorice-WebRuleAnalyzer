@@ -1,4 +1,6 @@
 import NetworkOptions from "./NetworkOptions";
+import NetworkDialog from "./NetworkDialog";
+import ScanModeSelect from "./ScanModeSelect";
 import { useState } from "react";
 import {
   Box,
@@ -11,23 +13,21 @@ import {
   FormControlLabel,
   IconButton,
   InputAdornment,
-  MenuItem,
   Paper,
   Stack,
   Switch,
   TextField,
-  Tooltip,
-  Typography,
 } from "@mui/material";
 import {
   ArrowForwardRounded,
   CloseRounded,
   LinkRounded,
+  RestartAltRounded,
   StopRounded,
   TuneRounded,
 } from "@mui/icons-material";
 import type { ScanOptions } from "../types";
-import { modeNames } from "../utils/format";
+
 interface Props {
   canShowBrowser: boolean;
   url: string;
@@ -39,9 +39,12 @@ interface Props {
   onStart: () => void;
   onStop: () => void;
   onReset: () => void;
+  notify: (s: string) => void;
 }
 export default function ScanControls(p: Props) {
   const [advanced, setAdvanced] = useState(false);
+  const [diagnosing, setDiagnosing] = useState(false);
+  const { mode } = p.options;
   const set = <K extends keyof ScanOptions>(key: K, value: ScanOptions[K]) =>
     p.setOptions({ ...p.options, [key]: value });
   const number = (
@@ -55,32 +58,42 @@ export default function ScanControls(p: Props) {
       type="number"
       value={p.options[key]}
       onChange={(e) => set(key, Number(e.target.value))}
+      onBlur={(e) => {
+        const value = Number(e.target.value);
+        const bounded = Math.min(max, Math.max(min, Math.trunc(value)));
+        if (bounded !== value) set(key, bounded);
+      }}
       slotProps={{ htmlInput: { min, max } }}
       disabled={p.running}
       fullWidth
     />
   );
+  const modeSelect = () => (
+    <ScanModeSelect
+      value={mode}
+      onChange={(value) => set("mode", value)}
+      disabled={p.running || p.busy}
+      canShowBrowser={p.canShowBrowser}
+    />
+  );
+
   return (
     <Paper
       component="section"
       className="scan-controls"
-      sx={{ p: 1.5, border: 1, borderColor: "divider", flexShrink: 0 }}
+      sx={{ p: 1.25, border: 1, borderColor: "divider", flexShrink: 0 }}
     >
       <Box
         component="form"
         onSubmit={(e) => {
           e.preventDefault();
-          if (!p.running && !p.busy) {
-            if (p.url.trim()) p.onStart();
-            else p.onReset();
-          }
+          if (!p.running && !p.busy && p.url.trim()) p.onStart();
         }}
         className="scan-form"
       >
         <TextField
           fullWidth
           label="要分析的网站"
-          placeholder="example.com 或完整 URL"
           value={p.url}
           disabled={p.running}
           onChange={(e) => p.setURL(e.target.value)}
@@ -107,95 +120,65 @@ export default function ScanControls(p: Props) {
             },
           }}
         />
-        <TextField
-          select
-          label="扫描模式"
-          value={p.options.mode}
-          onChange={(e) => set("mode", e.target.value as ScanOptions["mode"])}
-          disabled={p.running}
-          className="scan-mode"
+        {modeSelect()}
+        <Button
+          className="advanced-button"
+          startIcon={<TuneRounded />}
+          onClick={() => setAdvanced(true)}
+          aria-label="高级配置"
+          title="高级配置"
+          disabled={p.busy || p.running}
         >
-          {Object.entries(modeNames).map(([v, label]) => (
-            <MenuItem
-              key={v}
-              value={v}
-              disabled={v === "interactive" && !p.canShowBrowser}
+          <span>高级配置</span>
+        </Button>
+        <Stack direction="row" className="scan-actions" sx={{ gap: 0.75 }}>
+          {p.running ? (
+            <Button
+              variant="contained"
+              color="error"
+              startIcon={<StopRounded />}
+              onClick={p.onStop}
+              disabled={p.busy}
             >
-              {label}
-            </MenuItem>
-          ))}
-        </TextField>
-        <Tooltip title={`高级设置 · 最长 ${p.options.max_seconds} 秒`}>
+              停止采集
+            </Button>
+          ) : (
+            <Button
+              type="submit"
+              variant="contained"
+              endIcon={
+                p.busy ? (
+                  <CircularProgress size={16} color="inherit" />
+                ) : (
+                  <ArrowForwardRounded />
+                )
+              }
+              disabled={p.busy || !p.url.trim()}
+            >
+              开始采集
+            </Button>
+          )}
           <Button
-            className="advanced-button"
-            startIcon={<TuneRounded />}
-            onClick={() => setAdvanced(true)}
-            aria-label="高级设置"
-          >
-            <span>高级设置</span>
-          </Button>
-        </Tooltip>
-        {p.running ? (
-          <Button
-            variant="contained"
-            color="error"
-            startIcon={<StopRounded />}
-            onClick={p.onStop}
-            disabled={p.busy}
-          >
-            停止采集
-          </Button>
-        ) : (
-          <Button
-            type="submit"
-            variant="contained"
-            endIcon={
-              p.busy ? (
-                <CircularProgress size={16} color="inherit" />
-              ) : (
-                <ArrowForwardRounded />
-              )
-            }
-            disabled={p.busy || !p.url.trim()}
-          >
-            开始分析
-          </Button>
-        )}
-      </Box>
-      {/^(?:https?:\/\/)?(?:www\.)?geminii?\.com(?:[/?#:]|$)/i.test(
-        p.url.trim(),
-      ) && (
-        <Box
-          sx={{
-            mt: 1,
-            display: "flex",
-            gap: 1,
-            alignItems: "center",
-            flexWrap: "wrap",
-          }}
-        >
-          <Typography variant="caption" color="text.secondary">
-            如果你要分析 Google Gemini，官方入口为 gemini.google.com。
-          </Typography>
-          <Button
-            size="small"
+            className="clear-workspace"
+            startIcon={<RestartAltRounded />}
+            onClick={() => p.onReset()}
             disabled={p.running || p.busy}
-            onClick={() => p.setURL("https://gemini.google.com/")}
           >
-            使用 Google Gemini 地址
+            清空工作区
           </Button>
-        </Box>
-      )}
+        </Stack>
+      </Box>
       <Dialog
         open={advanced}
+        aria-labelledby="advanced-config-title"
         onClose={() => setAdvanced(false)}
         fullWidth
         maxWidth="sm"
       >
-        <DialogTitle>
-          本次扫描参数
+        <DialogTitle id="advanced-config-title">
+          高级配置
           <IconButton
-            aria-label="关闭高级设置"
+            aria-label="关闭高级配置"
             onClick={() => setAdvanced(false)}
             sx={{ float: "right" }}
           >
@@ -203,73 +186,52 @@ export default function ScanControls(p: Props) {
           </IconButton>
         </DialogTitle>
         <DialogContent dividers>
-          <Box
-            sx={{
-              display: "grid",
-              gridTemplateColumns: "repeat(2,minmax(0,1fr))",
-              gap: 2,
-              pt: 0.5,
-            }}
-          >
-            <TextField
-              select
-              label="扫描模式"
-              value={p.options.mode}
-              onChange={(e) =>
-                set("mode", e.target.value as ScanOptions["mode"])
-              }
-              disabled={p.running}
-              sx={{ gridColumn: "1 / -1" }}
-            >
-              {Object.entries(modeNames).map(([v, label]) => (
-                <MenuItem
-                  key={v}
-                  value={v}
-                  disabled={v === "interactive" && !p.canShowBrowser}
-                >
-                  {label}
-                </MenuItem>
-              ))}
-            </TextField>
+          <Box className="advanced-grid" sx={{ pt: 0.5 }}>
+            <Box sx={{ gridColumn: "1 / -1" }}>{modeSelect()}</Box>
             {number("总时长 / 秒", "max_seconds", 1, 3600)}
-            {number("探索深度", "max_depth", 0, 8)}
-            {number("最多页面", "max_pages", 1, 200)}
             {number("导航超时 / 秒", "navigation_seconds", 1, 120)}
-            {number("每页观察 / 秒", "observe_seconds", 1, 300)}
-            {number("静默等待 / 毫秒", "quiet_millis", 100, 30000)}
-            {number("页面间隔 / 毫秒", "interval_millis", 0, 30000)}
+            {mode !== "interactive" &&
+              number("每页观察 / 秒", "observe_seconds", 1, 300)}
+            {mode !== "interactive" &&
+              number("静默等待 / 毫秒", "quiet_millis", 100, 30000)}
+            {mode !== "quick" && number("最多页面", "max_pages", 1, 200)}
+            {mode === "explore" && number("探索深度", "max_depth", 0, 8)}
+            {mode === "explore" &&
+              number("页面间隔 / 毫秒", "interval_millis", 0, 30000)}
             <Box sx={{ gridColumn: "1 / -1" }}>
               <NetworkOptions options={p.options} onChange={p.setOptions} />
             </Box>
           </Box>
-          <Stack sx={{ mt: 1 }}>
+          {p.canShowBrowser && mode !== "interactive" && (
             <FormControlLabel
+              sx={{ mt: 0.75 }}
               control={
                 <Switch
-                  checked={
-                    p.options.visible || p.options.mode === "interactive"
-                  }
-                  disabled={
-                    p.running ||
-                    p.options.mode === "interactive" ||
-                    !p.canShowBrowser
-                  }
+                  checked={p.options.visible}
+                  disabled={p.running}
                   onChange={(_, value) => set("visible", value)}
                 />
               }
               label="显示受控浏览器"
             />
-            <Typography variant="caption" color="text.secondary">
-              {!p.canShowBrowser
-                ? "当前服务无图形会话，使用无头浏览器采集。"
-                : ""}
-              自动探索仅访问同源普通链接，不点击按钮或提交表单。参数仅用于本次扫描，默认值可在软件设置中保存。
-            </Typography>
-          </Stack>
+          )}
         </DialogContent>
         <DialogActions>
+          <Button onClick={() => setDiagnosing(true)} sx={{ mr: "auto" }}>
+            网络诊断
+          </Button>
           <Button onClick={() => setAdvanced(false)}>完成</Button>
         </DialogActions>
+        {diagnosing && (
+          <NetworkDialog
+            open
+            onClose={() => setDiagnosing(false)}
+            url={p.url}
+            options={p.options}
+            onApply={p.setOptions}
+            notify={p.notify}
+          />
+        )}
       </Dialog>
     </Paper>
   );

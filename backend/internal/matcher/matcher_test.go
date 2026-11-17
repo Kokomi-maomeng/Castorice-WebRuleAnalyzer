@@ -19,20 +19,20 @@ func observed(values ...string) []model.DomainRecord {
 	}
 	return out
 }
-func TestGeminiNotGenericGoogle(t *testing.T) {
-	categories := []model.RuleCategory{category("Gemini", false, suffix("gemini.google.com"), suffix("deepmind.google")), category("Google", true, suffix("google.com"), suffix("gstatic.com"), suffix("googleapis.com"))}
-	matches, recommendation, _, _ := Match("gemini.google.com", observed("gemini.google.com", "accounts.google.com", "fonts.gstatic.com", "generativelanguage.googleapis.com"), categories)
-	if recommendation != "test:Gemini" || len(matches) != 2 || matches[0].Confidence != "high" {
+func TestAppNotGenericParent(t *testing.T) {
+	categories := []model.RuleCategory{category("Workbench", false, suffix("workbench.example.com"), suffix("assets.example.org")), category("Parent", true, suffix("example.com"), suffix("static.example.org"), suffix("api.example.org"))}
+	matches, recommendation, _, _ := Match("workbench.example.com", observed("workbench.example.com", "accounts.example.com", "fonts.static.example.org", "api.example.com"), categories)
+	if recommendation != "test:Workbench" || len(matches) != 2 || matches[0].Confidence != "high" {
 		t.Fatalf("wrong recommendation: %s %+v", recommendation, matches)
 	}
-	_, recommendation, _, _ = Match("gemini.google.com", observed("gemini.google.com", "accounts.google.com", "fonts.gstatic.com"), categories[1:])
+	_, recommendation, _, _ = Match("workbench.example.com", observed("workbench.example.com", "accounts.example.com", "fonts.static.example.org"), categories[1:])
 	if recommendation != "" {
-		t.Fatal("generic Google auto selected")
+		t.Fatal("generic Parent auto selected")
 	}
 }
 func TestSharedUnknownAndAmbiguous(t *testing.T) {
-	cats := []model.RuleCategory{category("one", false, suffix("accounts.google.com")), category("two", false, suffix("accounts.google.com"))}
-	_, recommended, _, _ := Match("unrelated.example.com", observed("accounts.google.com", "fonts.gstatic.com"), cats)
+	cats := []model.RuleCategory{category("one", false, suffix("accounts.example.com")), category("two", false, suffix("accounts.example.com"))}
+	_, recommended, _, _ := Match("unrelated.example.com", observed("accounts.example.com", "fonts.static.example.org"), cats)
 	if recommended != "" {
 		t.Fatal("shared auth identifies app")
 	}
@@ -54,25 +54,25 @@ func TestSharedUnknownAndAmbiguous(t *testing.T) {
 	}
 }
 
-func TestGeminiDotComIsNotGoogleGeminiOrSharedAI(t *testing.T) {
+func TestSharedRulesDoNotIdentifyUnrelatedTarget(t *testing.T) {
 	cats := []model.RuleCategory{
-		category("Gemini", false, suffix("gemini.google.com")),
-		category("Copilot", false, suffix("www.google.com")),
-		category("OpenAI", false, suffix("www.google.com")),
-		category("Google", true, suffix("google.com")),
+		category("Workbench", false, suffix("workbench.example.com")),
+		category("Editor", false, suffix("www.example.com")),
+		category("Notebook", false, suffix("www.example.com")),
+		category("Parent", true, suffix("example.com")),
 	}
-	matches, recommendation, _, _ := Match("gemini.com", observed("gemini.com", "www.google.com", "www.googletagmanager.com"), cats)
+	matches, recommendation, _, _ := Match("workbench.example.net", observed("workbench.example.net", "www.example.com", "analytics.example.org"), cats)
 	if recommendation != "" {
-		t.Fatal("unrelated Gemini application recommended")
+		t.Fatal("unrelated Workbench application recommended")
 	}
 	for _, hit := range matches {
 		if hit.Relation != "dependency" || hit.Suitable || len(hit.Evidence) == 0 {
 			t.Fatalf("shared hit misrepresented: %+v", hit)
 		}
 	}
-	_, recommendation, _, _ = Match("gemini.google.com", observed("gemini.google.com", "www.google.com"), cats)
-	if recommendation != "test:Gemini" {
-		t.Fatal("actual Google Gemini not identified", recommendation)
+	_, recommendation, _, _ = Match("workbench.example.com", observed("workbench.example.com", "www.example.com"), cats)
+	if recommendation != "test:Workbench" {
+		t.Fatal("actual Parent Workbench not identified", recommendation)
 	}
 }
 

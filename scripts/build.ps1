@@ -32,7 +32,7 @@ try {
     $env:CGO_ENABLED=$oldCGO; $env:GOOS=$oldGOOS; $env:GOARCH=$oldGOARCH; $env:CASTORICE_BROWSER_TEST=$oldBrowserTest
 }
 Copy-Item -LiteralPath (Join-Path $projectRoot 'LICENSE'), (Join-Path $projectRoot 'README.md'), (Join-Path $projectRoot 'CHANGELOG.md'), (Join-Path $projectRoot 'docs/THIRD-PARTY-NOTICES.md'), (Join-Path $projectRoot 'docs/用户运行说明.md') -Destination $packageDir -Force
-Copy-Item -LiteralPath (Join-Path $projectRoot 'docs') -Destination $packageDir -Recurse -Force
+& (Join-Path $PSScriptRoot 'copy-release-docs.ps1') -PackageDirectory $packageDir
 $oldReportPath = Join-Path $packageDir 'TEST-REPORT.md'
 if (Test-Path -LiteralPath $oldReportPath -PathType Leaf) { Remove-Item -LiteralPath $oldReportPath }
 & (Join-Path $PSScriptRoot 'collect-licenses.ps1') -OutputFile (Join-Path $packageDir 'THIRD-PARTY-LICENSES.txt')

@@ -2,6 +2,7 @@ package matcher
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -10,9 +11,7 @@ import (
 
 // Aliases strengthen real downloaded rule hits; names alone never identify apps.
 var identities = map[string][]string{
-	"gemini":        {"gemini.google.com", "bard.google.com", "ai.google.dev", "deepmind.google", "deepmind.com"},
-	"google-gemini": {"gemini.google.com", "bard.google.com", "ai.google.dev"},
-	"openai":        {"chatgpt.com", "openai.com"}, "youtube": {"youtube.com", "youtu.be"},
+	"openai": {"chatgpt.com", "openai.com"}, "youtube": {"youtube.com", "youtu.be"},
 	"github": {"github.com"}, "claude": {"claude.ai", "anthropic.com"}, "anthropic": {"claude.ai", "anthropic.com"},
 	"copilot": {"copilot.microsoft.com"}, "netflix": {"netflix.com"}, "spotify": {"spotify.com"},
 }
@@ -27,21 +26,32 @@ func identity(name, target string) bool {
 		}
 		return false
 	}
-	for _, label := range strings.Split(target, ".") {
-		if len(label) > 2 && label == n {
-			return true
-		}
+	if len(n) <= 2 {
+		return false
 	}
-	return false
+	return strings.Contains("."+target+".", "."+n+".") || compoundIdentity(n, target)
 }
-func family(name string) string {
-	switch strings.ToLower(name) {
-	case "google-gemini", "gemini":
-		return "gemini"
+
+func compoundIdentity(name, target string) bool {
+	// Compound upstream names often spell the parent domain first. Only
+	// consider complete labels; Match still requires a concrete target rule.
+	labels := strings.Split(name, "-")
+	if len(labels) < 2 {
+		return false
+	}
+	slices.Reverse(labels)
+	return strings.Contains("."+target+".", "."+strings.Join(labels, ".")+".")
+}
+func family(name, target string) string {
+	name = strings.ToLower(name)
+	switch name {
 	case "anthropic", "claude":
 		return "claude"
 	}
-	return strings.ToLower(name)
+	if compoundIdentity(name, target) {
+		return name[strings.LastIndexByte(name, '-')+1:]
+	}
+	return name
 }
 
 func Match(target string, observed []model.DomainRecord, categories []model.RuleCategory) ([]model.RuleMatch, string, string, int) {
@@ -152,7 +162,7 @@ func Match(target string, observed []model.DomainRecord, categories []model.Rule
 	if len(out) > 0 && out[0].Suitable {
 		ambiguous := false
 		for _, other := range out[1:] {
-			if other.Suitable && family(other.Category) != family(out[0].Category) {
+			if other.Suitable && family(other.Category, target) != family(out[0].Category, target) {
 				ambiguous = true
 			}
 		}

@@ -10,7 +10,7 @@ COPY backend/internal/model/version.go backend/internal/model/version.go
 COPY backend/cmd/castorice/winres/winres.json backend/cmd/castorice/winres/winres.json
 RUN cd frontend && npm run build
 
-FROM golang:1.26.10-bookworm AS backend
+FROM golang:1.26.11-bookworm AS backend
 WORKDIR /src/backend
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download

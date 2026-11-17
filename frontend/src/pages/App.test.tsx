@@ -4,6 +4,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
@@ -71,6 +72,26 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 describe("清空工作区", () => {
+  async function openHistory() {
+    fireEvent.click(screen.getByRole("button", { name: "扫描历史" }));
+    fireEvent.click(await screen.findByRole("button", { name: "打开" }));
+    return screen.findByRole("button", { name: "example.com" });
+  }
+
+  it("启动时忽略上一版保存的任务，历史仍可打开", async () => {
+    localStorage.setItem("castorice.lastScan", task.id);
+    render(<App />);
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "清空工作区" })).toBeEnabled(),
+    );
+    expect(screen.getByRole("textbox", { name: "要分析的网站" })).toHaveValue(
+      "",
+    );
+    expect(screen.getByText("等待首次发现")).toBeInTheDocument();
+    expect(mockAPI).not.toHaveBeenCalledWith("/scans/saved");
+    await openHistory();
+  });
+
   it("新地址未启动时明确标识上一任务结果，不把旧结果当作新分析", async () => {
     const original = mockAPI.getMockImplementation()!;
     mockAPI.mockImplementation(
@@ -90,19 +111,17 @@ describe("清空工作区", () => {
       },
     );
     render(<App />);
-    await screen.findByRole("button", { name: "example.com" });
+    await openHistory();
     fireEvent.change(screen.getByRole("textbox", { name: "要分析的网站" }), {
-      target: { value: "facebook.com" },
+      target: { value: "target.example.net" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "开始分析" }));
+    fireEvent.click(screen.getByRole("button", { name: "开始采集" }));
     await screen.findByText(/本次未启动；下方仍显示上一任务/);
     expect(screen.getByText("请运行网络诊断")).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "example.com" }),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText(/结果来源：https:\/\/example.com/),
-    ).toBeInTheDocument();
+    expect(screen.queryByText(/结果来源：/)).not.toBeInTheDocument();
   });
 
   it("查看历史时仍可停止后台采集任务", async () => {
@@ -119,6 +138,9 @@ describe("清空工作区", () => {
     );
     render(<App />);
     await screen.findByRole("button", { name: "停止采集" });
+    expect(screen.getByRole("textbox", { name: "要分析的网站" })).toHaveValue(
+      "",
+    );
     fireEvent.click(screen.getByRole("button", { name: "扫描历史" }));
     const buttons = await screen.findAllByRole("button", { name: "打开" });
     fireEvent.click(buttons[1]);
@@ -131,7 +153,7 @@ describe("清空工作区", () => {
   });
   it("清空结果、计数与筛选，忽略旧事件，刷新后仍为空且可打开保留的历史", async () => {
     const view = render(<App />);
-    await screen.findByRole("button", { name: "example.com" });
+    await openHistory();
     fireEvent.change(screen.getByRole("textbox", { name: "搜索域名" }), {
       target: { value: "missing" },
     });
@@ -148,7 +170,6 @@ describe("清空工作区", () => {
     expect(
       screen.getByRole("button", { name: "预览与导出规则" }),
     ).toBeDisabled();
-    expect(localStorage.getItem("castorice.lastScan")).toBe("");
     view.unmount();
     render(<App />);
     await waitFor(() =>
@@ -164,7 +185,7 @@ describe("清空工作区", () => {
   });
   it("清空输入框回车同样恢复初始页面", async () => {
     render(<App />);
-    await screen.findByRole("button", { name: "example.com" });
+    await openHistory();
     const input = screen.getByRole("textbox", { name: "要分析的网站" });
     fireEvent.change(input, { target: { value: "  " } });
     fireEvent.keyDown(input, { key: "Enter" });
@@ -175,11 +196,9 @@ describe("清空工作区", () => {
     const running = { ...task, status: "running" };
     const original = mockAPI.getMockImplementation()!;
     mockAPI.mockImplementation((path: string, ...args: unknown[]) =>
-      path === "/scans"
-        ? Promise.resolve([running])
-        : path === "/scans/saved"
-          ? Promise.resolve(running)
-          : original(path, ...args),
+      path === "/scans/active"
+        ? Promise.resolve(running)
+        : original(path, ...args),
     );
     render(<App />);
     await screen.findByRole("button", { name: "停止采集" });
@@ -198,4 +217,60 @@ describe("清空工作区", () => {
     expect(screen.getByRole("textbox", { name: "搜索域名" })).toHaveValue("");
     expect(screen.getByText("等待首次发现")).toBeInTheDocument();
   });
+});
+
+it("按模式显示有效参数并从高级配置打开网络诊断", async () => {
+  render(<App />);
+  const advanced = screen.getByRole("button", { name: "高级配置" });
+  await waitFor(() => expect(advanced).toBeEnabled());
+  expect(screen.queryByRole("button", { name: "网络诊断" })).toBeNull();
+  fireEvent.click(advanced);
+  const config = await screen.findByRole("dialog", { name: /高级配置/ });
+  const panel = within(config);
+  expect(panel.getByLabelText("每页观察 / 秒")).toBeInTheDocument();
+  expect(panel.queryByLabelText("探索深度")).toBeNull();
+  expect(panel.queryByLabelText("最多页面")).toBeNull();
+  fireEvent.click(panel.getByRole("button", { name: "扫描模式，快速扫描" }));
+  fireEvent.click(screen.getByRole("button", { name: "自动探索说明" }));
+  expect(await screen.findByRole("tooltip")).toHaveTextContent("同源链接");
+  fireEvent.click(screen.getByRole("button", { name: "自动探索" }));
+  expect(panel.getByLabelText("探索深度")).toBeInTheDocument();
+  expect(panel.getByLabelText("最多页面")).toBeInTheDocument();
+  const pages = panel.getByLabelText("最多页面");
+  fireEvent.change(pages, { target: { value: "" } });
+  fireEvent.blur(pages);
+  expect(pages).toHaveValue(1);
+  fireEvent.click(panel.getByRole("button", { name: "扫描模式，自动探索" }));
+  fireEvent.click(screen.getByRole("button", { name: "辅助交互" }));
+  expect(panel.getByLabelText("最多页面")).toBeInTheDocument();
+  expect(panel.queryByLabelText("每页观察 / 秒")).toBeNull();
+  expect(panel.queryByLabelText("显示受控浏览器")).toBeNull();
+  fireEvent.click(panel.getByRole("button", { name: "网络诊断" }));
+  await screen.findByRole("dialog", { name: /网络诊断/ });
+  fireEvent.click(screen.getByRole("button", { name: "关闭网络诊断" }));
+  expect(await screen.findByRole("dialog", { name: /高级配置/ })).toBe(config);
+});
+
+it("规则库以设置的子弹窗打开并保留未保存的设置", async () => {
+  render(<App />);
+  fireEvent.click(screen.getByRole("button", { name: "软件设置" }));
+  const settings = await screen.findByRole("dialog", { name: /软件设置/ });
+  const draft = within(settings).getByLabelText("默认策略组");
+  fireEvent.change(draft, { target: { value: "临时草稿" } });
+  fireEvent.click(
+    within(settings).getByRole("button", { name: "管理 / 更新规则库" }),
+  );
+  await screen.findByRole("dialog", { name: /开源规则库/ });
+  fireEvent.click(screen.getByRole("button", { name: "规则库术语说明" }));
+  expect(await screen.findByRole("tooltip")).toHaveTextContent(
+    "include:分类名",
+  );
+  fireEvent.click(screen.getByRole("button", { name: "规则库设置" }));
+  await screen.findByRole("dialog", { name: "规则库设置" });
+  fireEvent.click(screen.getByRole("button", { name: "完成" }));
+  fireEvent.click(await screen.findByRole("button", { name: "关闭规则库" }));
+  expect(await screen.findByRole("dialog", { name: /软件设置/ })).toBe(
+    settings,
+  );
+  expect(draft).toHaveValue("临时草稿");
 });

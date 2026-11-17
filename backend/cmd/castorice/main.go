@@ -25,6 +25,7 @@ import (
 
 func main() {
 	serverMode := flag.Bool("server", false, "开发/独立 HTTP 服务；默认启动 Windows 桌面窗口")
+	desktopMode := flag.Bool("desktop", false, "启动原生桌面窗口")
 	worker := flag.String("desktop-worker", "", "内部监督进程使用")
 	address := flag.String("listen", "127.0.0.1:19110", "服务模式回环地址")
 	dataDir := flag.String("data-dir", "", "仅独立服务模式可指定；桌面模式固定在 EXE 旁 data")
@@ -42,7 +43,7 @@ func main() {
 	var err error
 	if *worker != "" {
 		err = desktop.Worker(*worker)
-	} else if *serverMode || runtime.GOOS != "windows" {
+	} else if *serverMode || !*desktopMode && runtime.GOOS != "windows" {
 		err = runServer(*address, *dataDir, *devOrigin, *publicURL, *testAllow, *testMap, *noOpen)
 	} else {
 		err = desktop.Supervisor()

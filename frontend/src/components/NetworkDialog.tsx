@@ -22,7 +22,6 @@ import NetworkOptions from "./NetworkOptions";
 export default function NetworkDialog(p: {
   open: boolean;
   onClose: () => void;
-  onExited: () => void;
   url: string;
   options: ScanOptions;
   onApply: (o: ScanOptions) => void;
@@ -65,12 +64,12 @@ export default function NetworkDialog(p: {
   return (
     <Dialog
       open={p.open}
+      aria-labelledby="network-diagnostic-title"
       onClose={p.onClose}
       fullWidth
       maxWidth="sm"
-      slotProps={{ transition: { onExited: p.onExited } }}
     >
-      <DialogTitle>
+      <DialogTitle id="network-diagnostic-title">
         网络诊断与本次网络设置
         <IconButton
           aria-label="关闭网络诊断"
@@ -85,13 +84,6 @@ export default function NetworkDialog(p: {
           检测目标：{p.url || "请先在主界面输入网站"}
         </Typography>
         <NetworkOptions options={draft} onChange={change} />
-        <Typography
-          variant="caption"
-          color="text.secondary"
-          sx={{ display: "block", mt: 1 }}
-        >
-          诊断会比较系统与所选 HTTPS DNS；内部名称和私网 IP 只在本地检查。
-        </Typography>
         <Button
           sx={{ my: 2 }}
           variant="outlined"
@@ -169,7 +161,7 @@ export default function NetworkDialog(p: {
           onClick={() => {
             p.onApply(draft);
             p.onClose();
-            p.notify("网络选项已用于本次扫描，点击开始分析后生效");
+            p.notify("已应用本次网络配置");
           }}
         >
           用于本次扫描

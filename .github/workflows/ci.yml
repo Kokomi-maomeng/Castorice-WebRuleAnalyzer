@@ -23,13 +23,15 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.26.10'
+          go-version: '1.26.11'
           cache-dependency-path: backend/go.sum
       - run: npm ci --no-audit --no-fund
         working-directory: frontend
       - run: npm test
         working-directory: frontend
-      - run: npm run version:check && npm run format:check && npm audit --audit-level=high
+      - run: npm run version:check && npm run format:check && npm audit --omit=dev --audit-level=high
+        working-directory: frontend
+      - run: npm audit --json | node ../scripts/check-dev-audit.mjs
         working-directory: frontend
       - run: npm run build
         working-directory: frontend

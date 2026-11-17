@@ -1,6 +1,6 @@
 import NetworkOptions from "./NetworkOptions";
 import { APP_VERSION } from "../version";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   Alert,
   Box,
@@ -27,6 +27,7 @@ import {
 import type { ScanOptions, Settings } from "../types";
 import { api } from "../services/api";
 import { errorMessage, modeNames } from "../utils/format";
+import ContextHelp from "./ContextHelp";
 interface Props {
   open?: boolean;
   onExited?: () => void;
@@ -36,6 +37,7 @@ interface Props {
   onClose: () => void;
   onLibrary: () => void;
   notify: (s: string) => void;
+  children?: ReactNode;
 }
 export default function SettingsDialog(p: Props) {
   const [draft, setDraft] = useState(p.settings);
@@ -104,13 +106,14 @@ export default function SettingsDialog(p: Props) {
   }
   return (
     <Dialog
+      aria-labelledby="software-settings-title"
       open={p.open ?? true}
       fullWidth
       maxWidth="md"
       onClose={p.onClose}
       slotProps={{ transition: { onExited: p.onExited } }}
     >
-      <DialogTitle>
+      <DialogTitle id="software-settings-title">
         软件设置
         <IconButton
           aria-label="关闭设置"
@@ -194,24 +197,22 @@ export default function SettingsDialog(p: Props) {
             onChange={(scan) => setDraft((d) => ({ ...d, scan }))}
           />
         </Box>
-        <FormControlLabel
-          control={
-            <Switch
-              disabled={!p.canShowBrowser}
-              checked={draft.scan.visible}
-              onChange={(_, checked) => setScan("visible", checked)}
-            />
-          }
-          label="默认显示受控浏览器"
-          sx={{ mt: 1 }}
-        />
-        <Typography
-          variant="caption"
-          color="text.secondary"
-          sx={{ display: "block" }}
-        >
-          始终使用独立临时 Profile。结束后自动删除；异常退出残留可手动清理。
-        </Typography>
+        <Stack direction="row" sx={{ alignItems: "center", mt: 1 }}>
+          <FormControlLabel
+            control={
+              <Switch
+                disabled={!p.canShowBrowser}
+                checked={draft.scan.visible}
+                onChange={(_, checked) => setScan("visible", checked)}
+              />
+            }
+            label="默认显示受控浏览器"
+            sx={{ mr: 0 }}
+          />
+          <ContextHelp label="默认显示受控浏览器说明">
+            快速扫描和自动探索时，开启会显示独立的采集窗口，关闭则在无头模式运行。辅助交互始终显示窗口。采集使用临时浏览器资料，正常结束后自动清理。
+          </ContextHelp>
+        </Stack>
         <Divider sx={{ my: 3 }} />
         <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 650 }}>
           外观、日志与导出
@@ -337,6 +338,7 @@ export default function SettingsDialog(p: Props) {
           保存设置
         </Button>
       </DialogActions>
+      {p.children}
     </Dialog>
   );
 }
