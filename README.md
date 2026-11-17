@@ -1,4 +1,4 @@
-# Castorice-WebRuleAnalyzer v1.5
+# Castorice-WebRuleAnalyzer v1.6
 
 Web 分流规则分析器。输入网址，用独立 Chrome / Edge / Chromium 采集实际网络请求，查看域名与规则命中，导出 Clash/Mihomo、Rule Provider 或 sing-box 规则。
 
@@ -8,6 +8,13 @@ Web 分流规则分析器。输入网址，用独立 Chrome / Edge / Chromium �
 
 软件数据存于 EXE 旁的 `data/`，导出文件存于 `exports/`。解压到可写目录，移动整个目录即可携带数据。关闭主窗口会取消扫描并关闭本次创建的子进程。请先退出旧版再替换 EXE，保留自己的 `data/` 与 `exports/`；先备份数据目录。不能在 ZIP 内直接运行。
 
+## v1.6 的改动
+
+- 每次打开进入空白工作区。历史记录可从“扫描历史”打开。
+- Windows 和 Linux 桌面共用紧凑窗口栏，网页端使用相同的应用工具栏。
+- 开始或停止采集右侧可清空工作区。网络诊断移入高级配置，扫描参数随模式显示。
+- 扫描模式、受控浏览器和规则库术语提供按需说明。通过软件设置打开规则库时，返回后保留未保存的设置。
+
 ## v1.5 的改动
 
 - 精简预览与导出面板，抓取风险和 DOMAIN-SUFFIX 说明改为支持悬停、点击和键盘的提示图标。
@@ -15,7 +22,7 @@ Web 分流规则分析器。输入网址，用独立 Chrome / Edge / Chromium �
 - 条目按本次抓取、被覆盖、规则库补充筛选；仅抓取模式隐藏规则库补充选项。
 - 优化高缩放、短窗口的列表空间，统一输入框、复选框和工具栏间距；预览重算时保留列表，禁止导出过期结果。
 
-验收与缩放模拟范围见 [v1.5 报告](docs/audits/v1.5-修复与发布验收报告.md)。
+验收与缩放模拟范围见 [v1.5 报告](https://github.com/Kokomi-maomeng/Castorice-WebRuleAnalyzer/blob/v1.5/docs/audits/v1.5-%E4%BF%AE%E5%A4%8D%E4%B8%8E%E5%8F%91%E5%B8%83%E9%AA%8C%E6%94%B6%E6%8A%A5%E5%91%8A.md)。
 
 ## v1.4.1 的改动
 
@@ -25,7 +32,7 @@ Web 分流规则分析器。输入网址，用独立 Chrome / Edge / Chromium �
 - 历史支持搜索、分页、单条/多选删除及清空全部已结束记录，活动任务保留。
 - 补齐面板、列表、状态过渡和弹窗退出动画，并继续遵循系统减少动态效果偏好。
 
-网络异常时，点击“网络诊断”比较系统解析与独立 HTTPS DNS。独立模式会替代系统解析答案，需明确选择；本机代理支持无认证的 HTTP/SOCKS5 回环 IP 地址，不能因此扫描私网目标。输入其他服务的合法域名不会被自动改写。
+网络异常时，从“高级配置”打开“网络诊断”，比较系统解析与独立 HTTPS DNS。独立模式会替代系统解析答案，需明确选择；本机代理支持无认证的 HTTP/SOCKS5 回环 IP 地址，不能因此扫描私网目标。
 
 ## v1.4 的改动
 
@@ -34,11 +41,9 @@ Web 分流规则分析器。输入网址，用独立 Chrome / Edge / Chromium �
 - 更新 Go 安全工具链和依赖，限制规则解析工作量；提升预览对比度，清理遗留代码，统一版本来源。
 - 同时提供 Windows ZIP 与 Linux amd64 tar.gz；补充[导出接入说明](docs/EXPORT-INTEGRATION.md)。
 
-`gemini.com` 与 `gemini.google.com` 是不同网站。规则库中的 Google Gemini 分类需实际命中其对应域名，名称相似不会生成规则或自动识别。
-
 ## 操作
 
-1. 输入 URL 或域名，选择快速扫描、自动探索或辅助交互，开始分析。
+1. 输入 URL 或域名，选择快速扫描、自动探索或辅助交互，点击“开始采集”。
 2. 左侧只显示本次真实观察域名；点击域名查看相关请求。
 3. 在“规则命中”核对目标、第三方依赖与具体命中规则；可直接打开分类原文。
 4. 开源规则库 → 规则库设置，开启需要的来源自动更新，或手动下载。首次下载需要网络与时间，下载完成后本地搜索可离线使用。
@@ -57,16 +62,17 @@ Web 分流规则分析器。输入网址，用独立 Chrome / Edge / Chromium �
 
 ## Linux
 
-从同一 Release 下载 `Castorice-WebRuleAnalyzer-v1.5-linux-amd64.tar.gz`，解压后在有 Chromium/Chrome 的系统中运行：
+从同一 Release 下载 `Castorice-WebRuleAnalyzer-v1.6-linux-amd64.tar.gz` 并解压。桌面需要 Python 3、PyGObject、GTK 3、WebKitGTK 4.1 和扫描用的 Chromium/Chrome。Debian 可通过系统包管理器安装：
 
 ```sh
+sudo apt install python3-gi gir1.2-gtk-3.0 gir1.2-webkit2-4.1 chromium
 chmod +x castorice start.sh
 ./start.sh
 # 或启动服务而不打开网页
 ./castorice --server --no-open --listen 127.0.0.1:19110 --data-dir ./data
 ```
 
-Debian 可自行通过官方软件源安装 Chromium。图形会话下支持可见辅助交互；SSH/无桌面服务只提供无头采集。Linux 使用系统浏览器显示界面，Windows 使用原生 WebView2 窗口。
+在图形会话下，以普通用户运行 `./start.sh` 或 `./castorice --desktop` 可打开原生窗口。服务和 Docker 模式只需要扫描用的 Chromium/Chrome。SSH 或无桌面服务提供无头采集。
 
 ## Docker 网页版
 
@@ -92,7 +98,7 @@ CASTORICE_APPARMOR_PROFILE=castorice-browser docker compose up -d --build
 
 ## 开发与验证
 
-需要 Go 1.26.10+、Node 24+；依赖版本锁定。
+需要 Go 1.26.11+、Node 24+；依赖版本锁定。
 
 ```powershell
 ./scripts/test.ps1 -Browser -LiveRules -LiveDNS

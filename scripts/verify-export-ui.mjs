@@ -40,6 +40,8 @@ async function ready(expectedFormat) {
 try {
  await page.goto(base);
  await page.getByRole('button', { name: '预览与导出规则', exact: true }).waitFor();
+ await page.getByRole('button', { name: '扫描历史', exact: true }).click();
+ await page.getByRole('button', { name: '打开', exact: true }).first().click();
  await page.waitForFunction(() => [...document.querySelectorAll('button')].some(b => b.textContent.trim() === '预览与导出规则' && !b.disabled));
  await page.getByRole('button', { name: '预览与导出规则', exact: true }).click();
  await ready();
@@ -150,7 +152,7 @@ try {
  await page.emulateMedia({ reducedMotion: 'reduce' });
  assert.equal(await page.locator('.export-dialog .motion-panel').evaluate(e => getComputedStyle(e).animationName), 'none');
  await page.getByRole('button', { name: '关闭导出', exact: true }).click();
- await page.getByRole('button', { name: '高级设置', exact: true }).click();
+ await page.getByRole('button', { name: '高级配置', exact: true }).click();
  assert.equal(await page.locator('.MuiSwitch-switchBase').first().evaluate(e => getComputedStyle(e).transitionDuration), '0s');
  await page.emulateMedia({ reducedMotion: 'no-preference' });
  assert.notEqual(await page.locator('.MuiSwitch-switchBase').first().evaluate(e => getComputedStyle(e).transitionDuration), '0s');

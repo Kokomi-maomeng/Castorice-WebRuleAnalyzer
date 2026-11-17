@@ -248,18 +248,18 @@ func Worker(gate string) error {
 	}
 	defer w.Destroy()
 	w.SetSize(720, 480, webview2.HintMin)
+	if err = installWindowBar(w, service.URL, p); err != nil {
+		return err
+	}
 	if testingWindow {
 		// Explicit local acceptance hook: post the same native WM_CLOSE message
 		// as the title-bar close button. Absent in ordinary application windows.
 		_ = w.Bind("__castoriceTestClose", func() {
 			w.Dispatch(func() {
-				user32.NewProc("PostMessageW").Call(uintptr(w.Window()), 0x0010, 0, 0)
+				postMessage.Call(uintptr(w.Window()), 0x0010, 0, 0)
 			})
 		})
 	}
-	meta, _ := json.Marshal(map[string]string{"dataDir": p.Data, "exportDir": p.Exports, "version": model.Version})
-	origin, _ := json.Marshal(service.URL)
-	w.Init(`if(location.origin===` + string(origin) + `){Object.defineProperty(window,'castoriceDesktop',{value:Object.freeze(` + string(meta) + `),writable:false});}`)
 	// The desktop GUI only navigates to its local service. External text is
 	// displayed as text; it cannot load scripts through the production CSP.
 	w.Navigate(service.URL)

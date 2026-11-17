@@ -18,18 +18,22 @@ page.on('pageerror', e => errors.push(e.message));
 const report = { layouts: [], ruleContent: false, errors };
 try {
  await page.goto(base);
- await page.getByRole('button', { name: '开始分析', exact: true }).waitFor();
+ await page.getByRole('button', { name: '开始采集', exact: true }).waitFor();
  await page.waitForFunction(() => !document.body.textContent.includes('连接本地服务…'));
- for (const [width, height] of [[1920,1080],[1440,900],[1280,720],[1024,640],[820,600],[390,844],[640,360],[760,480]]) {
+ assert.equal(await page.getByRole('textbox', { name: '要分析的网站' }).inputValue(), '');
+ assert.equal(await page.locator('.window-buttons').count(), 0);
+ for (const [width, height] of [[1920,1080],[1440,900],[1280,720],[1024,640],[820,600],[390,844],[320,568],[640,360],[760,480]]) {
   await page.setViewportSize({ width, height });
   const metrics = await page.evaluate(() => {
    const workspace = document.querySelector('.workspace').getBoundingClientRect();
    const button = [...document.querySelectorAll('button')].find(e => e.textContent.includes('预览与导出规则')).getBoundingClientRect();
-   return { width: innerWidth, height: innerHeight, scrollWidth: document.documentElement.scrollWidth, scrollHeight: document.documentElement.scrollHeight, workspaceBottom: workspace.bottom, exportBottom: button.bottom };
+   const [start, reset] = [...document.querySelector('.scan-actions').querySelectorAll('button')].map(node => node.getBoundingClientRect());
+   return { width: innerWidth, height: innerHeight, scrollWidth: document.documentElement.scrollWidth, scrollHeight: document.documentElement.scrollHeight, workspaceBottom: workspace.bottom, exportBottom: button.bottom, actionsAligned: Math.abs(start.top - reset.top) < 1 && reset.left >= start.right && reset.right <= innerWidth };
   });
   report.layouts.push(metrics);
   assert(metrics.scrollWidth <= width && metrics.scrollHeight <= height, 'whole-page overflow: '+JSON.stringify(metrics));
   assert(metrics.workspaceBottom <= height + 1 && metrics.exportBottom <= height + 1, 'action clipped: '+JSON.stringify(metrics));
+  assert(metrics.actionsAligned, 'scan actions misaligned: '+JSON.stringify(metrics));
   await page.screenshot({ path: path.join(output, `layout-${width}x${height}.png`) });
  }
  await page.setViewportSize({ width: 1440, height: 900 });
@@ -40,11 +44,34 @@ try {
  }
  await page.evaluate(() => { document.documentElement.style.fontSize = ''; });
  const before = await page.locator('.workspace').boundingBox();
- await page.getByRole('button', { name: '高级设置', exact: true }).click();
- assert.equal(await page.getByRole('dialog').count(), 1);
- await page.getByRole('button', { name: '关闭高级设置' }).click();
+ assert.equal(await page.getByRole('button', { name: '网络诊断', exact: true }).count(), 0);
+ await page.getByRole('button', { name: '扫描模式，快速扫描', exact: true }).click();
+ await page.getByRole('button', { name: '快速扫描说明', exact: true }).hover();
+ await page.getByRole('tooltip').getByText(/一个页面/).waitFor();
+ await page.getByRole('button', { name: '自动探索说明', exact: true }).click();
+ await page.getByRole('tooltip').getByText(/同源链接/).waitFor();
+ await page.keyboard.press('Escape');
+ await page.getByRole('button', { name: '快速扫描', exact: true }).click();
+ await page.getByRole('button', { name: '高级配置', exact: true }).click();
+ const config = page.getByRole('dialog', { name: /高级配置/ });
+ assert(await config.getByLabel('每页观察 / 秒').isVisible());
+ assert.equal(await config.getByLabel('探索深度').count(), 0);
+ await config.getByRole('button', { name: '扫描模式，快速扫描' }).click();
+ await page.getByRole('button', { name: '自动探索', exact: true }).click();
+ assert(await config.getByLabel('探索深度').isVisible());
+ await config.getByRole('button', { name: '网络诊断', exact: true }).click();
+ await page.getByRole('dialog', { name: /网络诊断/ }).waitFor();
+ await page.getByRole('button', { name: '关闭网络诊断' }).click();
+ await config.waitFor();
+ await page.getByRole('button', { name: '关闭高级配置' }).click();
  assert.deepEqual(await page.locator('.workspace').boundingBox(), before, 'advanced options changed workspace layout');
- await page.getByRole('button', { name: '开源规则库', exact: true }).click();
+ await page.getByRole('button', { name: '软件设置', exact: true }).click();
+ const settings = page.getByRole('dialog', { name: /软件设置/ });
+ const policy = settings.getByLabel('默认策略组');
+ await policy.fill('临时设置草稿');
+ await settings.getByRole('button', { name: '管理 / 更新规则库' }).click();
+ await page.getByRole('button', { name: '规则库术语说明', exact: true }).hover();
+ await page.getByRole('tooltip').getByText(/include:分类名/).waitFor();
  await page.getByRole('textbox', { name: '搜索规则分类' }).fill('Facebook');
  const facebook = page.getByRole('button', { name: /^Facebook blackmatrix7/ });
  await facebook.waitFor(); await facebook.click();
@@ -73,6 +100,9 @@ try {
  await page.screenshot({ path: path.join(output, 'facebook-phone.png') });
  const editorRect = await editor.boundingBox();
  assert(editorRect && editorRect.height > 200 && editorRect.x + editorRect.width <= 391, 'phone reader clipped');
+ await page.getByRole('button', { name: '关闭规则库', exact: true }).click();
+ assert.equal(await policy.inputValue(), '临时设置草稿');
+ await page.getByRole('button', { name: '关闭设置', exact: true }).click();
  report.ruleContent = true;
  assert.equal(errors.length, 0, 'browser errors');
  console.log(JSON.stringify(report));

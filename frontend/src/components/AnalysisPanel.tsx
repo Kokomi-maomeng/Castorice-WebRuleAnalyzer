@@ -202,13 +202,7 @@ export default function AnalysisPanel(p: Props) {
                 }}
               />
               <Typography variant="h6" color="text.primary">
-                准备好探索一个网站
-              </Typography>
-              <Typography sx={{ mt: 1 }}>
-                输入 URL，开始一次独立的浏览器采集。
-              </Typography>
-              <Typography variant="caption" sx={{ mt: 1 }}>
-                CDP 网络事件采集 · 非 PCAP 抓包
+                输入网址后开始采集
               </Typography>
             </Stack>
           ) : (

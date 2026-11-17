@@ -5,4 +5,10 @@ interface CastoriceDesktop {
 }
 interface Window {
   castoriceDesktop?: CastoriceDesktop;
+  castoriceWindow?: {
+    maximized: boolean;
+    command: (
+      action: "move" | "minimize" | "toggle-maximize" | "close",
+    ) => void;
+  };
 }

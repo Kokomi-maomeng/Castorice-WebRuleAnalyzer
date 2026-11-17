@@ -88,7 +88,7 @@ func (u *upstream) RoundTrip(r *http.Request) (*http.Response, error) {
 	case strings.Contains(r.URL.Path, "/commits"):
 		body = `[{"sha":"` + u.version + `"}]`
 	case strings.Contains(r.URL.Path, "/git/trees/clash-tree"):
-		body = `{"tree":[{"path":"Facebook/Facebook.yaml","type":"blob","sha":"facebook-` + u.version + `"},{"path":"Gemini/Gemini.yaml","type":"blob","sha":"gemini-stable"}]}`
+		body = `{"tree":[{"path":"Facebook/Facebook.yaml","type":"blob","sha":"facebook-` + u.version + `"},{"path":"Workbench/Workbench.yaml","type":"blob","sha":"workbench-stable"}]}`
 	case strings.Contains(r.URL.Path, "/git/trees/rule-tree"):
 		body = `{"tree":[{"path":"Clash","type":"tree","sha":"clash-tree"}]}`
 	case strings.Contains(r.URL.Path, "/git/trees/"):
@@ -98,9 +98,9 @@ func (u *upstream) RoundTrip(r *http.Request) (*http.Response, error) {
 	case strings.HasSuffix(r.URL.Path, "/Facebook.yaml"):
 		u.rawDownloads++
 		body = "# original " + u.version + "\npayload:\n  - DOMAIN-SUFFIX,facebook.com\n  - IP-CIDR,1.2.3.0/24\n"
-	case strings.HasSuffix(r.URL.Path, "/Gemini.yaml"):
+	case strings.HasSuffix(r.URL.Path, "/Workbench.yaml"):
 		u.rawDownloads++
-		body = "payload:\n  - DOMAIN-SUFFIX,gemini.google.com\n"
+		body = "payload:\n  - DOMAIN-SUFFIX,workbench.example.com\n"
 	default:
 		return nil, errors.New("unexpected fixture URL: " + r.URL.String())
 	}
@@ -163,8 +163,8 @@ func TestAutoUpdateRawAndAtomicOfflineRecovery(t *testing.T) {
 	if downloads != 3 {
 		t.Fatal("unchanged content was unnecessarily downloaded", downloads)
 	}
-	gemini, _ := manager.Category("blackmatrix7:Gemini")
-	if gemini.Rules[0].Origins[0].Version != "snapshot2" {
+	workbench, _ := manager.Category("blackmatrix7:Workbench")
+	if workbench.Rules[0].Origins[0].Version != "snapshot2" {
 		t.Fatal("reused blob has old provenance")
 	}
 	if err = manager.Sync(context.Background(), source.ID); err == nil {

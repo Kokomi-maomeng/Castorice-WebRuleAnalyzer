@@ -65,6 +65,47 @@ body,
   flex-direction: column;
   min-height: 0;
 }
+.app-titlebar.MuiToolbar-root {
+  min-height: 38px;
+  height: 38px;
+  padding-inline: 12px 6px;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.app-titlebar.desktop-titlebar {
+  padding-right: 0;
+  user-select: none;
+}
+.titlebar-brand {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  align-self: stretch;
+  min-width: 0;
+  gap: 8px;
+}
+.titlebar-brand > svg {
+  flex-shrink: 0;
+}
+.titlebar-brand[data-window-drag] {
+  touch-action: none;
+}
+.window-buttons {
+  display: flex;
+  align-self: stretch;
+  margin-inline-start: 6px;
+  border-inline-start: 1px solid;
+}
+.window-buttons .MuiIconButton-root {
+  border-radius: 0;
+  width: 44px;
+  padding: 0;
+  transform: none;
+}
+.window-buttons .window-close:hover {
+  color: white;
+  background: #c42b1c;
+}
 .app-main {
   display: flex;
   flex-direction: column;
@@ -75,17 +116,21 @@ body,
 }
 .scan-form {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 150px auto auto;
+  grid-template-columns: minmax(0, 1fr) max-content max-content max-content;
   align-items: center;
   gap: 10px;
 }
-.scan-form > button {
+.scan-form button {
   white-space: nowrap;
   min-height: 40px;
 }
-.workspace-toolbar {
-  flex-shrink: 0;
-  min-height: 22px;
+.advanced-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.mobile-switch {
+  display: none;
 }
 .workspace {
   flex: 1;
@@ -116,8 +161,7 @@ body,
 .analysis-panel .MuiTablePagination-root {
   flex-shrink: 0;
 }
-.brand-short,
-.mobile-switch {
+.brand-short {
   display: none;
 }
 .library-dialog > .MuiDialog-container > .MuiDialog-paper {
@@ -372,9 +416,6 @@ body,
     padding-inline: 8px;
     margin-left: 0 !important;
   }
-  .workspace-status {
-    display: none !important;
-  }
 }
 @media (prefers-reduced-motion: reduce) {
   .MuiButton-root,
@@ -397,17 +438,8 @@ body,
     padding: 8px 12px;
     gap: 6px;
   }
-  .app-shell .MuiToolbar-root {
-    min-height: 44px !important;
-  }
   .domain-panel > .MuiBox-root:first-child {
     padding: 10px;
-  }
-  .privacy-note {
-    display: none;
-  }
-  .workspace-toolbar {
-    min-height: 16px;
   }
 }
 @media (max-width: 850px) {
@@ -425,12 +457,10 @@ body,
   .mobile-switch {
     display: flex;
     gap: 4px;
-  }
-  .privacy-note {
-    display: none;
+    flex-shrink: 0;
   }
   .scan-form {
-    grid-template-columns: minmax(0, 1fr) 130px auto;
+    grid-template-columns: minmax(0, 1fr) max-content max-content;
     gap: 8px;
   }
   .scan-form .advanced-button {
@@ -491,14 +521,37 @@ body,
   .rule-reader .MuiButton-startIcon {
     display: none;
   }
-  .app-shell .MuiToolbar-root {
-    gap: 2px;
+  .app-titlebar.MuiToolbar-root {
+    padding-inline-start: 6px;
   }
-  .app-shell .MuiToolbar-root > .MuiSvgIcon-root {
+  .titlebar-brand {
+    gap: 4px;
+  }
+  .window-buttons .MuiIconButton-root {
+    width: 30px;
+  }
+  .scan-actions .MuiButton-root {
+    padding-inline: 6px;
+    min-width: 0;
+  }
+  .scan-actions .MuiButton-startIcon,
+  .scan-actions .MuiButton-endIcon {
     display: none;
   }
+  .advanced-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
-@media (max-height: 500px) {
+@media (max-width: 359px) {
+  .scan-form {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .scan-form .scan-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-end;
+  }
+}
+@media (max-height: 500px) and (min-width: 561px) {
   .scan-controls {
     padding: 8px !important;
   }

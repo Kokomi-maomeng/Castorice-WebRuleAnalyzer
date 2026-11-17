@@ -143,9 +143,6 @@ export default function DomainPanel(p: Props) {
             <Typography sx={{ fontWeight: 600 }}>
               {query ? "没有匹配的域名" : "等待首次发现"}
             </Typography>
-            <Typography variant="body2" sx={{ mt: 1, textAlign: "center" }}>
-              开始分析后，实际请求中的域名会显示在这里。
-            </Typography>
           </Stack>
         ) : (
           list.slice(0, limit).map((d) => (

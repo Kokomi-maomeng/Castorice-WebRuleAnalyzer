@@ -64,22 +64,22 @@ func TestLiveRuleSourcesAndOfflineCache(t *testing.T) {
 			}
 		})
 	}
-	gemini, ok := manager.Category("blackmatrix7:Gemini")
-	if !ok || !gemini.Loaded {
-		t.Fatal("real Gemini category missing")
+	wikipedia, ok := manager.Category("blackmatrix7:Wikipedia")
+	if !ok || !wikipedia.Loaded {
+		t.Fatal("real Wikipedia category missing")
 	}
 	// This is explicitly constructed observation metadata, paired with the real
 	// downloaded rule data; it is not represented as a browser capture.
-	observation := []model.DomainRecord{{Hostname: "gemini.google.com", Kind: "domain"}, {Hostname: "accounts.google.com", Kind: "domain"}, {Hostname: "fonts.gstatic.com", Kind: "domain"}, {Hostname: "generativelanguage.googleapis.com", Kind: "domain"}}
-	matches, recommendation, _, _ := matcher.Match("gemini.google.com", observation, manager.Categories(true))
-	if recommendation != "blackmatrix7:Gemini" && recommendation != "v2fly:google-gemini" {
-		t.Fatalf("real categories misidentified Gemini: %s %+v", recommendation, matches)
+	observation := []model.DomainRecord{{Hostname: "wikipedia.org", Kind: "domain"}, {Hostname: "auth.example.com", Kind: "domain"}, {Hostname: "static.example.com", Kind: "domain"}, {Hostname: "api.example.com", Kind: "domain"}}
+	matches, recommendation, _, _ := matcher.Match("wikipedia.org", observation, manager.Categories(true))
+	if recommendation != "blackmatrix7:Wikipedia" && recommendation != "v2fly:wikimedia" {
+		t.Fatalf("real categories misidentified Wikipedia: %s %+v", recommendation, matches)
 	}
-	merged, err := exporter.Build(model.ExportJob{TaskID: "constructed-observation", Mode: "merged", Format: "clash", Policy: "dibao"}, observation, []model.RuleCategory{gemini})
+	merged, err := exporter.Build(model.ExportJob{TaskID: "constructed-observation", Mode: "merged", Format: "clash", Policy: "dibao"}, observation, []model.RuleCategory{wikipedia})
 	if err != nil || merged.FinalRules <= len(observation) || merged.AddedRules == 0 {
 		t.Fatal("real rules not merged", merged, err)
 	}
-	t.Logf("real-source Gemini recommendation=%s merge observed_domains=%d added_rules=%d duplicate_or_covered=%d final_rules=%d", recommendation, merged.ObservedDomains, merged.AddedRules, merged.DuplicateOrCovered, merged.FinalRules)
+	t.Logf("real-source Wikipedia recommendation=%s merge observed_domains=%d added_rules=%d duplicate_or_covered=%d final_rules=%d", recommendation, merged.ObservedDomains, merged.AddedRules, merged.DuplicateOrCovered, merged.FinalRules)
 	if _, _, err = rules.ParseClash([]byte("payload: []"), model.RuleOrigin{File: "test.yaml"}); err == nil {
 		t.Fatal("empty source accepted")
 	}
@@ -90,15 +90,15 @@ func TestLiveRuleSourcesAndOfflineCache(t *testing.T) {
 	if err = manager.Sync(context.Background(), "blackmatrix7"); err == nil {
 		t.Fatal("offline update reported success")
 	}
-	cached, ok := manager.Category(gemini.ID)
-	if !ok || len(cached.Rules) != len(gemini.Rules) {
+	cached, ok := manager.Category(wikipedia.ID)
+	if !ok || len(cached.Rules) != len(wikipedia.Rules) {
 		t.Fatal("offline update destroyed cache")
 	}
 	reloaded, err := rules.NewManager(store)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c, ok := reloaded.Category(gemini.ID); !ok || !c.Loaded || len(c.Rules) == 0 {
+	if c, ok := reloaded.Category(wikipedia.ID); !ok || !c.Loaded || len(c.Rules) == 0 {
 		t.Fatal("cache did not survive manager reload")
 	}
 }

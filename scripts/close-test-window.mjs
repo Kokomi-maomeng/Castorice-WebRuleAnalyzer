@@ -15,9 +15,14 @@ try {
   if (/^http:\/\/127\.0\.0\.1:\d+\/?$/.test(page.url()) && await page.evaluate(() => typeof window.__castoriceTestClose === 'function')) candidates.push(page);
  }
  if (candidates.length !== 1) throw new Error('Expected one explicitly instrumented application window');
+ const page = candidates[0];
+ await page.getByRole('button', { name: '关闭窗口', exact: true }).waitFor();
  if (process.env.CASTORICE_DESKTOP_SCREENSHOT) {
-  await candidates[0].reload();
-  await candidates[0].locator('.workspace').waitFor();
+  await page.reload();
+  await page.getByText('等待首次发现', { exact: true }).waitFor();
+  assert.equal(await page.getByRole('textbox', { name: '要分析的网站' }).inputValue(), '');
+  await page.getByRole('button', { name: '扫描历史', exact: true }).click();
+  await page.getByRole('button', { name: '打开', exact: true }).first().click();
   await candidates[0].getByRole('button', { name: '预览与导出规则', exact: true }).click();
   const dialog = candidates[0].getByRole('dialog');
   await dialog.getByRole('button', { name: '保存到软件目录', exact: true }).click();
@@ -40,5 +45,7 @@ try {
   await candidates[0].screenshot({ path: process.env.CASTORICE_DESKTOP_SCREENSHOT });
   console.log('Native UI export/reset/reload: PASS');
  }
- await candidates[0].evaluate(() => { setTimeout(() => window.__castoriceTestClose(), 100); });
+ await page.getByRole('button', { name: '关闭窗口', exact: true }).evaluate(button => {
+  setTimeout(() => button.click(), 100);
+ });
 } finally { await browser.close(); }
