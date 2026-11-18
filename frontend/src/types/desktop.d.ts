@@ -8,7 +8,7 @@ interface Window {
   castoriceWindow?: {
     maximized: boolean;
     command: (
-      action: "move" | "minimize" | "toggle-maximize" | "close",
+      action: "ready" | "move" | "minimize" | "toggle-maximize" | "close",
     ) => void;
   };
 }

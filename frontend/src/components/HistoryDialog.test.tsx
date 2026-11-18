@@ -59,7 +59,7 @@ it("清空覆盖全部已结束记录，确认前不删除，活动任务不可�
   );
   await screen.findAllByRole("button", { name: "打开" });
   expect(
-    screen.getByRole("checkbox", { name: "选择历史 https://live.example/" }),
+    screen.getByRole("checkbox", { name: "选择历史 live.example" }),
   ).toBeDisabled();
   fireEvent.click(screen.getByRole("button", { name: "清空已结束历史" }));
   expect(screen.getByText(/129 条扫描记录/)).toBeInTheDocument();
@@ -83,10 +83,10 @@ it("单条删除失败保留原记录并显示错误", async () => {
   render(<HistoryDialog onClose={vi.fn()} onOpen={vi.fn()} />);
   fireEvent.click(
     await screen.findByRole("button", {
-      name: "删除历史 https://example.com/",
+      name: "删除历史 example.com",
     }),
   );
   fireEvent.click(screen.getByRole("button", { name: "确认删除" }));
   await screen.findAllByText("历史暂时无法写入");
-  expect(screen.getByText("https://example.com/")).toBeInTheDocument();
+  expect(screen.getByText("example.com")).toBeInTheDocument();
 });

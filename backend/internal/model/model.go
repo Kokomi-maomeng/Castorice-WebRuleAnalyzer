@@ -50,6 +50,8 @@ type ScanTask struct {
 	TestMode             bool            `json:"test_mode"`
 	ID                   string          `json:"id"`
 	TargetURL            string          `json:"target_url"`
+	TargetScheme         string          `json:"target_scheme,omitempty"`
+	TargetPort           string          `json:"target_port,omitempty"`
 	TargetRedacted       bool            `json:"target_redacted,omitempty"`
 	Status               string          `json:"status"`
 	Options              ScanOptions     `json:"options"`

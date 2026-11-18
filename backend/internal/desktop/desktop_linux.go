@@ -66,9 +66,13 @@ func Supervisor() error {
 	command.Stdout, command.Stderr = os.Stdout, os.Stderr
 	command.Cancel = func() error { return command.Process.Signal(syscall.SIGTERM) }
 	command.WaitDelay = 5 * time.Second
-	input, _ := json.Marshal(map[string]string{
-		"url":  service.URL,
-		"init": windowBridge(service.URL, paths, "window.webkit.messageHandlers.castoriceWindow.postMessage(action);"),
+	input, _ := json.Marshal(map[string]any{
+		"url":                 service.URL,
+		"init":                windowBridge(service.URL, paths, "window.webkit.messageHandlers.castoriceWindow.postMessage(action);"),
+		"size":                [2]int{windowWidth, windowHeight},
+		"minimum_size":        [2]int{minWindowWidth, minWindowHeight},
+		"close_transition_ms": closeTransition.Milliseconds(),
+		"closing_event":       windowClosingEvent,
 	})
 	command.Stdin = bytes.NewReader(input)
 	if err = command.Run(); err != nil && ctx.Err() == nil {

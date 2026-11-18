@@ -70,6 +70,49 @@ async function waitFor(fn, message, timeout = 20000) {
   throw new Error(message);
 }
 
+async function verifyHistoryLayout(page, baseTask) {
+  const route = /\/api\/scans\/history\?/;
+  const rows = Array.from({ length: 67 }, (_, i) => ({
+    ...baseTask, id: 'history-fixture-' + i, target_url: `entry-${i}.example.com`,
+  }));
+  await page.route(route, (request) => {
+    const start = Number(new URL(request.request().url()).searchParams.get('offset'));
+    return request.fulfill({ json: { data: {
+      items: rows.slice(start, start + 30), total: rows.length, finished_count: rows.length,
+    } } });
+  });
+  try {
+    await page.getByRole('button', { name: '扫描历史' }).click();
+    const dialog = page.getByRole('dialog', { name: /扫描历史/ });
+    const footer = dialog.locator('.history-footer');
+    const list = dialog.locator('.history-content');
+    const next = dialog.getByRole('button', { name: '下一页历史' });
+    await footer.getByText('1–30 / 67').waitFor();
+    for (const [width, height] of [[1220, 800], [640, 360], [320, 256]]) {
+      await page.setViewportSize({ width, height });
+      await list.evaluate(node => { node.scrollTop = 0; });
+      const before = await footer.boundingBox();
+      assert(before && before.y >= 0 && before.y + before.height <= height, 'History footer fits viewport');
+      assert(await next.evaluate(node => {
+        const rect = node.getBoundingClientRect();
+        return node.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
+      }), 'History next page button is reachable without scrolling');
+      const scroll = await list.evaluate(node => (node.scrollTop = node.scrollHeight, node.scrollTop));
+      assert(scroll > 0, 'History list scrolls');
+      assert.deepEqual(await footer.boundingBox(), before, 'History footer stays fixed while records scroll');
+    }
+    await next.click();
+    await footer.getByText('31–60 / 67').waitFor();
+    await dialog.getByText('entry-30.example.com', { exact: true }).waitFor();
+    assert.equal(await list.evaluate(node => node.scrollTop), 0);
+    await dialog.getByRole('button', { name: '关闭历史' }).click();
+    await dialog.waitFor({ state: 'hidden' });
+  } finally {
+    await page.unroute(route);
+    await page.setViewportSize({ width: 1220, height: 800 });
+  }
+}
+
 async function verify(name, fixturePort) {
   const [engine, options] = browserOptions[name];
   const browser = await engine.launch({ ...options, headless: true });
@@ -81,6 +124,26 @@ async function verify(name, fixturePort) {
     const target = page.getByRole('textbox', { name: '要分析的网站' });
     await target.waitFor();
     assert.equal(await target.inputValue(), '', 'Blank workspace');
+    const help = page.getByRole('button', { name: '查看地址问题' });
+    for (const [raw, hint] of [
+      ['hostname', /域名后缀/],
+      ['example。com', /英文点/],
+      ['example.zzzzzz', /顶级域名/],
+    ]) {
+      await target.fill(raw);
+      await target.press('Tab');
+      await help.waitFor();
+      await help.hover();
+      await page.getByRole('tooltip').filter({ hasText: hint }).waitFor();
+      assert.equal(await target.getAttribute('aria-invalid'), 'true');
+      assert.equal(await page.locator('main').getByRole('alert').count(), 0);
+      await help.click();
+      await page.mouse.move(0, 0);
+      await page.getByRole('tooltip').filter({ hasText: hint }).waitFor();
+      await page.keyboard.press('Escape');
+      await page.getByRole('tooltip').filter({ hasText: hint }).waitFor({ state: 'hidden' });
+    }
+    await target.fill('');
     await page.getByRole('button', { name: '高级配置' }).click();
     await page.getByRole('spinbutton', { name: '每页观察 / 秒' }).fill('1');
     await page.getByRole('button', { name: '完成' }).click();
@@ -98,16 +161,24 @@ async function verify(name, fixturePort) {
         await route.continue();
       }
     });
-    await target.fill(`http://scan.test:${fixturePort}/?lang=zh`);
+    await target.fill(String.raw`https\://http\://scan.test:${fixturePort}/discard-this?lang=zh#ignored`);
     const created = page.waitForResponse((r) => r.url() === base + '/api/scans' && r.status() === 201);
     await page.getByRole('button', { name: '开始采集' }).click();
-    const { data: { id } } = await (await created).json();
+    const { data: scan } = await (await created).json();
+    const { id } = scan;
+    assert.equal(scan.target_url, 'scan.test');
+    assert.equal(scan.target_scheme, 'http');
+    assert.equal(scan.target_port, fixturePort);
+    assert.equal(await target.inputValue(), 'scan.test');
+    await page.getByText('已自动清除前缀、路径或参数').waitFor();
     await page.getByText('正在补取最终采集结果…').waitFor();
     await page.getByRole('button', { name: 'api.scan.test', exact: true }).waitFor();
     assert(domainReads >= 2, 'Fetch again after terminal update');
     const all = await request(`/scans/${id}/requests?limit=200`);
     const exact = await request(`/scans/${id}/requests?host=scan.test&exact_host=true&limit=200`);
     assert(all.total > exact.total && exact.total > 0 && exact.items.every(({ hostname }) => hostname === 'scan.test'));
+    assert(all.items.some(({ url }) => url === `http://scan.test:${fixturePort}/`), 'Scan started from the site root');
+    assert(!JSON.stringify(await request(`/scans/${id}`)).includes('discard-this'), 'Pasted path did not enter the record');
     await page.getByRole('button', { name: 'scan.test', exact: true }).click();
     assert.equal(await page.getByRole('textbox', { name: '精确主机' }).inputValue(), 'scan.test');
     await page.getByRole('tab', { name: '抓取流程' }).click();
@@ -144,15 +215,15 @@ async function verify(name, fixturePort) {
       files.push(format);
     }
     await page.getByRole('button', { name: '关闭导出', exact: true }).click();
+    await verifyHistoryLayout(page, await request(`/scans/${id}`));
     await page.getByRole('button', { name: '扫描历史' }).click();
     await page.getByRole('button', { name: '打开', exact: true }).first().click();
-    await page.getByText(/已脱敏，重新采集时请输入原网址/).waitFor();
-    assert.equal(await target.inputValue(), '');
-    assert(await page.getByRole('button', { name: '开始采集' }).isDisabled());
+    assert.equal(await target.inputValue(), 'scan.test');
+    assert(await page.getByRole('button', { name: '开始采集' }).isEnabled());
     await page.getByRole('button', { name: '清空工作区' }).click();
     await page.getByText('等待首次发现').waitFor();
     assert.deepEqual(pageErrors, []);
-    return { engine: name, requests: all.total, exact: exact.total, exports: files, viewport: [320, 256], weakNetworkReads: domainReads, passed: true };
+    return { engine: name, requests: all.total, exact: exact.total, exports: files, viewport: [320, 256], historyRows: 67, inlineAddressChecks: 3, rootAddress: true, weakNetworkReads: domainReads, passed: true };
   } finally {
     await browser.close();
   }

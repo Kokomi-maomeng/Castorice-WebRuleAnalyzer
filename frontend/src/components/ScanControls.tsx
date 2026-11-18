@@ -2,7 +2,8 @@ import NetworkOptions from "./NetworkOptions";
 import NetworkDialog from "./NetworkDialog";
 import ScanModeSelect from "./ScanModeSelect";
 import ScanNumberFields, { invalidScanField } from "./ScanNumberFields";
-import { useState } from "react";
+import ContextHelp from "./ContextHelp";
+import { useState, type ClipboardEvent } from "react";
 import {
   Box,
   Button,
@@ -11,6 +12,7 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  Fade,
   FormControlLabel,
   IconButton,
   InputAdornment,
@@ -28,15 +30,19 @@ import {
   StopRounded,
   TuneRounded,
 } from "@mui/icons-material";
-import type { ScanOptions } from "../types";
-import { isRedacted } from "../utils/format";
+import type { ScanOptions, ScanTarget } from "../types";
 
 interface Props {
   canShowBrowser: boolean;
   url: string;
+  target?: ScanTarget;
+  addressIssue: string;
+  addressNotice: string;
+  showingEarlierResult: boolean;
   historyTarget?: string;
   browserAvailable: boolean;
   setURL: (v: string) => void;
+  onNormalize: (v: string, freshlyEdited?: boolean) => void;
   options: ScanOptions;
   setOptions: (v: ScanOptions) => void;
   running: boolean;
@@ -53,14 +59,8 @@ export default function ScanControls(p: Props) {
   const set = <K extends keyof ScanOptions>(key: K, value: ScanOptions[K]) =>
     p.setOptions({ ...p.options, [key]: value });
   const invalid = invalidScanField(p.options);
-  const redacted = isRedacted(p.url);
   const canStart =
-    !p.running &&
-    !p.busy &&
-    p.browserAvailable &&
-    p.url.trim() &&
-    !redacted &&
-    !invalid;
+    !p.running && !p.busy && p.browserAvailable && p.url.trim() && !invalid;
   const modeSelect = () => (
     <ScanModeSelect
       value={mode}
@@ -84,36 +84,85 @@ export default function ScanControls(p: Props) {
         }}
         className="scan-form"
       >
-        <TextField
-          fullWidth
-          label="要分析的网站"
-          value={p.url}
-          error={redacted}
-          disabled={p.running}
-          onChange={(e) => p.setURL(e.target.value)}
-          onKeyDown={(e) => {
-            if (
-              e.key === "Enter" &&
-              !e.nativeEvent.isComposing &&
-              !p.url.trim() &&
-              !p.running &&
-              !p.busy
-            ) {
-              e.preventDefault();
-              p.onReset();
-            }
-          }}
-          autoComplete="off"
-          slotProps={{
-            input: {
-              startAdornment: (
-                <InputAdornment position="start">
-                  <LinkRounded color="primary" />
-                </InputAdornment>
-              ),
-            },
-          }}
-        />
+        <Box className="scan-address">
+          <TextField
+            fullWidth
+            label="要分析的网站"
+            value={p.url}
+            error={!!p.addressIssue}
+            disabled={p.running}
+            onChange={(e) => p.setURL(e.target.value)}
+            onBlur={(e) => {
+              if (!p.busy && !p.running && !p.addressIssue)
+                p.onNormalize(e.target.value);
+            }}
+            onKeyDown={(e) => {
+              if (
+                e.key === "Enter" &&
+                !e.nativeEvent.isComposing &&
+                !p.url.trim() &&
+                !p.running &&
+                !p.busy
+              ) {
+                e.preventDefault();
+                p.onReset();
+              }
+            }}
+            autoComplete="off"
+            slotProps={{
+              htmlInput: {
+                spellCheck: false,
+                autoCapitalize: "none",
+                inputMode: "url",
+                onPaste: (e: ClipboardEvent<HTMLInputElement>) => {
+                  const input = e.currentTarget;
+                  if (
+                    p.busy ||
+                    input.selectionStart !== 0 ||
+                    input.selectionEnd !== input.value.length
+                  )
+                    return;
+                  const value = e.clipboardData.getData("text");
+                  if (!value) return;
+                  e.preventDefault();
+                  p.setURL(value);
+                  p.onNormalize(value, true);
+                },
+              },
+              input: {
+                readOnly: p.busy,
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <LinkRounded color="primary" />
+                  </InputAdornment>
+                ),
+                endAdornment: p.addressIssue && (
+                  <InputAdornment position="end">
+                    <ContextHelp label="查看地址问题" error>
+                      {p.addressIssue}
+                      {p.showingEarlierResult && (
+                        <div>下方仍显示上次采集结果。</div>
+                      )}
+                    </ContextHelp>
+                  </InputAdornment>
+                ),
+              },
+            }}
+          />
+          <Box aria-live="polite" className="sr-only">
+            {p.addressIssue}
+          </Box>
+          <Fade in={!!p.addressNotice} mountOnEnter unmountOnExit>
+            <Paper
+              className="scan-address-notice"
+              role="status"
+              elevation={2}
+              sx={{ borderColor: "divider" }}
+            >
+              {p.addressNotice}
+            </Paper>
+          </Fade>
+        </Box>
         {modeSelect()}
         <Button
           className="advanced-button"
@@ -168,12 +217,7 @@ export default function ScanControls(p: Props) {
           color="text.secondary"
           sx={{ mt: 0.75, overflowWrap: "anywhere" }}
         >
-          历史地址 {p.historyTarget}。已脱敏，重新采集时请输入原网址。
-        </Typography>
-      )}
-      {redacted && (
-        <Typography variant="body2" color="error">
-          请将脱敏地址替换为原网址。
+          历史域名 {p.historyTarget}。原地址已脱敏，重新采集时请填写域名。
         </Typography>
       )}
       {invalid && (
@@ -239,7 +283,8 @@ export default function ScanControls(p: Props) {
           <NetworkDialog
             open
             onClose={() => setDiagnosing(false)}
-            url={p.url}
+            url={p.target?.url || p.url}
+            label={p.target?.host}
             options={p.options}
             onApply={p.setOptions}
             notify={p.notify}

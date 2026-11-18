@@ -1,9 +1,15 @@
 [CmdletBinding()]
-param([switch]$SkipTests, [switch]$BrowserTests, [switch]$SkipInstall)
+param(
+    [switch]$SkipTests,
+    [switch]$BrowserTests,
+    [switch]$SkipInstall,
+    [ValidatePattern('^[a-zA-Z0-9](?:[a-zA-Z0-9._-]*[a-zA-Z0-9_-])?$')][string]$OutputSubdirectory
+)
 $ErrorActionPreference = 'Stop'
 $projectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $releaseTag='v'+((Get-Content -LiteralPath (Join-Path $projectRoot 'VERSION') -Raw).Trim() -replace '\.0$','')
 $outputRoot = Join-Path $projectRoot 'dist'
+if ($OutputSubdirectory) { $outputRoot = Join-Path $outputRoot $OutputSubdirectory }
 $packageName = ("Castorice-WebRuleAnalyzer-$releaseTag-windows-amd64")
 $packageDir = Join-Path $outputRoot $packageName
 foreach ($runtimeFolder in @('data', 'exports')) {

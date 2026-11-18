@@ -18,6 +18,7 @@ import { CloseRounded, ContentCopyRounded } from "@mui/icons-material";
 import { api, copy } from "../services/api";
 import type { DNSCheck, NetworkDiagnosis, ScanOptions } from "../types";
 import { errorMessage } from "../utils/format";
+import { scanAddressIssue } from "../utils/scanAddress";
 import DiagnosticAlert from "./DiagnosticAlert";
 import NetworkOptions from "./NetworkOptions";
 
@@ -25,6 +26,7 @@ export default function NetworkDialog(p: {
   open: boolean;
   onClose: () => void;
   url: string;
+  label?: string;
   options: ScanOptions;
   onApply: (o: ScanOptions) => void;
   notify: (s: string) => void;
@@ -51,10 +53,11 @@ export default function NetworkDialog(p: {
         url: p.url,
         options: draft,
         compare_secure: compareSecure,
+        root_only: true,
       });
       if (g === generation.current) setResult(data);
     } catch (e) {
-      if (g === generation.current) setError(errorMessage(e));
+      if (g === generation.current) setError(scanAddressIssue(e));
     } finally {
       if (g === generation.current) setBusy(false);
     }
@@ -85,7 +88,7 @@ export default function NetworkDialog(p: {
       </DialogTitle>
       <DialogContent dividers>
         <Typography sx={{ mb: 2, overflowWrap: "anywhere" }}>
-          检测目标：{p.url || "请先在主界面输入网站"}
+          {p.label ? `检测目标：${p.label}` : "请在主界面填写有效的域名。"}
         </Typography>
         <NetworkOptions options={draft} onChange={change} />
         {draft.dns_mode === "secure" ? (

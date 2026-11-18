@@ -66,6 +66,18 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/session", func(w http.ResponseWriter, r *http.Request) { respond(w, 200, map[string]string{"token": s.Token}) })
 	mux.HandleFunc("GET /api/browsers", func(w http.ResponseWriter, r *http.Request) { respond(w, 200, browser.Detect()) })
 	mux.HandleFunc("POST /api/scans", s.createScan)
+	mux.HandleFunc("POST /api/scans/target", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			URL string `json:"url"`
+		}
+		if !decode(w, r, &body) {
+			return
+		}
+		target, err := s.Scans.PrepareTarget(body.URL)
+		if !handleError(w, err) {
+			respond(w, 200, target)
+		}
+	})
 	mux.HandleFunc("GET /api/scans/history", func(w http.ResponseWriter, r *http.Request) {
 		limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 		offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
@@ -92,6 +104,7 @@ func (s *Server) Handler() http.Handler {
 			URL           string             `json:"url"`
 			Options       *model.ScanOptions `json:"options"`
 			CompareSecure bool               `json:"compare_secure"`
+			RootOnly      bool               `json:"root_only"`
 		}
 		if !decode(w, r, &body) {
 			return
@@ -104,7 +117,17 @@ func (s *Server) Handler() http.Handler {
 		if body.Options != nil {
 			o = *body.Options
 		}
+		if body.RootOnly {
+			target, err := s.Scans.PrepareTarget(body.URL)
+			if handleError(w, err) {
+				return
+			}
+			body.URL = target.URL
+		}
 		result, err := s.Scans.Diagnose(r.Context(), body.URL, o, body.CompareSecure)
+		if body.RootOnly {
+			result.URL = result.Host
+		}
 		if !handleError(w, err) {
 			respond(w, 200, result)
 		}
@@ -388,8 +411,9 @@ func (s *Server) guard(next http.Handler) http.Handler {
 
 func (s *Server) createScan(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		URL     string             `json:"url"`
-		Options *model.ScanOptions `json:"options"`
+		URL      string             `json:"url"`
+		Options  *model.ScanOptions `json:"options"`
+		RootOnly bool               `json:"root_only"`
 	}
 	if !decode(w, r, &body) {
 		return
@@ -404,7 +428,11 @@ func (s *Server) createScan(w http.ResponseWriter, r *http.Request) {
 	} else if s.Scans.ValidateBrowserSelection(options.BrowserPath) != nil {
 		options.BrowserPath = ""
 	}
-	task, err := s.Scans.Start(r.Context(), body.URL, options)
+	start := s.Scans.Start
+	if body.RootOnly {
+		start = s.Scans.StartSite
+	}
+	task, err := start(r.Context(), body.URL, options)
 	if handleError(w, err) {
 		return
 	}

@@ -57,6 +57,8 @@ export interface ScanTask {
   test_mode?: boolean;
   id: string;
   target_url: string;
+  target_scheme?: "http" | "https";
+  target_port?: string;
   target_redacted?: boolean;
   rule_cache_available?: boolean;
   status: string;
@@ -76,6 +78,12 @@ export interface ScanTask {
   match_note?: string;
   matched_category_count?: number;
   matches_truncated?: boolean;
+}
+export interface ScanTarget {
+  host: string;
+  url: string;
+  removed_prefix: boolean;
+  removed_suffix: boolean;
 }
 export interface DomainRecord {
   hostname: string;

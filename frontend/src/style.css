@@ -9,6 +9,30 @@
 body {
   margin: 0;
 }
+.desktop-closing body {
+  pointer-events: none;
+  animation: desktop-window-exit 180ms cubic-bezier(0.3, 0, 1, 1) forwards;
+}
+@keyframes desktop-window-exit {
+  to {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .desktop-closing body {
+    animation: none;
+  }
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
 code,
 pre,
 .mono {
@@ -110,9 +134,53 @@ body,
   align-items: center;
   gap: 10px;
 }
-.scan-form button {
+.scan-form .MuiButton-root {
   white-space: nowrap;
   min-height: 40px;
+}
+.scan-address {
+  min-width: 0;
+  position: relative;
+}
+.scan-address .scan-address-notice {
+  position: absolute;
+  z-index: 2;
+  inset-block-start: calc(100% + 5px);
+  inset-inline-start: 0;
+  max-width: 100%;
+  padding: 6px 13px;
+  border-width: 1px;
+  border-style: solid;
+  border-radius: 999px;
+  pointer-events: none;
+}
+.history-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+.history-footer {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0 10px;
+  padding-inline: 24px 8px;
+}
+.history-footer > .MuiTablePagination-root {
+  margin-inline-start: auto;
+  flex-shrink: 0;
+}
+.history-footer .MuiTablePagination-toolbar {
+  min-height: 44px;
+  padding-inline: 0;
+}
+.history-footer .MuiTablePagination-spacer {
+  display: none;
+}
+.history-footer .MuiTablePagination-actions {
+  margin-inline-start: 6px;
 }
 .advanced-grid {
   display: grid;
@@ -452,7 +520,7 @@ body,
   .advanced-button > span:not(.MuiButton-startIcon) {
     display: none;
   }
-  .scan-form > .MuiTextField-root:first-child {
+  .scan-form > .scan-address {
     grid-column: 1 / -1;
   }
   .scan-form .scan-mode {
@@ -469,6 +537,23 @@ body,
   }
 }
 @media (max-width: 560px) {
+  .history-content.MuiDialogContent-root {
+    padding: 10px 12px;
+  }
+  .history-footer {
+    padding-inline: 12px 4px;
+  }
+  .history-record.MuiStack-root {
+    padding: 6px;
+    gap: 4px;
+  }
+  .history-record .MuiCheckbox-root,
+  .history-record .MuiIconButton-root {
+    padding: 5px;
+  }
+  .history-record .MuiButton-startIcon {
+    display: none;
+  }
   .library-dialog > .MuiDialog-container > .MuiDialog-paper {
     margin: 6px;
     width: calc(100vw - 12px);
@@ -537,7 +622,7 @@ body,
     grid-template-columns: minmax(0, 1fr) 36px auto;
     gap: 6px;
   }
-  .scan-form > .MuiTextField-root:first-child {
+  .scan-form > .scan-address {
     grid-column: auto;
   }
   .scan-form .scan-mode {

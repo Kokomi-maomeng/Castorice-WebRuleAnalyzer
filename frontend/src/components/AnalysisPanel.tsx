@@ -1,4 +1,5 @@
 import DiagnosticAlert from "./DiagnosticAlert";
+import { scanTargetLabel } from "../utils/scanAddress";
 import { type ReactNode, useState } from "react";
 import {
   Alert,
@@ -270,7 +271,8 @@ export default function AnalysisPanel(p: Props) {
                   </Alert>
                 )}
               <Typography variant="body2" sx={{ overflowWrap: "anywhere" }}>
-                <b>当前页面</b>　{t.current_page || t.target_url}
+                <b>当前页面</b>　
+                {t.current_page || scanTargetLabel(t.target_url)}
               </Typography>
               {t.page_title || t.main_status ? (
                 <Typography

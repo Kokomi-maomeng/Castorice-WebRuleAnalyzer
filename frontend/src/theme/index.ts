@@ -52,7 +52,18 @@ export const makeTheme = (dark: boolean, reducedMotion = false) =>
       MuiPaper: { defaultProps: { elevation: 0 } },
       MuiTextField: { defaultProps: { size: "small" } },
       MuiOutlinedInput: { styleOverrides: { root: { borderRadius: 12 } } },
-      MuiDialog: { styleOverrides: { paper: { borderRadius: 10 } } },
+      MuiDialog: {
+        styleOverrides: {
+          paper: {
+            borderRadius: 10,
+            "@media (max-width: 560px), (max-height: 560px)": {
+              margin: 8,
+              maxHeight: "calc(100% - 16px)",
+              "&.MuiDialog-paperFullWidth": { width: "calc(100% - 16px)" },
+            },
+          },
+        },
+      },
       MuiTableCell: {
         styleOverrides: {
           head: { fontWeight: 650 },

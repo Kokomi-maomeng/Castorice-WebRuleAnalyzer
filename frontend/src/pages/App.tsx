@@ -1,4 +1,3 @@
-import DiagnosticAlert from "../components/DiagnosticAlert";
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import {
   Alert,
@@ -19,7 +18,6 @@ import DomainPanel from "../components/DomainPanel";
 import AnalysisPanel from "../components/AnalysisPanel";
 import MatchPanel from "../components/MatchPanel";
 import type {
-  Diagnostic,
   HistoryDeletion,
   RequestFilter,
   ScanOptions,
@@ -29,6 +27,7 @@ import type {
 import { makeTheme } from "../theme";
 import { useScan } from "../hooks/useScan";
 import { useActiveScan } from "../hooks/useActiveScan";
+import { useScanAddress } from "../hooks/useScanAddress";
 import { api } from "../services/api";
 import {
   active,
@@ -36,6 +35,11 @@ import {
   isExportable,
   isRedacted,
 } from "../utils/format";
+import {
+  savedScanTarget,
+  scanAddressIssue,
+  scanTargetLabel,
+} from "../utils/scanAddress";
 
 const SettingsDialog = lazy(() => import("../components/SettingsDialog"));
 const HistoryDialog = lazy(() => import("../components/HistoryDialog"));
@@ -52,7 +56,7 @@ const emptyFilter: RequestFilter = {
 export default function App() {
   const [settings, setSettings] = useState<Settings>();
   const [optionsOverride, setOptions] = useState<ScanOptions>();
-  const [url, setURL] = useState("");
+  const address = useScanAddress();
   const [historyTarget, setHistoryTarget] = useState("");
   const [id, setID] = useState("");
   const [resetCount, setResetCount] = useState(0);
@@ -63,8 +67,6 @@ export default function App() {
   const [browserAvailable, setBrowserAvailable] = useState(true);
   const [browserManaged, setBrowserManaged] = useState(false);
   const [error, setError] = useState("");
-  const [diagnostic, setDiagnostic] = useState<Diagnostic>();
-  const [failedAttempt, setFailedAttempt] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [notice, notify] = useState("");
   const [dialog, setDialog] = useState("");
@@ -144,6 +146,9 @@ export default function App() {
       cancelled = true;
     };
   }, [retry]);
+  useEffect(() => {
+    if (!initializing) window.castoriceWindow?.command("ready");
+  }, [initializing]);
   const preferredOptions = optionsOverride ?? settings?.scan;
   const options =
     preferredOptions && !canShowBrowser
@@ -165,10 +170,11 @@ export default function App() {
   }
   function openTask(t: ScanTask) {
     const redacted = t.target_redacted || isRedacted(t.target_url);
+    const saved = redacted ? undefined : savedScanTarget(t);
     resetView();
     setID(t.id);
-    setURL(redacted ? "" : t.target_url);
-    setHistoryTarget(redacted ? t.target_url : "");
+    address.edit(redacted ? "" : scanTargetLabel(t.target_url), saved);
+    setHistoryTarget(redacted ? scanTargetLabel(t.target_url) : "");
     setOptions({
       ...t.options,
       browser_path: settings?.scan.browser_path || "",
@@ -180,11 +186,9 @@ export default function App() {
       return;
     setID("");
     setTask(undefined);
-    setURL("");
+    address.edit("");
     setHistoryTarget("");
     setError("");
-    setDiagnostic(undefined);
-    setFailedAttempt(false);
     notify("");
     if (!keepDialog) closeDialog();
     setResetCount((v) => v + 1);
@@ -193,13 +197,18 @@ export default function App() {
     setOptions(undefined);
   }
   async function start() {
-    if (!options || isRedacted(url)) return;
+    if (!options || busy || running) return;
     setBusy(true);
     setError("");
-    setDiagnostic(undefined);
-    setFailedAttempt(false);
     try {
-      const scan = await api<ScanTask>("/scans", "POST", { url, options });
+      const target = await address.prepare(address.value);
+      if (!target) return;
+      address.setIssue("");
+      const scan = await api<ScanTask>("/scans", "POST", {
+        url: target.url,
+        options,
+        root_only: true,
+      });
       resetView();
       setHistoryTarget("");
       setID(scan.id);
@@ -207,10 +216,7 @@ export default function App() {
       rememberActive(scan);
       setTab(0);
     } catch (e) {
-      setError(errorMessage(e));
-      setFailedAttempt(true);
-      if (e && typeof e === "object" && "diagnostic" in e)
-        setDiagnostic(e.diagnostic as Diagnostic);
+      address.setIssue(scanAddressIssue(e));
     } finally {
       setBusy(false);
     }
@@ -281,26 +287,9 @@ export default function App() {
             </Stack>
           )}
           <Collapse in={!!error} unmountOnExit>
-            <Box>
-              {diagnostic ? (
-                <DiagnosticAlert diagnostic={diagnostic} />
-              ) : (
-                <Alert severity="error" onClose={() => setError("")}>
-                  {error}
-                </Alert>
-              )}
-              {failedAttempt && (
-                <Typography
-                  variant="body2"
-                  color="text.secondary"
-                  sx={{ mb: 1 }}
-                >
-                  {task
-                    ? `本次未启动；下方仍显示上一任务 ${task.target_url} 的结果。`
-                    : "本次未启动，尚未产生采集结果。"}
-                </Typography>
-              )}
-            </Box>
+            <Alert severity="error" onClose={() => setError("")}>
+              {error}
+            </Alert>
           </Collapse>
           {!initializing && !settings && (
             <Button
@@ -322,8 +311,13 @@ export default function App() {
                 </Alert>
               )}
               <ScanControls
-                url={url}
-                setURL={setURL}
+                url={address.value}
+                target={address.target}
+                setURL={address.edit}
+                onNormalize={address.prepare}
+                addressIssue={address.issue}
+                addressNotice={address.notice}
+                showingEarlierResult={!!task && !running}
                 historyTarget={historyTarget}
                 browserAvailable={browserAvailable}
                 options={options}

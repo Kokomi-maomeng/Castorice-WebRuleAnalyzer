@@ -6,6 +6,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net"
+	"net/netip"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -52,11 +54,58 @@ func (m *Manager) Close() {
 }
 
 func (m *Manager) Start(ctx context.Context, raw string, options model.ScanOptions) (model.ScanTask, error) {
+	return m.start(ctx, raw, options, false)
+}
+
+func (m *Manager) StartSite(ctx context.Context, raw string, options model.ScanOptions) (model.ScanTask, error) {
+	return m.start(ctx, raw, options, true)
+}
+
+func (m *Manager) PrepareTarget(raw string) (domain.ScanTarget, error) {
+	target, err := domain.PrepareScanTarget(raw)
+	if err != nil {
+		return target, security.Fail("invalid_url", "input", err.Error(), "", "", nil)
+	}
+	u, _ := url.Parse(target.URL)
+	port := u.Port()
+	if port == "" {
+		port = "443"
+		if u.Scheme == "http" {
+			port = "80"
+		}
+	}
+	testKey := net.JoinHostPort(target.Host, port)
+	policy := m.engine.Policy
+	ip, ipErr := netip.ParseAddr(target.Host)
+	if (ipErr == nil && ip.IsLoopback() && policy.TestAllow[testKey]) ||
+		(strings.HasSuffix(target.Host, ".test") && policy.TestMappings[testKey].IsLoopback()) {
+		return target, nil
+	}
+	if security.InternalHost(target.Host) {
+		return target, security.Fail("target_internal", "input", "请输入可从公网访问的域名。当前输入是本机或内网名称", "", "", nil)
+	}
+	if ipErr == nil && !policy.AllowsAddress(ip) {
+		return target, security.Fail("target_non_public", "input", "这个 IP 地址不在公网，请填写公网地址", "", "", nil)
+	}
+	if err := domain.CheckScanSuffix(target.Host); err != nil {
+		return target, security.Fail("invalid_domain_suffix", "input", err.Error(), "", "", nil)
+	}
+	return target, nil
+}
+
+func (m *Manager) start(ctx context.Context, raw string, options model.ScanOptions, rootOnly bool) (model.ScanTask, error) {
 	if err := ValidateOptions(options); err != nil {
 		return model.ScanTask{}, security.Fail("invalid_options", "input", err.Error(), "请检查本次扫描参数及网络设置。", "", err)
 	}
 	if (options.Visible || options.Mode == "interactive") && !browser.VisibleSupported() {
 		return model.ScanTask{}, errors.New("当前服务没有图形会话，请使用快速扫描或自动探索并关闭可见浏览器")
+	}
+	if rootOnly {
+		target, err := m.PrepareTarget(raw)
+		if err != nil {
+			return model.ScanTask{}, err
+		}
+		raw = target.URL
 	}
 	u, err := domain.NormalizeURL(raw)
 	if err != nil {
@@ -88,6 +137,10 @@ func (m *Manager) Start(ctx context.Context, raw string, options model.ScanOptio
 	}
 	target := security.RedactPageURL(u.String())
 	task := model.ScanTask{ID: hex.EncodeToString(idBytes), TargetURL: target, TargetRedacted: target != u.String(), Status: "starting", Options: options, StartedAt: time.Now().UTC(), Pages: []model.PageRecord{}, Matches: []model.RuleMatch{}}
+	if rootOnly {
+		task.TargetURL, task.TargetScheme, task.TargetPort = u.Hostname(), u.Scheme, u.Port()
+		task.TargetRedacted = false
+	}
 	task.TestMode = len(m.engine.Policy.TestAllow) > 0 || len(m.engine.Policy.TestMappings) > 0
 	if options.Mode == "interactive" {
 		task.Options.Visible = true
@@ -411,12 +464,16 @@ func (m *Manager) Rematch(id string) (model.ScanTask, error) {
 	if err != nil {
 		return task, err
 	}
-	u, err := url.Parse(task.TargetURL)
-	if err != nil {
-		return task, err
+	host := task.TargetURL
+	if task.TargetScheme == "" {
+		u, err := url.Parse(task.TargetURL)
+		if err != nil {
+			return task, err
+		}
+		host = u.Hostname()
 	}
 	categories := m.rules.Categories(true)
-	matches, recommended, note, total := matcher.Match(u.Hostname(), domains, categories)
+	matches, recommended, note, total := matcher.Match(host, domains, categories)
 	task.Matches = matches
 	task.RecommendedCategory = recommended
 	task.MatchNote = note

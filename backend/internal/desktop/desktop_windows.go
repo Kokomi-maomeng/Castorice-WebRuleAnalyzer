@@ -245,13 +245,17 @@ func Worker(gate string) error {
 		return err
 	}
 	defer service.Close()
-	w := webview2.NewWithOptions(webview2.WebViewOptions{DataPath: p.WebView, AutoFocus: true, WindowOptions: webview2.WindowOptions{Title: "Castorice-WebRuleAnalyzer " + model.Version + " · Web分流规则分析器", Width: 1280, Height: 800, Center: true, IconId: 1}})
-	if w == nil {
-		return errors.New("WebView2 窗口初始化失败，请查看 data/logs/application.log")
+	frame, err := newWindowsFrame(webview2.WebViewOptions{DataPath: p.WebView, AutoFocus: true, WindowOptions: webview2.WindowOptions{
+		Title: "Castorice-WebRuleAnalyzer " + model.Version + " · Web分流规则分析器",
+		Width: windowWidth, Height: windowHeight, Center: true, IconId: 1,
+	}})
+	if err != nil {
+		return err
 	}
+	w := frame.view
 	defer w.Destroy()
-	w.SetSize(720, 480, webview2.HintMin)
-	if err = installWindowBar(w, service.URL, p); err != nil {
+	w.SetSize(minWindowWidth, minWindowHeight, webview2.HintMin)
+	if err = frame.installBridge(service.URL, p); err != nil {
 		return err
 	}
 	if testingWindow {
@@ -259,7 +263,7 @@ func Worker(gate string) error {
 		// as the title-bar close button. Absent in ordinary application windows.
 		_ = w.Bind("__castoriceTestClose", func() {
 			w.Dispatch(func() {
-				postMessage.Call(uintptr(w.Window()), 0x0010, 0, 0)
+				postMessage.Call(uintptr(w.Window()), wmClose, 0, 0)
 			})
 		})
 	}
