@@ -62,10 +62,17 @@ func (m *Manager) Start(ctx context.Context, raw string, options model.ScanOptio
 	if err != nil {
 		return model.ScanTask{}, security.Fail("invalid_url", "input", err.Error(), "请输入有效的 HTTP(S) 网站地址。", "", err)
 	}
+	if strings.Contains(strings.ToUpper(u.String()), "%5BREDACTED%5D") || strings.Contains(strings.ToUpper(u.String()), "[REDACTED]") {
+		return model.ScanTask{}, security.Fail("redacted_url", "input", "这是脱敏后的历史地址", "请重新输入原网址后开始采集。", "", nil)
+	}
 	policy, closeResolver := m.engine.policyFor(options)
 	defer closeResolver()
 	if err = policy.Validate(ctx, u); err != nil {
 		return model.ScanTask{}, err
+	}
+	browserPath, err := m.resolveBrowser(options.BrowserPath)
+	if err != nil {
+		return model.ScanTask{}, security.Fail("browser_start_failed", "browser", err.Error(), "请回到设置选择已检测浏览器，或安装 Chrome、Edge、Chromium 后重试。", "", err)
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -79,7 +86,8 @@ func (m *Manager) Start(ctx context.Context, raw string, options model.ScanOptio
 	if _, err = rand.Read(idBytes); err != nil {
 		return model.ScanTask{}, err
 	}
-	task := model.ScanTask{ID: hex.EncodeToString(idBytes), TargetURL: security.RedactPageURL(u.String()), Status: "starting", Options: options, StartedAt: time.Now().UTC(), Pages: []model.PageRecord{}, Matches: []model.RuleMatch{}}
+	target := security.RedactPageURL(u.String())
+	task := model.ScanTask{ID: hex.EncodeToString(idBytes), TargetURL: target, TargetRedacted: target != u.String(), Status: "starting", Options: options, StartedAt: time.Now().UTC(), Pages: []model.PageRecord{}, Matches: []model.RuleMatch{}}
 	task.TestMode = len(m.engine.Policy.TestAllow) > 0 || len(m.engine.Policy.TestMappings) > 0
 	if options.Mode == "interactive" {
 		task.Options.Visible = true
@@ -91,11 +99,36 @@ func (m *Manager) Start(ctx context.Context, raw string, options model.ScanOptio
 	m.active = runtime
 	scanCtx, cancel := context.WithTimeout(m.root, time.Duration(options.MaxSeconds)*time.Second)
 	runtime.cancel = cancel
-	go m.execute(scanCtx, runtime, u.String(), u.Hostname())
+	go m.execute(scanCtx, runtime, u.String(), u.Hostname(), browserPath)
 	return task, nil
 }
 
-func (m *Manager) execute(ctx context.Context, r *runtimeTask, target, host string) {
+func (m *Manager) BrowserManaged() bool { return m.engine.BrowserPath != "" }
+
+func (m *Manager) BrowserAvailable() bool {
+	_, err := m.resolveBrowser("")
+	return err == nil
+}
+
+func (m *Manager) ValidateBrowserSelection(selection string) error {
+	if selection == "" {
+		return nil
+	}
+	_, err := m.resolveBrowser(selection)
+	return err
+}
+
+func (m *Manager) resolveBrowser(selection string) (string, error) {
+	if !m.BrowserManaged() {
+		return browser.Find(selection)
+	}
+	if selection != "" {
+		return "", errors.New("采集浏览器由服务管理员配置，请在设置中使用自动检测")
+	}
+	return browser.ManagedPath(m.engine.BrowserPath)
+}
+
+func (m *Manager) execute(ctx context.Context, r *runtimeTask, target, host, browserPath string) {
 	defer close(r.done)
 	defer r.cancel()
 	r.log("INFO", "created", "扫描任务已创建；实际观察域名与外部补充规则分别保存")
@@ -120,7 +153,7 @@ func (m *Manager) execute(ctx context.Context, r *runtimeTask, target, host stri
 			}
 		}
 	}()
-	reason, err := m.engine.run(ctx, r, target)
+	reason, err := m.engine.run(ctx, r, target, browserPath)
 	close(stopCheckpoint)
 	<-checkpointDone
 	r.mu.Lock()
@@ -156,6 +189,7 @@ func (m *Manager) execute(ctx context.Context, r *runtimeTask, target, host stri
 	matches, recommended, note, total := matcher.Match(host, r.domainList(), categories)
 	now := time.Now().UTC()
 	r.mu.Lock()
+	r.finishInteractiveDocument(nil, true)
 	r.task.Status = status
 	if status == "timed_out" {
 		r.task.Diagnostic = security.Explain(security.Fail("time_limit", "scan", "达到最大扫描时间，结果尚不完整", "可增加扫描时间或使用辅助交互继续观察。", host, nil))
@@ -178,6 +212,8 @@ func (m *Manager) execute(ctx context.Context, r *runtimeTask, target, host stri
 	r.task.MatchNote = note
 	r.task.MatchedCategoryCount = total
 	r.task.MatchesTruncated = total > len(matches)
+	cacheAvailable := len(categories) > 0
+	r.task.RuleCacheAvailable = &cacheAvailable
 	if err != nil {
 		r.task.Error = security.RedactText(err.Error())
 		if r.task.Diagnostic == nil {
@@ -308,7 +344,7 @@ func (m *Manager) Requests(id string, f storage.RequestFilter) ([]model.NetworkR
 		f.Offset = 0
 	}
 	if r := m.activeTask(id); r != nil {
-		out, n := r.requestsPage(f.Host, f.Method, f.Type, f.Status, f.Limit, f.Offset)
+		out, n := r.requestsPage(f)
 		return out, n, nil
 	}
 	return m.store.Requests(id, f)
@@ -368,21 +404,27 @@ func (m *Manager) Rematch(id string) (model.ScanTask, error) {
 	if err != nil {
 		return task, err
 	}
-	if task.Active() {
+	if task.Active() || m.activeTask(id) != nil {
 		return task, errors.New("请等待扫描完成后重新匹配")
 	}
 	domains, err := m.Domains(id)
 	if err != nil {
 		return task, err
 	}
-	u, _ := url.Parse(task.TargetURL)
-	matches, recommended, note, total := matcher.Match(u.Hostname(), domains, m.rules.Categories(true))
+	u, err := url.Parse(task.TargetURL)
+	if err != nil {
+		return task, err
+	}
+	categories := m.rules.Categories(true)
+	matches, recommended, note, total := matcher.Match(u.Hostname(), domains, categories)
 	task.Matches = matches
 	task.RecommendedCategory = recommended
 	task.MatchNote = note
 	task.MatchedCategoryCount = total
 	task.MatchesTruncated = total > len(matches)
-	err = m.store.Save(task, nil, nil, nil)
+	cacheAvailable := len(categories) > 0
+	task.RuleCacheAvailable = &cacheAvailable
+	err = m.store.UpdateMatch(task)
 	return task, err
 }
 func (m *Manager) ClearSessions() error {

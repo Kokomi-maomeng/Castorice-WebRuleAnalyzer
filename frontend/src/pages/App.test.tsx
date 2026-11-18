@@ -8,7 +8,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
-import { defaultSettings } from "../utils/format";
+import { defaultSettings } from "../test-settings";
 import type { ScanTask } from "../types";
 const { mockAPI } = vi.hoisted(() => ({ mockAPI: vi.fn() }));
 vi.mock("../services/api", () => ({ api: mockAPI, copy: vi.fn() }));
@@ -221,7 +221,7 @@ describe("清空工作区", () => {
 
 it("按模式显示有效参数并从高级配置打开网络诊断", async () => {
   render(<App />);
-  const advanced = screen.getByRole("button", { name: "高级配置" });
+  const advanced = await screen.findByRole("button", { name: "高级配置" });
   await waitFor(() => expect(advanced).toBeEnabled());
   expect(screen.queryByRole("button", { name: "网络诊断" })).toBeNull();
   fireEvent.click(advanced);
@@ -239,7 +239,9 @@ it("按模式显示有效参数并从高级配置打开网络诊断", async () =
   const pages = panel.getByLabelText("最多页面");
   fireEvent.change(pages, { target: { value: "" } });
   fireEvent.blur(pages);
-  expect(pages).toHaveValue(1);
+  expect(pages).toBeInvalid();
+  fireEvent.change(pages, { target: { value: "2" } });
+  expect(pages).toBeValid();
   fireEvent.click(panel.getByRole("button", { name: "扫描模式，自动探索" }));
   fireEvent.click(screen.getByRole("button", { name: "辅助交互" }));
   expect(panel.getByLabelText("最多页面")).toBeInTheDocument();

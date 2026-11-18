@@ -1,6 +1,7 @@
 import NetworkOptions from "./NetworkOptions";
 import NetworkDialog from "./NetworkDialog";
 import ScanModeSelect from "./ScanModeSelect";
+import ScanNumberFields, { invalidScanField } from "./ScanNumberFields";
 import { useState } from "react";
 import {
   Box,
@@ -17,6 +18,7 @@ import {
   Stack,
   Switch,
   TextField,
+  Typography,
 } from "@mui/material";
 import {
   ArrowForwardRounded,
@@ -27,10 +29,13 @@ import {
   TuneRounded,
 } from "@mui/icons-material";
 import type { ScanOptions } from "../types";
+import { isRedacted } from "../utils/format";
 
 interface Props {
   canShowBrowser: boolean;
   url: string;
+  historyTarget?: string;
+  browserAvailable: boolean;
   setURL: (v: string) => void;
   options: ScanOptions;
   setOptions: (v: ScanOptions) => void;
@@ -47,27 +52,15 @@ export default function ScanControls(p: Props) {
   const { mode } = p.options;
   const set = <K extends keyof ScanOptions>(key: K, value: ScanOptions[K]) =>
     p.setOptions({ ...p.options, [key]: value });
-  const number = (
-    label: string,
-    key: keyof ScanOptions,
-    min: number,
-    max: number,
-  ) => (
-    <TextField
-      label={label}
-      type="number"
-      value={p.options[key]}
-      onChange={(e) => set(key, Number(e.target.value))}
-      onBlur={(e) => {
-        const value = Number(e.target.value);
-        const bounded = Math.min(max, Math.max(min, Math.trunc(value)));
-        if (bounded !== value) set(key, bounded);
-      }}
-      slotProps={{ htmlInput: { min, max } }}
-      disabled={p.running}
-      fullWidth
-    />
-  );
+  const invalid = invalidScanField(p.options);
+  const redacted = isRedacted(p.url);
+  const canStart =
+    !p.running &&
+    !p.busy &&
+    p.browserAvailable &&
+    p.url.trim() &&
+    !redacted &&
+    !invalid;
   const modeSelect = () => (
     <ScanModeSelect
       value={mode}
@@ -87,7 +80,7 @@ export default function ScanControls(p: Props) {
         component="form"
         onSubmit={(e) => {
           e.preventDefault();
-          if (!p.running && !p.busy && p.url.trim()) p.onStart();
+          if (canStart) p.onStart();
         }}
         className="scan-form"
       >
@@ -95,6 +88,7 @@ export default function ScanControls(p: Props) {
           fullWidth
           label="要分析的网站"
           value={p.url}
+          error={redacted}
           disabled={p.running}
           onChange={(e) => p.setURL(e.target.value)}
           onKeyDown={(e) => {
@@ -153,7 +147,7 @@ export default function ScanControls(p: Props) {
                   <ArrowForwardRounded />
                 )
               }
-              disabled={p.busy || !p.url.trim()}
+              disabled={!canStart}
             >
               开始采集
             </Button>
@@ -168,6 +162,25 @@ export default function ScanControls(p: Props) {
           </Button>
         </Stack>
       </Box>
+      {p.historyTarget && (
+        <Typography
+          variant="body2"
+          color="text.secondary"
+          sx={{ mt: 0.75, overflowWrap: "anywhere" }}
+        >
+          历史地址 {p.historyTarget}。已脱敏，重新采集时请输入原网址。
+        </Typography>
+      )}
+      {redacted && (
+        <Typography variant="body2" color="error">
+          请将脱敏地址替换为原网址。
+        </Typography>
+      )}
+      {invalid && (
+        <Typography variant="body2" color="error">
+          请在高级配置中修正「{invalid}」。
+        </Typography>
+      )}
       <Dialog
         open={advanced}
         aria-labelledby="advanced-config-title"
@@ -188,20 +201,20 @@ export default function ScanControls(p: Props) {
         <DialogContent dividers>
           <Box className="advanced-grid" sx={{ pt: 0.5 }}>
             <Box sx={{ gridColumn: "1 / -1" }}>{modeSelect()}</Box>
-            {number("总时长 / 秒", "max_seconds", 1, 3600)}
-            {number("导航超时 / 秒", "navigation_seconds", 1, 120)}
-            {mode !== "interactive" &&
-              number("每页观察 / 秒", "observe_seconds", 1, 300)}
-            {mode !== "interactive" &&
-              number("静默等待 / 毫秒", "quiet_millis", 100, 30000)}
-            {mode !== "quick" && number("最多页面", "max_pages", 1, 200)}
-            {mode === "explore" && number("探索深度", "max_depth", 0, 8)}
-            {mode === "explore" &&
-              number("页面间隔 / 毫秒", "interval_millis", 0, 30000)}
+            <ScanNumberFields
+              options={p.options}
+              change={p.setOptions}
+              disabled={p.running}
+            />
             <Box sx={{ gridColumn: "1 / -1" }}>
               <NetworkOptions options={p.options} onChange={p.setOptions} />
             </Box>
           </Box>
+          {mode === "interactive" && !window.castoriceDesktop && (
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+              受控浏览器在运行采集服务的电脑上打开。远程访问此网页时，请在服务端图形会话操作。
+            </Typography>
+          )}
           {p.canShowBrowser && mode !== "interactive" && (
             <FormControlLabel
               sx={{ mt: 0.75 }}

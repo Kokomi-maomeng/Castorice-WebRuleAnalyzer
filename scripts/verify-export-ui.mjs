@@ -111,6 +111,7 @@ try {
   if (format === 'singbox') assert.equal(JSON.parse(content).version, 3);
   const promise = page.waitForEvent('download'); await page.getByRole('button', { name: '下载文件', exact: true }).click(); const file = await promise;
   assert.equal(await fs.readFile(await file.path(), 'utf8'), content, 'download differs from complete response');
+  await page.getByRole('button', { name: '校验并准备复制', exact: true }).click();
   await page.getByRole('button', { name: '复制内容', exact: true }).click();
   assert.equal((await page.evaluate(() => navigator.clipboard.readText())).replace(/\r\n/g,'\n'), content.replace(/\r\n/g,'\n'));
  }

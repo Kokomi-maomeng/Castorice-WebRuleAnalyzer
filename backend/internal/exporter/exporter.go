@@ -45,6 +45,7 @@ func Build(job model.ExportJob, observed []model.DomainRecord, categories []mode
 		typ = model.Suffix
 		result.Warnings = append(result.Warnings, "已主动选择 DOMAIN-SUFFIX：这会包含观察 Hostname 的全部子域名，扩大匹配范围。")
 	}
+	skipped := 0
 	for _, d := range observed {
 		if d.Kind != "domain" {
 			continue
@@ -52,15 +53,20 @@ func Build(job model.ExportJob, observed []model.DomainRecord, categories []mode
 		if explicitDomains && !selected[d.Hostname] {
 			continue
 		}
-		result.ObservedDomains++
 		r, e := rules.Normalize(model.RuleEntry{Type: typ, Value: d.Hostname, Origins: []model.RuleOrigin{{Source: "observed", Category: job.TaskID, Version: model.Version}}})
 		if e != nil {
-			return result, e
+			skipped++
+			continue
 		}
+		result.ObservedDomains++
 		entries = append(entries, r)
 		observedKeys[r.Key()] = true
 	}
+	if skipped > 0 {
+		result.Warnings = append(result.Warnings, fmt.Sprintf("已略过 %d 个无法生成域名规则的主机（例如单标签主机）。", skipped))
+	}
 	if job.Mode == "merged" {
+		originCount := len(entries)
 		for _, c := range categories {
 			if !c.Loaded {
 				return result, errors.New("选定分类尚未加载")
@@ -72,6 +78,10 @@ func Build(job model.ExportJob, observed []model.DomainRecord, categories []mode
 				result.Warnings = append(result.Warnings, fmt.Sprintf("%s 有 %d 项解析警告，不支持的内容未导出。", c.Name, len(c.Warnings)))
 			}
 			for _, r := range c.Rules {
+				originCount += len(r.Origins)
+				if len(entries) >= 40_000 || originCount > 100_000 {
+					return result, ErrExportTooLarge
+				}
 				normal, e := rules.Normalize(r)
 				if e != nil {
 					return result, e
@@ -135,7 +145,7 @@ func Build(job model.ExportJob, observed []model.DomainRecord, categories []mode
 		result.Entries = append(result.Entries, entry)
 	}
 	if len(final) == 0 {
-		return result, errors.New("没有可导出的已选择域名规则（IP 地址不作为普通域名导出）")
+		return result, errors.New("没有可导出的已选域名规则。请选择完整域名或已加载的规则分类")
 	}
 	result.FinalRules = len(final)
 	provenance := []string{"Castorice-WebRuleAnalyzer " + model.Version + " · 规则来源与许可证", "观察数据来自扫描任务 " + job.TaskID + "；有限扫描不代表完整覆盖。"}
@@ -168,11 +178,16 @@ func Build(job model.ExportJob, observed []model.DomainRecord, categories []mode
 	if err != nil {
 		return result, err
 	}
+	if len(content) > model.MaxExportBytes || len(result.Attribution) > model.MaxExportBytes {
+		return result, ErrExportTooLarge
+	}
 	result.Content = content
 	result.MIME = mime
 	result.Filename = Filename(job.Filename, ext)
 	return result, nil
 }
+
+var ErrExportTooLarge = errors.New("规则或预览超过大小上限，请减少所选分类或域名后重试")
 
 func Serialize(entries []model.RuleEntry, job model.ExportJob) (string, string, string, error) {
 	for _, r := range entries {

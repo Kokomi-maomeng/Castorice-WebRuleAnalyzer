@@ -3,7 +3,10 @@ frontend/dist/
 backend/internal/webui/dist/*
 !backend/internal/webui/dist/.keep
 /dist/
+/data/
+/exports/
 .runtime/
+access-password
 *.db
 *.db-shm
 *.db-wal

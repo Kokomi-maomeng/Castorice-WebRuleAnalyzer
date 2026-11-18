@@ -34,7 +34,8 @@ type NetworkDiagnosis struct {
 	DNSProvider string      `json:"dns_provider"`
 	Route       string      `json:"route"`
 	System      DNSCheck    `json:"system"`
-	Secure      DNSCheck    `json:"secure"`
+	Secure      *DNSCheck   `json:"secure,omitempty"`
+	SecureNote  string      `json:"secure_note,omitempty"`
 	Connected   bool        `json:"connected"`
 	Connection  *Diagnostic `json:"connection,omitempty"`
 }

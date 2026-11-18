@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/castorice/Castorice-WebRuleAnalyzer/backend/internal/exportname"
+	"github.com/castorice/Castorice-WebRuleAnalyzer/backend/internal/model"
 )
 
 type Paths struct {
@@ -72,7 +73,7 @@ func (p Paths) SaveExport(name, content string) (string, error) {
 	if ext != ".yaml" && ext != ".yml" && ext != ".json" && ext != ".txt" {
 		return "", errors.New("只允许 YAML、JSON 或来源说明 TXT")
 	}
-	if len(content) > 16<<20 {
+	if len(content) > model.MaxExportBytes {
 		return "", errors.New("导出内容超过 16 MiB")
 	}
 	for n := 0; n < 10000; n++ {

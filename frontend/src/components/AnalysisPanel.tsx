@@ -312,7 +312,13 @@ export default function AnalysisPanel(p: Props) {
                   。本次扫描仅代表实际访问和观察范围。
                 </Alert>
               )}
-              <Stack sx={{ mt: 1, maxHeight: 180, overflow: "auto", gap: 1.2 }}>
+              <Stack
+                role="region"
+                aria-label="最近采集事件"
+                tabIndex={0}
+                className="scroll-region"
+                sx={{ mt: 1, maxHeight: 180, overflow: "auto", gap: 1.2 }}
+              >
                 {stageEvents.slice(-15).map((e, index, arr) => (
                   <Stack
                     key={e.id}
@@ -408,9 +414,16 @@ export default function AnalysisPanel(p: Props) {
         <Box className="analysis-body requests-body motion-panel">
           <Stack direction="row" sx={{ p: 1.5, gap: 1, flexWrap: "wrap" }}>
             <TextField
-              label="域名过滤"
+              label={p.filter.exactHost ? "精确主机" : "域名过滤"}
               value={p.filter.host}
-              onChange={(e) => filter("host", e.target.value)}
+              onChange={(e) =>
+                p.setFilter({
+                  ...p.filter,
+                  host: e.target.value,
+                  exactHost: false,
+                  page: 0,
+                })
+              }
               sx={{ flex: 2, minWidth: 140 }}
             />
             <TextField
@@ -538,7 +551,11 @@ export default function AnalysisPanel(p: Props) {
                       }}
                     >
                       {req.status_code ||
-                        (req.state === "failed" ? "失败" : "等待")}
+                        (req.state === "failed"
+                          ? "失败"
+                          : req.state === "interrupted"
+                            ? "已中断"
+                            : "等待")}
                     </TableCell>
                     <TableCell sx={{ whiteSpace: "nowrap" }}>
                       {req.duration_ms === undefined
@@ -627,6 +644,10 @@ export default function AnalysisPanel(p: Props) {
             </Tooltip>
           </Stack>
           <Box
+            className="scroll-region"
+            tabIndex={0}
+            role="region"
+            aria-label="扫描日志列表"
             sx={{
               bgcolor: "action.hover",
               borderRadius: 2,

@@ -22,6 +22,7 @@ export const makeTheme = (dark: boolean, reducedMotion = false) =>
       mode: dark ? "dark" : "light",
       primary: { main: dark ? "#c9b5ff" : "#6c4eab" },
       secondary: { main: dark ? "#8ed6c3" : "#287a69" },
+      warning: { main: dark ? "#ffb86b" : "#974400" },
       background: {
         default: dark ? "#121116" : "#f7f6fa",
         paper: dark ? "#1e1c23" : "#ffffff",

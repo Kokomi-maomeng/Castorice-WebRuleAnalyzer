@@ -52,7 +52,7 @@ import type {
   Settings,
 } from "../types";
 import { api, copy, download } from "../services/api";
-import { errorMessage } from "../utils/format";
+import { errorMessage, ruleCatalogKey } from "../utils/format";
 
 interface Props {
   open?: boolean;
@@ -194,6 +194,11 @@ export default function ExportDialog(p: Props) {
   const [loadingCategory, setLoadingCategory] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [reload, setReload] = useState(0);
+  const [copyPreview, setCopyPreview] = useState<{
+    key: string;
+    content: string;
+  }>();
+  const [manualCopy, setManualCopy] = useState(false);
   const [tab, setTab] = useState(0);
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(30);
@@ -218,20 +223,33 @@ export default function ExportDialog(p: Props) {
 
   // Poll while open: another window or automatic updating may populate an empty cache.
   useEffect(() => {
-    let disposed = false;
+    const controller = new AbortController();
+    let pending = false;
+    let catalog = "";
     async function load() {
+      if (pending) return;
+      pending = true;
       try {
-        const [c, s] = await Promise.all([
-          api<RuleCategory[]>("/rules/categories"),
-          api<RuleSource[]>("/rules/sources"),
-        ]);
-        if (!disposed) {
-          // Preserve object identity when a poll has no actual cache changes.
-          setCategories((old) =>
-            JSON.stringify(old) === JSON.stringify(c) ? old : c,
+        const request = { signal: controller.signal };
+        const sources = await api<RuleSource[]>(
+          "/rules/sources?compact=true",
+          "GET",
+          undefined,
+          request,
+        );
+        if (controller.signal.aborted) return;
+        setSources(sources);
+        const nextCatalog = ruleCatalogKey(sources);
+        if (catalog !== nextCatalog) {
+          const c = await api<RuleCategory[]>(
+            "/rules/categories",
+            "GET",
+            undefined,
+            request,
           );
-          setSources(s);
-          setLibraryError("");
+          if (controller.signal.aborted) return;
+          catalog = nextCatalog;
+          setCategories(c);
           setCategoryIDs((old) => {
             if (categoryLoading.current) return old;
             const next = old.every((id) => c.some((item) => item.id === id))
@@ -241,16 +259,18 @@ export default function ExportDialog(p: Props) {
             return next;
           });
         }
+        setLibraryError("");
       } catch (e) {
-        if (!disposed) setLibraryError(errorMessage(e));
+        if (!controller.signal.aborted) setLibraryError(errorMessage(e));
       } finally {
-        if (!disposed) setLoadingLibrary(false);
+        pending = false;
+        if (!controller.signal.aborted) setLoadingLibrary(false);
       }
     }
     void load();
     const timer = setInterval(() => void load(), 3000);
     return () => {
-      disposed = true;
+      controller.abort();
       clearInterval(timer);
     };
   }, [reload]);
@@ -315,28 +335,30 @@ export default function ExportDialog(p: Props) {
     [job],
   );
   useEffect(() => {
-    let disposed = false;
+    const controller = new AbortController();
     setLoading(true);
     setError("");
     if (loadingCategory) return;
     const timer = setTimeout(() => {
-      void api<ExportResult>("/export", "POST", job)
+      void api<ExportResult>("/export", "POST", job, {
+        signal: controller.signal,
+      })
         .then((result) => {
-          if (!disposed) setPreview({ result, scope, key });
+          if (!controller.signal.aborted) setPreview({ result, scope, key });
         })
         .catch((e) => {
-          if (!disposed) {
+          if (!controller.signal.aborted) {
             setError(errorMessage(e));
             if (e instanceof Error && "status" in e && e.status === 409)
               setReload((v) => v + 1);
           }
         })
         .finally(() => {
-          if (!disposed) setLoading(false);
+          if (!controller.signal.aborted) setLoading(false);
         });
     }, 180);
     return () => {
-      disposed = true;
+      controller.abort();
       clearTimeout(timer);
     };
   }, [job, scope, key, loadingCategory]);
@@ -351,7 +373,12 @@ export default function ExportDialog(p: Props) {
     // Source updates share one atomic cache writer; queue them instead of racing.
     for (const source of pending) {
       try {
-        await api("/rules/sync", "POST", { source: source.id });
+        await api(
+          "/rules/sync",
+          "POST",
+          { source: source.id },
+          { timeoutMs: 610_000 },
+        );
       } catch (e) {
         failures.push(`${source.id}：${errorMessage(e)}`);
       }
@@ -376,7 +403,12 @@ export default function ExportDialog(p: Props) {
         resolved.push(
           c.loaded
             ? c
-            : await api<RuleCategory>("/rules/load", "POST", { id: c.id }),
+            : await api<RuleCategory>(
+                "/rules/load",
+                "POST",
+                { id: c.id },
+                { timeoutMs: 95_000 },
+              ),
         );
       if (!mounted.current || categoryRequest.current !== request) return;
       committedCategories.current = resolved.map((c) => c.id);
@@ -496,6 +528,26 @@ export default function ExportDialog(p: Props) {
       });
   }
 
+  const verifiedCopy =
+    copyPreview?.key === key ? copyPreview.content : undefined;
+  function copyContent() {
+    if (!fresh || !result) return;
+    if (mode === "merged" && verifiedCopy === undefined) {
+      useFreshResult(async (current) => {
+        setCopyPreview({ key, content: current.content });
+        p.notify("已核对规则版本，点击「复制内容」复制。");
+      });
+      return;
+    }
+    void copy(verifiedCopy ?? result.content)
+      .then(() => p.notify("完整规则已复制"))
+      .catch((e) => {
+        setTab(1);
+        setManualCopy(true);
+        p.notify(errorMessage(e));
+      });
+  }
+
   return (
     <Dialog
       slotProps={{ transition: { onExited: p.onExited } }}
@@ -572,6 +624,16 @@ export default function ExportDialog(p: Props) {
                 value={policy}
                 onChange={(e) => setPolicy(e.target.value)}
                 disabled={format !== "clash"}
+                slotProps={{
+                  input: {
+                    endAdornment: format === "clash" && (
+                      <Hint
+                        label="查看策略组说明"
+                        text="在 Clash 或 Mihomo 客户端配置的 proxy-groups 中找到已有的名称，再将它填入这里。"
+                      />
+                    ),
+                  },
+                }}
               />
               <TextField
                 label="文件名称（自动扩展名）"
@@ -1031,48 +1093,75 @@ export default function ExportDialog(p: Props) {
             <Typography variant="caption" color="text.secondary" sx={{ py: 1 }}>
               按行分页预览；复制与下载始终包含完整文件。
             </Typography>
-            <Box
-              ref={contentScroll}
-              className="preview-scroll content-preview"
-              sx={{ bgcolor: "action.hover", borderRadius: 1 }}
-            >
+            {manualCopy ? (
               <Box
-                component="pre"
-                className="motion-panel"
-                key={`${actualContentPage}:${lineSize}`}
-                sx={{ p: 1.5, fontSize: 12 }}
-              >
-                {lines
-                  .slice(
-                    actualContentPage * lineSize,
-                    (actualContentPage + 1) * lineSize,
-                  )
-                  .map((line, i) => (
-                    <Box component="span" className="preview-line" key={i}>
-                      <Box
-                        component="span"
-                        className="line-number"
-                        aria-hidden="true"
-                      >
-                        {actualContentPage * lineSize + i + 1}
-                      </Box>
-                      <span>{line || "\u00a0"}</span>
-                      {"\n"}
-                    </Box>
-                  ))}
-              </Box>
-            </Box>
-            <Pager
-              count={lines.length}
-              page={actualContentPage}
-              size={lineSize}
-              unit="行"
-              onPage={setContentPage}
-              onSize={(size) => {
-                setLineSize(size);
-                setContentPage(0);
-              }}
-            />
+                component="textarea"
+                readOnly
+                value={fresh ? (verifiedCopy ?? result.content) : ""}
+                onFocus={(event) => event.currentTarget.select()}
+                aria-label="可手动复制的完整规则"
+                className="rule-editor"
+                sx={{
+                  color: "text.primary",
+                  bgcolor: "action.hover",
+                  minHeight: 130,
+                }}
+              />
+            ) : (
+              <>
+                <Box
+                  ref={contentScroll}
+                  className="preview-scroll content-preview"
+                  tabIndex={0}
+                  role="region"
+                  aria-label="规则文件预览"
+                  sx={{ bgcolor: "action.hover", borderRadius: 1 }}
+                >
+                  <Box
+                    component="pre"
+                    className="motion-panel"
+                    key={`${actualContentPage}:${lineSize}`}
+                    sx={{ p: 1.5, fontSize: 12 }}
+                  >
+                    {lines
+                      .slice(
+                        actualContentPage * lineSize,
+                        (actualContentPage + 1) * lineSize,
+                      )
+                      .map((line, i) => (
+                        <Box component="span" className="preview-line" key={i}>
+                          <Box
+                            component="span"
+                            className="line-number"
+                            aria-hidden="true"
+                          >
+                            {actualContentPage * lineSize + i + 1}
+                          </Box>
+                          <span>{line || "\u00a0"}</span>
+                          {"\n"}
+                        </Box>
+                      ))}
+                  </Box>
+                </Box>
+                <Pager
+                  count={lines.length}
+                  page={actualContentPage}
+                  size={lineSize}
+                  unit="行"
+                  onPage={setContentPage}
+                  onSize={(size) => {
+                    setLineSize(size);
+                    setContentPage(0);
+                  }}
+                />
+              </>
+            )}
+            <Button
+              size="small"
+              onClick={() => setManualCopy((current) => !current)}
+            >
+              {manualCopy ? "返回分页预览" : "选择完整文本"}
+            </Button>
           </Box>
         )}
       </DialogContent>
@@ -1102,13 +1191,11 @@ export default function ExportDialog(p: Props) {
         <Button
           startIcon={<ContentCopyRounded />}
           disabled={!fresh}
-          onClick={() =>
-            useFreshResult((current) =>
-              copy(current.content).then(() => p.notify("完整规则已复制")),
-            )
-          }
+          onClick={copyContent}
         >
-          复制内容
+          {mode === "merged" && verifiedCopy === undefined
+            ? "校验并准备复制"
+            : "复制内容"}
         </Button>
         <Button
           variant="contained"

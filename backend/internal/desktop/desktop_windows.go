@@ -26,6 +26,7 @@ import (
 	"github.com/castorice/Castorice-WebRuleAnalyzer/backend/internal/model"
 	"github.com/castorice/Castorice-WebRuleAnalyzer/backend/internal/portable"
 	"github.com/castorice/Castorice-WebRuleAnalyzer/backend/internal/scanner"
+	"github.com/castorice/Castorice-WebRuleAnalyzer/backend/internal/storage"
 	"github.com/jchv/go-webview2"
 	"github.com/jchv/go-webview2/webviewloader"
 	"golang.org/x/sys/windows"
@@ -76,9 +77,6 @@ func Supervisor() error {
 		return errors.New("此软件目录已有实例运行，或目录不可写。请先关闭原窗口。")
 	}
 	defer windows.CloseHandle(lock)
-	if err = scanner.CleanSessions(p.Sessions); err != nil {
-		return err
-	}
 	if err = p.ClearTemp(); err != nil {
 		return err
 	}
@@ -154,7 +152,12 @@ func Supervisor() error {
 	cleanupErrors := []string{}
 	if remaining == 0 {
 		// Only marked profiles are removed, including those left after a hard crash.
-		if e := scanner.CleanSessions(p.Sessions); e != nil {
+		if lock, e := storage.LockData(p.Data); e == nil {
+			if e = scanner.CleanSessions(p.Sessions); e != nil {
+				cleanupErrors = append(cleanupErrors, e.Error())
+			}
+			_ = lock.Close()
+		} else if !errors.Is(e, storage.ErrDataInUse) {
 			cleanupErrors = append(cleanupErrors, e.Error())
 		}
 		if e := p.ClearTemp(); e != nil {

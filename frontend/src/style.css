@@ -40,17 +40,6 @@ pre {
     opacity: 0.4;
   }
 }
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation: none !important;
-    transition-duration: 0s !important;
-    transition-delay: 0s !important;
-    scroll-behavior: auto !important;
-  }
-}
-
 html,
 body,
 #root {
@@ -113,6 +102,7 @@ body,
   min-height: 0;
   gap: 10px;
   padding: 14px 18px;
+  overflow: auto;
 }
 .scan-form {
   display: grid;
@@ -134,7 +124,7 @@ body,
 }
 .workspace {
   flex: 1;
-  min-height: 0;
+  min-height: 360px;
   display: grid;
   grid-template-columns: minmax(290px, 0.8fr) minmax(0, 1.7fr);
   gap: 14px;
@@ -148,6 +138,10 @@ body,
   flex: 1;
   min-height: 0;
   overflow: auto;
+}
+.scroll-region:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: -2px;
 }
 .requests-body,
 .logs-body {
@@ -417,22 +411,6 @@ body,
     margin-left: 0 !important;
   }
 }
-@media (prefers-reduced-motion: reduce) {
-  .MuiButton-root,
-  .MuiIconButton-root,
-  .MuiTab-root,
-  .category-button,
-  .MuiSwitch-switchBase,
-  .MuiSwitch-thumb,
-  .MuiSwitch-track {
-    transition-duration: 0s !important;
-  }
-  .MuiButton-root:active,
-  .MuiIconButton-root:active,
-  .category-button:active {
-    transform: none;
-  }
-}
 @media (max-height: 640px) {
   .app-main {
     padding: 8px 12px;
@@ -585,6 +563,11 @@ body,
     padding: 8px 12px;
   }
 }
+@media (max-height: 450px) {
+  .workspace {
+    min-height: 420px;
+  }
+}
 
 /* Animate state changes and new keyed rows, not each SSE refresh. */
 @keyframes row-enter {
@@ -611,13 +594,28 @@ body,
     border-color 180ms cubic-bezier(0.2, 0, 0, 1);
 }
 @media (prefers-reduced-motion: reduce) {
-  .motion-row,
-  .motion-surface,
-  .motion-panel {
+  *,
+  *::before,
+  *::after {
     animation: none !important;
+    transition-duration: 0s !important;
+    transition-delay: 0s !important;
+    scroll-behavior: auto !important;
   }
-  .app-shell,
-  .app-shell .MuiPaper-root {
-    transition: none !important;
+  :is(
+    .MuiButton-root,
+    .MuiIconButton-root,
+    .MuiTab-root,
+    .MuiSwitch-switchBase,
+    .MuiSwitch-thumb,
+    .MuiSwitch-track,
+    .category-button
+  ) {
+    transition-duration: 0s !important;
+  }
+  .MuiButton-root:active,
+  .MuiIconButton-root:active,
+  .category-button:active {
+    transform: none;
   }
 }

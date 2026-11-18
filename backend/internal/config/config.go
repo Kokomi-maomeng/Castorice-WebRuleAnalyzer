@@ -10,8 +10,8 @@ func Validate(s model.Settings) error {
 	if err := scanner.ValidateOptions(s.Scan); err != nil {
 		return err
 	}
-	if s.Theme != "light" && s.Theme != "dark" && s.Theme != "system" {
-		return &Error{"未知主题"}
+	if err := ValidateTheme(s.Theme); err != nil {
+		return err
 	}
 	if s.LogLevel != "DEBUG" && s.LogLevel != "INFO" && s.LogLevel != "WARN" && s.LogLevel != "ERROR" {
 		return &Error{"未知日志级别"}
@@ -20,6 +20,13 @@ func Validate(s model.Settings) error {
 		return &Error{"未知导出格式"}
 	}
 	return exporter.ValidatePolicy(s.Policy)
+}
+
+func ValidateTheme(theme string) error {
+	if theme != "light" && theme != "dark" && theme != "system" {
+		return &Error{"未知主题"}
+	}
+	return nil
 }
 
 type Error struct{ Message string }

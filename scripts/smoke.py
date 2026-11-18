@@ -1,7 +1,10 @@
 """Real, public-network smoke test for Windows/Linux/container services."""
 import argparse
+import base64
 import json
 from pathlib import Path
+import subprocess
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -9,13 +12,21 @@ import urllib.request
 parser = argparse.ArgumentParser()
 parser.add_argument("--base-url", default="http://127.0.0.1:19110")
 parser.add_argument("--output", type=Path, default=Path(".runtime/smoke-python"))
+parser.add_argument("--access-password-file", help="Password file for a protected service, or - for standard input")
+parser.add_argument("--check-compose-sandbox", action="store_true")
 args = parser.parse_args()
 token = ""
+authorization = ""
+if args.access_password_file:
+    secret = sys.stdin.read() if args.access_password_file == "-" else Path(args.access_password_file).read_text()
+    authorization = "Basic " + base64.b64encode(("castorice:" + secret.rstrip("\r\n")).encode()).decode()
 
 
 def request(path, body=None):
     data = None if body is None else json.dumps(body).encode()
     headers = {} if body is None else {"Content-Type": "application/json", "X-Castorice-Token": token}
+    if authorization:
+        headers["Authorization"] = authorization
     req = urllib.request.Request(args.base_url + path, data=data, headers=headers)
     with urllib.request.urlopen(req, timeout=60) as response:
         return json.load(response)["data"]
@@ -33,7 +44,36 @@ assert health["version"] == "v" + (Path(__file__).resolve().parents[1] / "VERSIO
 token = request("/api/session")["token"]
 options = request("/api/settings")["scan"]
 options.update(mode="quick", visible=False, max_seconds=40, navigation_seconds=20, observe_seconds=3, quiet_millis=600)
+if args.check_compose_sandbox:
+    options.update(observe_seconds=12, quiet_millis=6000)
 task = request("/api/scans", {"url": "https://example.com", "options": options})
+if args.check_compose_sandbox:
+    probe = r'''
+awk '/^NoNewPrivs:/{ if ($2 != 1) exit 3 } /^Seccomp:/{ if ($2 != 2) exit 4 }' /proc/self/status || exit $?
+baseline=$(awk '/^Seccomp_filters:/{print $2}' /proc/self/status)
+for file in /proc/[0-9]*/cmdline; do
+  if [ -r "$file" ] && tr '\000' '\n' < "$file" 2>/dev/null | grep -qx -- '--type=renderer'; then
+    awk -v base="$baseline" '
+      /^NSpid:/{nested=(NF >= 3)}
+      /^Seccomp:/{filtered=($2 == 2)}
+      /^Seccomp_filters:/{extra=($2 > base)}
+      END { if (!nested || !filtered || !extra) exit 1 }' "${file%/cmdline}/status" && exit 0
+  fi
+done
+exit 1
+'''
+    for _ in range(25):
+        state = subprocess.run(
+            ["docker", "compose", "exec", "-T", "analyzer", "sh", "-c", probe],
+            check=False, capture_output=True, timeout=10,
+        )
+        if state.returncode == 0:
+            break
+        if state.returncode in (3, 4):
+            raise RuntimeError("Container security settings were not applied")
+        time.sleep(0.5)
+    else:
+        raise RuntimeError("No Chromium renderer with a nested PID namespace and an additional seccomp filter")
 deadline = time.monotonic() + 50
 while task["status"] in {"starting", "running", "stopping"}:
     if time.monotonic() > deadline:
@@ -60,5 +100,7 @@ for fmt in ("clash", "provider", "singbox"):
     exports.append({"format": fmt, "rules": result["final_rules"]})
 assert any(s["id"] == task["id"] for s in request("/api/scans"))
 report = {"health": health, "status": task["status"], "domains": task["domain_count"], "requests": task["request_count"], "exports": exports, "passed": True}
+if args.check_compose_sandbox:
+    report["renderer_sandbox"] = True
 (args.output / "acceptance.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
 print(json.dumps(report, ensure_ascii=False))

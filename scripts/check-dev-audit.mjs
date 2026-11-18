@@ -14,7 +14,8 @@ for (const [name, finding] of Object.entries(audit.vulnerabilities)) {
     if (typeof advisory === 'string' || !high.has(advisory.severity)) continue;
     // https://github.com/advisories/GHSA-fc5q-39xc-vjpf has no published fix.
     // This exact build/test dependency processes repository-controlled globs.
-    // The production audit is required separately. Remove after upstream fixes it.
+    // The production audit is required separately. Maintainers review by
+    // 2027-01-15 and remove the exception as soon as a patched version ships.
     const knownToolchainIssue =
       name === 'picomatch' &&
       advisory.url === 'https://github.com/advisories/GHSA-fc5q-39xc-vjpf' &&

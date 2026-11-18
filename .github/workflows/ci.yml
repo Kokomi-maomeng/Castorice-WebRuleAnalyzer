@@ -15,13 +15,15 @@ jobs:
         os: [windows-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '24'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version: '1.26.11'
           cache-dependency-path: backend/go.sum
@@ -46,14 +48,29 @@ jobs:
         working-directory: backend
       - run: go build -trimpath ./cmd/castorice
         working-directory: backend
+      - if: runner.os == 'Windows'
+        run: node frontend/node_modules/playwright-core/cli.js install firefox webkit
+      - if: runner.os == 'Windows'
+        run: node scripts/verify-local.mjs msedge firefox webkit
+      - if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/build.ps1 -SkipInstall -SkipTests
   docker:
     runs-on: ubuntu-latest
+    env:
+      COMPOSE_FILE: compose.yaml:compose.apparmor.yaml
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
       - run: sudo apparmor_parser -r deploy/castorice-browser.apparmor
       - run: docker compose up -d --build
-        env:
-          CASTORICE_APPARMOR_PROFILE: castorice-browser
-      - run: python scripts/smoke.py --base-url http://127.0.0.1:19110
+      - shell: bash
+        run: |
+          timeout 25 bash -c 'until docker compose exec -T analyzer test -s /data/access-password; do sleep 1; done'
+          docker compose exec -T analyzer cat /proc/self/attr/current | grep -F 'castorice-browser (enforce)'
+          docker compose exec -T analyzer cat /data/access-password | python scripts/smoke.py --access-password-file - --check-compose-sandbox
       - if: failure()
         run: docker compose logs analyzer
+      - if: always()
+        run: docker compose down -v

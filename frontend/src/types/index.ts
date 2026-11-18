@@ -40,6 +40,7 @@ export interface RuleMatch {
   category: string;
   source: string;
   version: string;
+  path?: string;
   score: number;
   confidence: string;
   reasons: string[];
@@ -56,6 +57,8 @@ export interface ScanTask {
   test_mode?: boolean;
   id: string;
   target_url: string;
+  target_redacted?: boolean;
+  rule_cache_available?: boolean;
   status: string;
   options: ScanOptions;
   started_at: string;
@@ -188,6 +191,7 @@ export interface ExportResult {
 }
 export interface RequestFilter {
   host: string;
+  exactHost?: boolean;
   method: string;
   type: string;
   status: string;
@@ -224,7 +228,8 @@ export interface NetworkDiagnosis {
   dns_provider: string;
   route: string;
   system: DNSCheck;
-  secure: DNSCheck;
+  secure?: DNSCheck;
+  secure_note?: string;
   connected: boolean;
   connection?: Diagnostic;
 }

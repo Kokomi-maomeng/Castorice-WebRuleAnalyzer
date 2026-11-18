@@ -20,7 +20,6 @@ import (
 	"github.com/castorice/Castorice-WebRuleAnalyzer/backend/internal/app"
 	"github.com/castorice/Castorice-WebRuleAnalyzer/backend/internal/browser"
 	"github.com/castorice/Castorice-WebRuleAnalyzer/backend/internal/portable"
-	"github.com/castorice/Castorice-WebRuleAnalyzer/backend/internal/scanner"
 )
 
 //go:embed window_linux.py
@@ -50,9 +49,6 @@ func Supervisor() error {
 	defer lock.Close()
 	if err = syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
 		return errors.New("此软件目录已有桌面实例运行")
-	}
-	if err = scanner.CleanSessions(paths.Sessions); err != nil {
-		return err
 	}
 	service, err := app.Start(app.Options{Address: "127.0.0.1:0", DataDir: paths.Data, SaveExport: paths.SaveExport})
 	if err != nil {

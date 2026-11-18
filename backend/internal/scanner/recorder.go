@@ -11,6 +11,7 @@ import (
 	"github.com/castorice/Castorice-WebRuleAnalyzer/backend/internal/domain"
 	"github.com/castorice/Castorice-WebRuleAnalyzer/backend/internal/model"
 	"github.com/castorice/Castorice-WebRuleAnalyzer/backend/internal/security"
+	"github.com/castorice/Castorice-WebRuleAnalyzer/backend/internal/storage"
 	"github.com/chromedp/cdproto/cdp"
 	"github.com/chromedp/cdproto/network"
 )
@@ -35,6 +36,14 @@ type runtimeTask struct {
 	revision         int64
 	lastRequest      time.Time
 	limit            bool
+	pageLimit        bool
+	pageRequest      network.RequestID
+	pageLoader       cdp.LoaderID
+	pageURL          string
+	pageVersion      uint64
+	pageRoute        string
+	pageResult       string
+	pageFailureFor   func(string) *model.Diagnostic
 	cancel           func()
 	done             chan struct{}
 	flushMu          sync.Mutex
@@ -91,7 +100,7 @@ func (r *runtimeTask) summaryLocked() *model.RequestSummary {
 			s.FailedPages++
 		case "blocked":
 			s.BlockedPages++
-		case "queued", "pending", "visiting":
+		case "queued", "pending", "visiting", "interrupted":
 			s.PendingPages++
 		}
 	}
@@ -214,6 +223,9 @@ func (r *runtimeTask) finish(id network.RequestID, mono float64, state, failure 
 func (r *runtimeTask) onEvent(ev any) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.task.Options.Mode == "interactive" {
+		r.onInteractiveEvent(ev)
+	}
 	switch e := ev.(type) {
 	case *network.EventRequestWillBeSent:
 		if e.Type == network.ResourceTypeDocument && e.FrameID == r.mainFrame {
@@ -227,7 +239,7 @@ func (r *runtimeTask) onEvent(ev any) {
 		}
 		r.add(e.RequestID, e.Request.URL, e.Request.Method, string(e.Type), e.DocumentURL, initiator(e.Initiator), wallTime(e.WallTime), monotonic(e.Timestamp))
 	case *network.EventResponseReceived:
-		if e.Type == network.ResourceTypeDocument && e.FrameID == r.mainFrame && e.Response != nil {
+		if r.task.Options.Mode != "interactive" && e.Type == network.ResourceTypeDocument && e.FrameID == r.mainFrame && e.Response != nil {
 			r.task.MainStatus = int(e.Response.Status)
 			r.task.CurrentPage = security.RedactPageURL(e.Response.URL)
 		}
@@ -274,19 +286,21 @@ func (r *runtimeTask) response(id network.RequestID, response *network.Response)
 	})
 }
 
-func (r *runtimeTask) requestsPage(host, method, resource, status string, limit, offset int) ([]model.NetworkRequest, int) {
+func (r *runtimeTask) requestsPage(f storage.RequestFilter) ([]model.NetworkRequest, int) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	out := []model.NetworkRequest{}
+	host := strings.ToLower(f.Host)
 	for _, req := range r.requests {
-		if host != "" && !strings.Contains(req.Hostname, strings.ToLower(host)) || method != "" && req.Method != method || resource != "" && req.ResourceType != resource {
+		if host != "" && (f.ExactHost && req.Hostname != host || !f.ExactHost && !strings.Contains(req.Hostname, host)) ||
+			f.Method != "" && req.Method != f.Method || f.Type != "" && req.ResourceType != f.Type {
 			continue
 		}
-		if status == "failed" {
+		if f.Status == "failed" {
 			if req.State != "failed" {
 				continue
 			}
-		} else if status != "" && !strings.HasPrefix(fmt.Sprint(req.StatusCode), status) {
+		} else if f.Status != "" && !strings.HasPrefix(fmt.Sprint(req.StatusCode), f.Status) {
 			continue
 		}
 		out = append(out, req)
@@ -298,9 +312,7 @@ func (r *runtimeTask) requestsPage(host, method, resource, status string, limit,
 		return out[i].Time.After(out[j].Time)
 	})
 	total := len(out)
-	if offset > total {
-		offset = total
-	}
-	end := min(total, offset+limit)
+	offset := min(f.Offset, total)
+	end := min(total, offset+f.Limit)
 	return out[offset:end], total
 }

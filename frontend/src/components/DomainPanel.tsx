@@ -26,10 +26,11 @@ import {
 } from "@mui/icons-material";
 import type { DomainRecord, ScanTask } from "../types";
 import { copy } from "../services/api";
-import { time } from "../utils/format";
+import { isExportable, time } from "../utils/format";
 interface Props {
   domains: DomainRecord[];
   task?: ScanTask;
+  syncingResults?: boolean;
   excluded: Set<string>;
   toggle: (h: string) => void;
   mode: "observed" | "merged";
@@ -56,7 +57,7 @@ export default function DomainPanel(p: Props) {
     [p.domains, query, sort],
   );
   const selected = p.domains.filter(
-    (d) => d.kind === "domain" && !p.excluded.has(d.hostname),
+    (d) => isExportable(d) && !p.excluded.has(d.hostname),
   );
   const matched = new Set(
     p.task?.matches.flatMap((m) => m.matched_domains) || [],
@@ -161,8 +162,8 @@ export default function DomainPanel(p: Props) {
             >
               <Checkbox
                 size="small"
-                checked={d.kind === "domain" && !p.excluded.has(d.hostname)}
-                disabled={d.kind !== "domain"}
+                checked={isExportable(d) && !p.excluded.has(d.hostname)}
+                disabled={!isExportable(d)}
                 onChange={() => p.toggle(d.hostname)}
                 slotProps={{ input: { "aria-label": `选择 ${d.hostname}` } }}
               />
@@ -190,6 +191,9 @@ export default function DomainPanel(p: Props) {
                   </Typography>
                   {d.kind !== "domain" && (
                     <Chip size="small" label={d.kind.toUpperCase()} />
+                  )}
+                  {d.kind === "domain" && !isExportable(d) && (
+                    <Chip size="small" label="非完整域名，无法导出" />
                   )}
                   {matched.has(d.hostname) && (
                     <Chip
@@ -260,7 +264,7 @@ export default function DomainPanel(p: Props) {
           variant="contained"
           fullWidth
           startIcon={<DownloadRounded />}
-          disabled={!selected.length}
+          disabled={!selected.length || p.syncingResults}
           onClick={p.onExport}
           sx={{ mt: 0.5 }}
         >

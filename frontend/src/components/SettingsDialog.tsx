@@ -1,4 +1,5 @@
 import NetworkOptions from "./NetworkOptions";
+import ScanNumberFields, { invalidScanField } from "./ScanNumberFields";
 import { APP_VERSION } from "../version";
 import { useEffect, useState, type ReactNode } from "react";
 import {
@@ -32,6 +33,7 @@ interface Props {
   open?: boolean;
   onExited?: () => void;
   canShowBrowser: boolean;
+  browserManaged: boolean;
   settings: Settings;
   onSave: (v: Settings) => void;
   onClose: () => void;
@@ -63,22 +65,14 @@ export default function SettingsDialog(p: Props) {
     key: K,
     value: ScanOptions[K],
   ) => setDraft((d) => ({ ...d, scan: { ...d.scan, [key]: value } }));
-  const number = (
-    label: string,
-    key: keyof ScanOptions,
-    min: number,
-    max: number,
-  ) => (
-    <TextField
-      label={label}
-      type="number"
-      value={draft.scan[key]}
-      onChange={(e) => setScan(key, Number(e.target.value))}
-      slotProps={{ htmlInput: { min, max } }}
-      sx={{ minWidth: 140, flex: 1 }}
-    />
-  );
+  const setScanOptions = (scan: ScanOptions) =>
+    setDraft((d) => ({ ...d, scan }));
   async function save() {
+    const invalid = invalidScanField(draft.scan);
+    if (invalid) {
+      setError(`请修正「${invalid}」。`);
+      return;
+    }
     setBusy(true);
     setError("");
     try {
@@ -132,7 +126,7 @@ export default function SettingsDialog(p: Props) {
         <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 650 }}>
           默认扫描参数
         </Typography>
-        <Stack direction="row" sx={{ gap: 1.5, flexWrap: "wrap" }}>
+        <Box className="advanced-grid">
           <TextField
             select
             label="默认模式"
@@ -140,7 +134,7 @@ export default function SettingsDialog(p: Props) {
             onChange={(e) =>
               setScan("mode", e.target.value as ScanOptions["mode"])
             }
-            sx={{ width: 170 }}
+            fullWidth
           >
             {Object.entries(modeNames).map(([key, name]) => (
               <MenuItem
@@ -152,16 +146,11 @@ export default function SettingsDialog(p: Props) {
               </MenuItem>
             ))}
           </TextField>
-          {number("总时长上限 / 秒", "max_seconds", 1, 3600)}
-          {number("探索深度", "max_depth", 0, 8)}
-          {number("最大页面数", "max_pages", 1, 200)}
-        </Stack>
-        <Stack direction="row" sx={{ mt: 2, gap: 1.5, flexWrap: "wrap" }}>
-          {number("导航超时 / 秒", "navigation_seconds", 1, 120)}
-          {number("每页观察上限 / 秒", "observe_seconds", 1, 300)}
-          {number("静默等待 / 毫秒", "quiet_millis", 100, 30000)}
-          {number("页面间隔 / 毫秒", "interval_millis", 0, 30000)}
-        </Stack>
+          <ScanNumberFields options={draft.scan} change={setScanOptions} />
+        </Box>
+        <Typography variant="caption" color="text.secondary">
+          保存后应用于尚未编辑的工作区，或清空工作区后的下一次扫描。
+        </Typography>
         <Divider sx={{ my: 3 }} />
         <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 650 }}>
           浏览器与会话
@@ -176,6 +165,14 @@ export default function SettingsDialog(p: Props) {
               : ""
           }
           onChange={(e) => setScan("browser_path", e.target.value)}
+          disabled={p.browserManaged}
+          helperText={
+            p.browserManaged
+              ? "采集浏览器由服务管理员指定。"
+              : browsers.length
+                ? "从运行采集服务的电脑选择。"
+                : "未检测到浏览器，请安装 Chrome、Edge 或 Chromium。"
+          }
         >
           <MenuItem value="">自动检测（Chrome / Edge / Chromium）</MenuItem>
           {browsers.map((b) => (
@@ -184,18 +181,8 @@ export default function SettingsDialog(p: Props) {
             </MenuItem>
           ))}
         </TextField>
-        <TextField
-          label="自定义浏览器可执行文件路径（留空自动检测）"
-          fullWidth
-          value={draft.scan.browser_path}
-          onChange={(e) => setScan("browser_path", e.target.value)}
-          sx={{ mt: 2 }}
-        />
         <Box sx={{ mt: 2 }}>
-          <NetworkOptions
-            options={draft.scan}
-            onChange={(scan) => setDraft((d) => ({ ...d, scan }))}
-          />
+          <NetworkOptions options={draft.scan} onChange={setScanOptions} />
         </Box>
         <Stack direction="row" sx={{ alignItems: "center", mt: 1 }}>
           <FormControlLabel

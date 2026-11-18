@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -17,7 +16,10 @@ import (
 type Store struct{ DB *sql.DB }
 
 func Open(path string) (*Store, error) {
-	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+	if _, err := PrepareDataDir(filepath.Dir(path)); err != nil {
+		return nil, err
+	}
+	if err := privateDatabase(path); err != nil {
 		return nil, err
 	}
 	db, err := sql.Open("sqlite", path)
@@ -154,6 +156,7 @@ func (s *Store) Events(id string, after int64) ([]model.Event, error) {
 
 type RequestFilter struct {
 	Host, Method, Type, Status string
+	ExactHost                  bool
 	Limit, Offset              int
 }
 
@@ -161,7 +164,11 @@ func (s *Store) Requests(id string, f RequestFilter) ([]model.NetworkRequest, in
 	where := ` WHERE task_id=?`
 	args := []any{id}
 	if f.Host != "" {
-		where += ` AND instr(host,?)>0`
+		if f.ExactHost {
+			where += ` AND host=?`
+		} else {
+			where += ` AND instr(host,?)>0`
+		}
 		args = append(args, strings.ToLower(f.Host))
 	}
 	if f.Method != "" {
@@ -228,6 +235,25 @@ func (s *Store) Settings() (model.Settings, error) {
 }
 func (s *Store) SaveSettings(settings model.Settings) error {
 	_, err := s.DB.Exec(`INSERT INTO kv VALUES('settings',?) ON CONFLICT(key) DO UPDATE SET payload=excluded.payload`, data(settings))
+	return err
+}
+func (s *Store) SaveTheme(theme string) error {
+	_, err := s.DB.Exec(`INSERT INTO kv VALUES('settings',json_set(?, '$.theme', ?))
+		ON CONFLICT(key) DO UPDATE SET payload=json_set(CAST(kv.payload AS TEXT), '$.theme', ?)`,
+		string(data(model.DefaultSettings())), theme, theme)
+	return err
+}
+
+// UpdateMatch updates only a saved task; a concurrent deletion must stay deleted.
+func (s *Store) UpdateMatch(task model.ScanTask) error {
+	result, err := s.DB.Exec(`UPDATE scans SET payload=? WHERE id=? AND status NOT IN ('starting','running','stopping')`, data(task), task.ID)
+	if err != nil {
+		return err
+	}
+	rows, err := result.RowsAffected()
+	if err == nil && rows == 0 {
+		return sql.ErrNoRows
+	}
 	return err
 }
 func (s *Store) RuleSources() ([]model.RuleSource, error) {

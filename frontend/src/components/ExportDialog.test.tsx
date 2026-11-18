@@ -8,7 +8,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import ExportDialog from "./ExportDialog";
-import { defaultSettings } from "../utils/format";
+import { defaultSettings } from "../test-settings";
 import type {
   DomainRecord,
   ExportJob,
@@ -81,7 +81,7 @@ beforeEach(() => {
   mockAPI.mockImplementation(
     async (path: string, _method: string, body?: { excluded?: string[] }) => {
       if (path === "/rules/categories") return [];
-      if (path === "/rules/sources") return emptySources;
+      if (path.startsWith("/rules/sources")) return emptySources;
       if (body?.excluded?.length) throw new Error("没有可导出的已选择域名规则");
       return output;
     },
@@ -121,7 +121,7 @@ describe("导出预览", () => {
     let version = "one";
     mockAPI.mockImplementation(async (path: string) => {
       if (path === "/rules/categories") return [{ ...category, version }];
-      if (path === "/rules/sources") return [];
+      if (path.startsWith("/rules/sources")) return [];
       return output;
     });
     show();
@@ -162,7 +162,7 @@ describe("导出预览", () => {
     let finish: ((c: RuleCategory) => void) | undefined;
     mockAPI.mockImplementation(async (path: string) => {
       if (path === "/rules/categories") return [{ ...category, loaded }];
-      if (path === "/rules/sources") return [];
+      if (path.startsWith("/rules/sources")) return [];
       if (path === "/rules/load")
         return new Promise<RuleCategory>((resolve) => {
           finish = resolve;
@@ -227,7 +227,7 @@ describe("导出预览", () => {
     mockAPI.mockImplementation(async (path: string) =>
       path === "/rules/categories"
         ? []
-        : path === "/rules/sources"
+        : path.startsWith("/rules/sources")
           ? []
           : { ...output, entries },
     );
@@ -285,7 +285,7 @@ describe("导出预览", () => {
       async (path: string, _method: string, body?: { id?: string }) => {
         if (path === "/rules/categories")
           return [{ ...category, loaded: false }, second];
-        if (path === "/rules/sources") return [];
+        if (path.startsWith("/rules/sources")) return [];
         if (path === "/rules/load")
           return new Promise<RuleCategory>((resolve) =>
             pending.set(body!.id!, resolve),
@@ -369,7 +369,7 @@ describe("导出预览", () => {
     mockAPI.mockImplementation(
       async (path: string, _method: string, body?: ExportJob) => {
         if (path === "/rules/categories") return [category()];
-        if (path === "/rules/sources") return [];
+        if (path.startsWith("/rules/sources")) return [];
         if (body?.category_versions?.["v2fly:app"] !== version + ":hash")
           throw Object.assign(new Error("规则已更新"), { status: 409 });
         return { ...output, content: version };
@@ -407,6 +407,7 @@ describe("导出预览", () => {
         expect.objectContaining({
           category_versions: { "v2fly:app": "two:hash" },
         }),
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
       ),
     );
     expect(mockDownload).not.toHaveBeenCalled();
@@ -419,6 +420,17 @@ describe("导出预览", () => {
         output.mime,
       ),
     );
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "校验并准备复制" }),
+      ).toBeEnabled(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "校验并准备复制" }));
+    const copyButton = await screen.findByRole("button", { name: "复制内容" });
+    await waitFor(() => expect(copyButton).toBeEnabled());
+    expect(mockCopy).not.toHaveBeenCalled();
+    fireEvent.click(copyButton);
+    expect(mockCopy).toHaveBeenCalledWith("two");
   });
   it("全部取消后仍可恢复条目，错误时禁止下载旧内容", async () => {
     render(
@@ -492,7 +504,7 @@ describe("导出预览", () => {
     mockAPI.mockImplementation(
       async (path: string, _method: string, body?: { source?: string }) => {
         if (path === "/rules/categories") return downloaded ? [category] : [];
-        if (path === "/rules/sources")
+        if (path.startsWith("/rules/sources"))
           return downloaded
             ? emptySources.map((s) => ({
                 ...s,
@@ -565,7 +577,7 @@ describe("导出预览", () => {
     mockAPI.mockImplementation(async (path: string) =>
       path === "/rules/categories"
         ? []
-        : path === "/rules/sources"
+        : path.startsWith("/rules/sources")
           ? emptySources
           : { ...output, entries },
     );
@@ -620,7 +632,7 @@ describe("导出预览", () => {
     mockAPI.mockImplementation(async (path: string) =>
       path === "/rules/categories"
         ? []
-        : path === "/rules/sources"
+        : path.startsWith("/rules/sources")
           ? emptySources
           : { ...output, content },
     );
@@ -655,7 +667,7 @@ describe("导出预览", () => {
     mockAPI.mockImplementation(
       async (path: string, _method: string, job?: ExportJob) => {
         if (path === "/rules/categories") return [];
-        if (path === "/rules/sources") return emptySources;
+        if (path.startsWith("/rules/sources")) return emptySources;
         if (job?.policy === "old")
           return new Promise<ExportResult>((resolve) => {
             resolveOld = resolve;

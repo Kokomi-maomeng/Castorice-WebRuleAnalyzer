@@ -1,12 +1,19 @@
-# Castorice-WebRuleAnalyzer v1.6
+# Castorice-WebRuleAnalyzer
 
 Web 分流规则分析器。输入网址，用独立 Chrome / Edge / Chromium 采集实际网络请求，查看域名与规则命中，导出 Clash/Mihomo、Rule Provider 或 sing-box 规则。
 
 ## 下载与运行
 
-从 [GitHub Releases](https://github.com/Kokomi-maomeng/Castorice-WebRuleAnalyzer/releases/latest) 下载 Windows 便携 ZIP，**解压后双击 `Castorice-WebRuleAnalyzer.exe`**。无需 Go、Node 或安装器。Windows 10/11 x64 需要 Edge WebView2 Runtime 和 Chrome/Edge；本次在 Windows 11 上完成实测。发行包不带个人数据或外部规则缓存。
+Windows 版使用便携 ZIP。**解压到可写目录后双击 `Castorice-WebRuleAnalyzer.exe`**，需要 Edge WebView2 Runtime 和 Chrome、Edge 或 Chromium。公开版本请从版本页下载。本地候选版以其随附校验值和测试记录为准。 [GitHub Releases](https://github.com/Kokomi-maomeng/Castorice-WebRuleAnalyzer/releases/latest)
 
-软件数据存于 EXE 旁的 `data/`，导出文件存于 `exports/`。解压到可写目录，移动整个目录即可携带数据。关闭主窗口会取消扫描并关闭本次创建的子进程。请先退出旧版再替换 EXE，保留自己的 `data/` 与 `exports/`；先备份数据目录。不能在 ZIP 内直接运行。
+软件数据存于 EXE 旁的 `data/`，导出文件存于 `exports/`。先关闭旧版再备份并迁移这两个目录。跨电脑迁移前请确认新电脑也具备系统组件和目录权限。 [用户运行说明](docs/用户运行说明.md) · [导出接入说明](docs/EXPORT-INTEGRATION.md)
+
+## v1.7 的改动
+
+- 服务使用独立数据锁，反向代理和容器访问需要单用户认证。Linux 以普通用户运行 Chromium 沙箱。
+- 弱网会补取终态结果。点域名后按主机精确筛选，脱敏历史重扫要重新输入原地址。
+- 辅助交互记录同文档路由和导航结果。超短窗口可滚动到域名与导出，日志警告文字提高对比度。
+- 支持历史规则版本提示、原文入口和缓存更新回滚。合并复制先校验版本，受浏览器限制时可手动选取全文。
 
 ## v1.6 的改动
 
@@ -32,7 +39,7 @@ Web 分流规则分析器。输入网址，用独立 Chrome / Edge / Chromium �
 - 历史支持搜索、分页、单条/多选删除及清空全部已结束记录，活动任务保留。
 - 补齐面板、列表、状态过渡和弹窗退出动画，并继续遵循系统减少动态效果偏好。
 
-网络异常时，从“高级配置”打开“网络诊断”，比较系统解析与独立 HTTPS DNS。独立模式会替代系统解析答案，需明确选择；本机代理支持无认证的 HTTP/SOCKS5 回环 IP 地址，不能因此扫描私网目标。
+网络异常时，从“高级配置”打开“网络诊断”。HTTPS DNS 对照由用户选用，界面注明目标名称会交给哪家服务。浏览器采集可使用无认证的本机回环 HTTP/SOCKS5 代理。
 
 ## v1.4 的改动
 
@@ -62,39 +69,29 @@ Web 分流规则分析器。输入网址，用独立 Chrome / Edge / Chromium �
 
 ## Linux
 
-从同一 Release 下载 `Castorice-WebRuleAnalyzer-v1.6-linux-amd64.tar.gz` 并解压。桌面需要 Python 3、PyGObject、GTK 3、WebKitGTK 4.1 和扫描用的 Chromium/Chrome。Debian 可通过系统包管理器安装：
+从版本页选择 Linux amd64 包并解压。桌面需要 Python 3、PyGObject、GTK 3、WebKitGTK 4.1、中文字体和采集用的 Chromium。Debian 13 的组件可通过系统包管理器安装。
 
 ```sh
-sudo apt install python3-gi gir1.2-gtk-3.0 gir1.2-webkit2-4.1 chromium
+sudo apt install python3-gi gir1.2-gtk-3.0 gir1.2-webkit2-4.1 chromium fonts-noto-cjk
 chmod +x castorice start.sh
 ./start.sh
 # 或启动服务而不打开网页
 ./castorice --server --no-open --listen 127.0.0.1:19110 --data-dir ./data
 ```
 
-在图形会话下，以普通用户运行 `./start.sh` 或 `./castorice --desktop` 可打开原生窗口。服务和 Docker 模式只需要扫描用的 Chromium/Chrome。SSH 或无桌面服务提供无头采集。
+在图形会话下，以普通用户运行 `./start.sh` 或 `./castorice --desktop` 可打开原生窗口。服务模式使用 Chromium 无头采集。系统服务应采用专用普通用户并启用 Chromium 沙箱。Linux 既有数据目录在备份后设为该用户所有、权限 `0700`。打开数据库时会检查 SQLite 文件权限，保留既有历史和设置。当前包为 amd64，其他发行版须核对图形组件及沙箱。 [Linux 服务与反向代理说明](deploy/README.md)
 
 ## Docker 网页版
 
 ```sh
 docker compose up -d --build
-# 浏览器访问 http://127.0.0.1:19110
+# 浏览器访问 http://127.0.0.1:19110，用户名为 castorice
+docker compose exec -T analyzer cat /data/access-password
 ```
 
-Compose 默认仅绑定宿主回环地址，使用持久卷保存数据。Chromium 以非 root 用户运行，并保留自身沙箱；Compose 中允许其创建用户命名空间，Debian AppArmor 环境也需要相应容器选项。不要把本地工具直接开放为匿名公网服务。
+Compose 默认发布到宿主机回环地址，持久卷保存数据和首次生成的密码。用 `CASTORICE_PORT` 同时调整宿主端口及所需的精确来源。旧部署通过 `docker compose -p 原项目名` 沿用旧卷。停止旧版并备份后，可用同一项目的新配置运行 `docker compose -p 原项目名 run --rm --no-deps --entrypoint chmod analyzer 700 /data`，再启动新容器。
 
-如修改映射端口/域名，需要通过 `--public-url` 配置**精确来源**，保持 Host/Origin 校验。可用 SSH 转发访问远程主机的回环端口；不要修改系统代理、DNS 或防火墙来迁就测试。没有图形会话的容器不提供可见浏览器辅助模式。
-
-Linux 发布目录也附带 `Dockerfile`，可在该目录 `docker build -t castorice:1.4 .`，使用已编译的同版二进制构建运行镜像。仓库根 Dockerfile 可从源码完整构建。
-
-Ubuntu 23.10+ 等限制无特权用户命名空间的宿主机，还需加载仅供本容器使用的 AppArmor 配置，然后指定它启动：
-
-```sh
-sudo apparmor_parser -r deploy/castorice-browser.apparmor
-CASTORICE_APPARMOR_PROFILE=castorice-browser docker compose up -d --build
-```
-
-这不会关闭宿主机全局保护，也不使用 `--no-sandbox`。镜像显式安装 `chromium-sandbox`。配置依据见 [Chromium 官方说明](https://chromium.googlesource.com/chromium/src/+/main/docs/security/apparmor-userns-restrictions.md)。
+远程访问可用 SSH 转发，或在受控 HTTPS 反代后运行。指定 `--public-url` 会对页面、API 和事件流启用认证；可由权限受限的 `--access-password-file` 提供既有密码。AppArmor 可选配置、Caddy 示例及宿主机条件见部署说明。仓库 Dockerfile 从源码构建，Linux 包中的 Dockerfile 使用成品二进制。 [Linux 容器与反代说明](deploy/README.md)
 
 ## 开发与验证
 
@@ -102,12 +99,10 @@ CASTORICE_APPARMOR_PROFILE=castorice-browser docker compose up -d --build
 
 ```powershell
 ./scripts/test.ps1 -Browser -LiveRules -LiveDNS
+node scripts/verify-local.mjs chrome msedge firefox webkit
 ./scripts/build.ps1 -BrowserTests
-./scripts/build-linux.ps1
-# 启动独立测试服务后验证真实页面、规则原文及响应布局
-$env:CASTORICE_TEST_URL='http://127.0.0.1:19120'
-node scripts/verify-ui.mjs
-python scripts/audit-release.py --zip ./dist/Castorice-WebRuleAnalyzer-v1.4-windows-amd64.zip
+$tag = 'v' + ((Get-Content VERSION -Raw).Trim() -replace '\.0$','')
+python scripts/audit-release.py --zip "./dist/Castorice-WebRuleAnalyzer-$tag-windows-amd64.zip"
 ```
 
 `VERSION` 是版本号唯一来源；前端构建前自动同步 UI、Go 与 Windows 资源，CI 检查漂移。`npm run format` / `format:check` 维护源码格式。Linux 可原生构建：
@@ -117,7 +112,7 @@ cd frontend && npm ci && npm run build
 cd ../backend && CGO_ENABLED=0 go build -trimpath -o castorice ./cmd/castorice
 ```
 
-`verify-ui.mjs` 使用系统 Chrome，先在测试服务下载规则库；普通 Go 测试不自动下载规则或运行浏览器。浏览器/上游实测通过显式开关启用。测试站只使用精确、临时注入的 `.test` 白名单，生产扫描始终阻止私网/回环/元数据目标。
+`verify-local.mjs` 使用已构建的前端、安装好的 Playwright 浏览器和采集浏览器，自动启动隔离测试站、临时服务和数据库，并将 JSON 报告写入 `.runtime/`。上游检查通过显式开关启用。服务限制私网地址、IANA 特殊用途范围和云平台内部地址，管理员可用 `--deny-cidr` 增加组织范围。
 
 [测试报告](docs/TEST-REPORT.md) · [发布流程模板](docs/RELEASE-WORKFLOW.md) · [架构与安全边界](docs/ARCHITECTURE.md)
 

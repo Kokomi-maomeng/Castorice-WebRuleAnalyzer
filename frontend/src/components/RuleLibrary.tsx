@@ -29,7 +29,7 @@ import {
 } from "@mui/icons-material";
 import type { RuleCategory, RuleSource } from "../types";
 import { api, copy, download } from "../services/api";
-import { date, errorMessage } from "../utils/format";
+import { date, errorMessage, ruleCatalogKey } from "../utils/format";
 interface Props {
   open?: boolean;
   onExited?: () => void;
@@ -37,6 +37,8 @@ interface Props {
   notify: (s: string) => void;
   onRematch: () => void;
   initialCategory?: string;
+  expectedVersion?: string;
+  expectedPath?: string;
 }
 const names: Record<string, string> = {
   not_initialized: "未下载",
@@ -68,27 +70,43 @@ export default function RuleLibrary(p: Props) {
     (s) => s.id === selected.split(":")[0],
   )?.version;
   useEffect(() => {
-    let cancelled = false;
+    const controller = new AbortController();
+    let catalog = "";
+    let pending = false;
     async function reload() {
+      if (pending) return;
+      pending = true;
       try {
-        const [s, c] = await Promise.all([
-          api<RuleSource[]>("/rules/sources"),
-          api<RuleCategory[]>(
-            "/rules/categories?q=" + encodeURIComponent(query.trim()),
-          ),
-        ]);
-        if (!cancelled) {
-          setSources(s);
-          setCategories(c);
-        }
+        const request = { signal: controller.signal };
+        const s = await api<RuleSource[]>(
+          "/rules/sources",
+          "GET",
+          undefined,
+          request,
+        );
+        if (controller.signal.aborted) return;
+        setSources(s);
+        const key = ruleCatalogKey(s);
+        if (key === catalog) return;
+        const c = await api<RuleCategory[]>(
+          "/rules/categories?q=" + encodeURIComponent(query.trim()),
+          "GET",
+          undefined,
+          request,
+        );
+        if (controller.signal.aborted) return;
+        catalog = key;
+        setCategories(c);
       } catch (e) {
-        if (!cancelled) setError(errorMessage(e));
+        if (!controller.signal.aborted) setError(errorMessage(e));
+      } finally {
+        pending = false;
       }
     }
     const timer = setTimeout(() => void reload(), 180);
     const interval = setInterval(() => void reload(), 3000);
     return () => {
-      cancelled = true;
+      controller.abort();
       clearTimeout(timer);
       clearInterval(interval);
     };
@@ -113,7 +131,12 @@ export default function RuleLibrary(p: Props) {
         } catch (e) {
           if (!(e instanceof Error) || !("status" in e) || e.status !== 409)
             throw e;
-          await api("/rules/load", "POST", { id: selected });
+          await api(
+            "/rules/load",
+            "POST",
+            { id: selected },
+            { timeoutMs: 95_000 },
+          );
           c = await api<RuleCategory>(
             "/rules/content?id=" + encodeURIComponent(selected),
           );
@@ -158,6 +181,7 @@ export default function RuleLibrary(p: Props) {
         "/rules/" + (operation === "auto" ? "auto-update" : operation),
         operation === "auto" ? "PUT" : "POST",
         { source: id, ...(operation === "auto" ? { enabled } : {}) },
+        { timeoutMs: operation === "sync" ? 610_000 : 35_000 },
       );
       setSources(await api<RuleSource[]>("/rules/sources"));
       setCategories(
@@ -187,6 +211,19 @@ export default function RuleLibrary(p: Props) {
     source && content
       ? source.repository + "/blob/" + content.version + "/" + content.path
       : "";
+  const expectedVersion =
+    selected === p.initialCategory ? p.expectedVersion : undefined;
+  const historySource = sources.find((s) => s.id === selected.split(":")[0]);
+  const expectedURL =
+    expectedVersion && /^[a-f0-9]{40}$/i.test(expectedVersion) && historySource
+      ? historySource.repository +
+        (p.expectedPath
+          ? "/blob/" +
+            expectedVersion +
+            "/" +
+            p.expectedPath.split("/").map(encodeURIComponent).join("/")
+          : "/tree/" + expectedVersion)
+      : undefined;
   return (
     <Dialog
       aria-labelledby="rule-library-title"
@@ -348,6 +385,24 @@ export default function RuleLibrary(p: Props) {
             )}
           </Box>
           <Box className="rule-reader">
+            {expectedVersion &&
+              !loading &&
+              content?.version !== expectedVersion && (
+                <Alert severity="warning">
+                  历史匹配版本 {expectedVersion.slice(0, 8)}。
+                  {content
+                    ? `下方为当前缓存 ${content.version.slice(0, 8)}。`
+                    : "该版本的分类原文在本地不可用。"}
+                  {expectedURL && (
+                    <>
+                      {" "}
+                      <Link href={expectedURL} target="_blank" rel="noreferrer">
+                        查看历史上游版本
+                      </Link>
+                    </>
+                  )}
+                </Alert>
+              )}
             {incoming && (
               <Alert
                 severity="info"
@@ -537,6 +592,8 @@ export default function RuleLibrary(p: Props) {
         <DialogContent dividers>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
             开启后立即下载，运行期间每天检查更新。更新失败时保留旧缓存。
+            下载通过服务进程的系统网络和代理环境连接 GitHub，独立于扫描的 DNS
+            和本机代理。
           </Typography>
           {sources.map((s) => (
             <Box

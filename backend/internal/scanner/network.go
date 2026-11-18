@@ -41,7 +41,7 @@ func (m *Manager) DeleteHistory(ids []string, all bool) (storage.HistoryDeletion
 	return m.store.DeleteHistory(ids, all, activeID)
 }
 
-func (m *Manager) Diagnose(ctx context.Context, raw string, o model.ScanOptions) (model.NetworkDiagnosis, error) {
+func (m *Manager) Diagnose(ctx context.Context, raw string, o model.ScanOptions, compareSecure bool) (model.NetworkDiagnosis, error) {
 	result := model.NetworkDiagnosis{DNSMode: o.DNSMode, DNSProvider: o.DNSProvider, Route: "系统网络（可由 TUN 接管）"}
 	if err := ValidateOptions(o); err != nil {
 		return result, err
@@ -79,22 +79,27 @@ func (m *Manager) Diagnose(ctx context.Context, raw string, o model.ScanOptions)
 		}
 		return out
 	}
-	// Never send internal hostnames or private literal targets to external DNS.
-	if ip, e := netip.ParseAddr(host); security.InternalHost(host) || e == nil && !security.PublicIP(ip) {
-		result.System = check(security.Policy{})
-		result.Secure = result.System
-		result.Connection = result.System.Diagnostic
-		return result, nil
-	}
-	system := security.Policy{Resolver: net.DefaultResolver}
+	system := m.engine.Policy
+	system.UpstreamProxy = o.UpstreamProxy
 	result.System = check(system)
-	secureOptions := o
-	secureOptions.DNSMode = "secure"
-	secure, closeSecure := m.engine.policyFor(secureOptions)
-	defer closeSecure()
-	result.Secure = check(secure)
-	selected, closeSelected := m.engine.policyFor(o)
-	defer closeSelected()
+	selected, selectedDNS := system, "系统 DNS"
+	_, literal := netip.ParseAddr(host)
+	if (o.DNSMode == "secure" || compareSecure) && literal != nil && !security.InternalHost(host) && safeToCompare(result.System) {
+		secureOptions := o
+		secureOptions.DNSMode = "secure"
+		secure, closeSecure := m.engine.policyFor(secureOptions)
+		defer closeSecure()
+		secureCheck := check(secure)
+		result.Secure = &secureCheck
+		if o.DNSMode == "secure" {
+			selected, selectedDNS = secure, "独立安全 DNS"
+		}
+	} else if o.DNSMode == "secure" || compareSecure {
+		result.SecureNote = "目标是 IP 地址或系统解析指向内部／受限网络，未向外部服务查询名称。"
+	} else if o.DNSMode != "system" {
+		result.SecureNote = "本次诊断仅使用系统 DNS。扫描在自动模式下可对已知 Fake-IP 执行安全 DNS 回退。"
+	}
+	result.Route += " · " + selectedDNS
 	connectCtx, connectCancel := context.WithTimeout(ctx, 8*time.Second)
 	defer connectCancel()
 	conn, e := selected.DialContext(connectCtx, "tcp", net.JoinHostPort(host, port))
@@ -105,4 +110,22 @@ func (m *Manager) Diagnose(ctx context.Context, raw string, o model.ScanOptions)
 		_ = conn.Close()
 	}
 	return result, nil
+}
+
+func safeToCompare(check model.DNSCheck) bool {
+	if check.Diagnostic == nil || check.Diagnostic.Stage != "safety" {
+		return true
+	}
+	// When explicitly requested, allow comparison of known synthetic Fake-IP
+	// answers, while keeping names with genuine non-public answers local.
+	if check.Diagnostic.Code != "dns_non_public" || len(check.Addresses) == 0 {
+		return false
+	}
+	for _, address := range check.Addresses {
+		ip, err := netip.ParseAddr(address)
+		if err != nil || !security.IsFakeAddress(ip) {
+			return false
+		}
+	}
+	return true
 }

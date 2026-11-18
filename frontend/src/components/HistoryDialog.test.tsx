@@ -7,7 +7,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import HistoryDialog from "./HistoryDialog";
-import { defaultSettings } from "../utils/format";
+import { defaultSettings } from "../test-settings";
 import type { ScanTask } from "../types";
 const { mockAPI } = vi.hoisted(() => ({ mockAPI: vi.fn() }));
 vi.mock("../services/api", () => ({ api: mockAPI }));

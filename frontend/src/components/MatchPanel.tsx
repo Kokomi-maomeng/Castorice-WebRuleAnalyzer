@@ -13,7 +13,7 @@ import { active } from "../utils/format";
 interface Props {
   task?: ScanTask;
   onRematch: () => void;
-  onLibrary: (id?: string) => void;
+  onLibrary: (id?: string, version?: string, path?: string) => void;
   busy: boolean;
 }
 export default function MatchPanel(p: Props) {
@@ -47,7 +47,7 @@ export default function MatchPanel(p: Props) {
           <Button
             size="small"
             sx={{ ml: "auto" }}
-            onClick={() => p.onLibrary(m.category_id)}
+            onClick={() => p.onLibrary(m.category_id, m.version, m.path)}
           >
             查看原文
           </Button>
@@ -123,7 +123,11 @@ export default function MatchPanel(p: Props) {
             results(target)
           ) : (
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              当前本地缓存没有命中目标主机的域名规则。可在规则库更新后重新匹配。
+              {t.rule_cache_available === false
+                ? "本次匹配时规则库尚未下载。可直接导出抓取结果，或在规则库下载后重新匹配。"
+                : t.rule_cache_available === true
+                  ? "本次匹配使用的规则缓存中没有命中目标主机。"
+                  : "旧版任务未记录匹配时的规则库状态。可从规则库检查后重新匹配。"}
             </Typography>
           )}
           {dependencies.length > 0 && (

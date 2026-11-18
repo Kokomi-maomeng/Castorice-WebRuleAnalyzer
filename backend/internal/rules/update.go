@@ -18,7 +18,7 @@ func (m *Manager) SetAutoUpdate(id string, enabled bool) error {
 	}
 	source.AutoUpdate = enabled
 	if enabled {
-		source.CheckedAt = nil
+		source.SyncAttemptAt = nil
 	}
 	if err := m.store.SaveSource(source, nil, false); err != nil {
 		return err
@@ -45,7 +45,7 @@ func (m *Manager) Run(ctx context.Context) {
 			if !source.AutoUpdate {
 				continue
 			}
-			if source.CheckedAt != nil && (source.Error != "" && time.Since(*source.CheckedAt) < time.Hour || source.Version != "" && source.LoadedCount == source.CategoryCount && source.Error == "" && time.Since(*source.CheckedAt) < 24*time.Hour) {
+			if !syncDue(source, time.Now()) {
 				continue
 			}
 			attempt, cancel := context.WithTimeout(ctx, 10*time.Minute)
@@ -59,6 +59,18 @@ func (m *Manager) Run(ctx context.Context) {
 		case <-m.wake:
 		}
 	}
+}
+
+func syncDue(source model.RuleSource, now time.Time) bool {
+	if source.SyncAttemptAt == nil {
+		return true
+	}
+	if source.Status == "cached" || source.Status == "error" {
+		return now.Sub(*source.SyncAttemptAt) >= time.Hour
+	}
+	return source.Version == "" || source.LoadedCount < source.CategoryCount ||
+		source.RemoteVersion != "" && source.RemoteVersion != source.Version ||
+		now.Sub(*source.SyncAttemptAt) >= 24*time.Hour
 }
 
 func (m *Manager) Check(ctx context.Context, id string) (model.RuleSource, error) {
@@ -92,5 +104,11 @@ func (m *Manager) Check(ctx context.Context, id string) (model.RuleSource, error
 		return source, e
 	}
 	m.sources[id] = source
+	if err == nil && source.AutoUpdate && version != source.Version {
+		select {
+		case m.wake <- struct{}{}:
+		default:
+		}
+	}
 	return source, err
 }

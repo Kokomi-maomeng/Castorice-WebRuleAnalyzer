@@ -1,23 +1,17 @@
-import type { ScanTask, Settings } from "../types";
-export const defaultSettings: Settings = {
-  scan: {
-    dns_mode: "auto",
-    mode: "quick",
-    max_seconds: 180,
-    max_depth: 2,
-    max_pages: 20,
-    navigation_seconds: 30,
-    quiet_millis: 1500,
-    interval_millis: 500,
-    observe_seconds: 10,
-    visible: false,
-    browser_path: "",
-  },
-  theme: "light",
-  log_level: "INFO",
-  export_format: "clash",
-  policy: "dibao",
-};
+import type { DomainRecord, RuleSource, ScanTask } from "../types";
+export const isRedacted = (url: string) =>
+  /(?:%5b|\[)REDACTED(?:%5d|\])/i.test(url);
+export const isExportable = (domain: DomainRecord) =>
+  domain.kind === "domain" && domain.hostname.includes(".");
+export const ruleCatalogKey = (sources: RuleSource[]) =>
+  JSON.stringify(
+    sources.map(({ id, version, category_count, loaded_count }) => [
+      id,
+      version,
+      category_count,
+      loaded_count,
+    ]),
+  );
 export const modeNames: Record<string, string> = {
   quick: "快速扫描",
   explore: "自动探索",
@@ -57,6 +51,7 @@ export const pageNames: Record<string, string> = {
   skipped: "已跳过",
   blocked: "已阻止",
   failed: "访问失败",
+  interrupted: "已中断",
 };
 export const active = (t?: ScanTask | null) =>
   !!t && ["starting", "running", "stopping"].includes(t.status);

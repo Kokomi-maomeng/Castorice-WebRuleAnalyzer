@@ -31,7 +31,7 @@ type Settings struct {
 }
 
 func DefaultSettings() Settings {
-	return Settings{Scan: DefaultOptions(), Theme: "light", LogLevel: "INFO", ExportFormat: "clash", Policy: "dibao"}
+	return Settings{Scan: DefaultOptions(), Theme: "light", LogLevel: "INFO", ExportFormat: "clash", Policy: "PROXY"}
 }
 
 type PageRecord struct {
@@ -50,6 +50,7 @@ type ScanTask struct {
 	TestMode             bool            `json:"test_mode"`
 	ID                   string          `json:"id"`
 	TargetURL            string          `json:"target_url"`
+	TargetRedacted       bool            `json:"target_redacted,omitempty"`
 	Status               string          `json:"status"`
 	Options              ScanOptions     `json:"options"`
 	StartedAt            time.Time       `json:"started_at"`
@@ -67,6 +68,7 @@ type ScanTask struct {
 	MatchNote            string          `json:"match_note,omitempty"`
 	MatchedCategoryCount int             `json:"matched_category_count"`
 	MatchesTruncated     bool            `json:"matches_truncated"`
+	RuleCacheAvailable   *bool           `json:"rule_cache_available,omitempty"`
 }
 
 func (s ScanTask) Active() bool {
@@ -159,6 +161,7 @@ type RuleCategory struct {
 type RuleSource struct {
 	AutoUpdate    bool       `json:"auto_update"`
 	CheckedAt     *time.Time `json:"checked_at,omitempty"`
+	SyncAttemptAt *time.Time `json:"sync_attempt_at,omitempty"`
 	RemoteVersion string     `json:"remote_version,omitempty"`
 	LicenseText   string     `json:"license_text,omitempty"`
 	LicenseURL    string     `json:"license_url,omitempty"`
@@ -181,6 +184,7 @@ type RuleMatch struct {
 	Category       string         `json:"category"`
 	Source         string         `json:"source"`
 	Version        string         `json:"version"`
+	Path           string         `json:"path,omitempty"`
 	Score          float64        `json:"score"`
 	Confidence     string         `json:"confidence"`
 	Reasons        []string       `json:"reasons"`
@@ -210,6 +214,8 @@ type ExportJob struct {
 	Domains          []string          `json:"domains"`
 	Excluded         []string          `json:"excluded"`
 }
+
+const MaxExportBytes = 16 << 20
 
 type PreviewEntry struct {
 	RuleEntry

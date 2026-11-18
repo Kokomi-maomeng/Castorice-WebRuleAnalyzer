@@ -20,6 +20,7 @@ type Resolver interface {
 type Policy struct {
 	Resolver      Resolver
 	UpstreamProxy string
+	Blocked       []netip.Prefix
 	// TestAllow is intentionally unavailable in settings/API. Only an explicit CLI test flag
 	// or a test harness can whitelist a literal loopback host:port.
 	TestAllow map[string]bool
@@ -29,7 +30,18 @@ type Policy struct {
 }
 
 var forbiddenPrefixes = func() []netip.Prefix {
-	raw := []string{"0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16", "168.63.129.16/32", "172.16.0.0/12", "192.0.0.0/24", "192.0.2.0/24", "192.88.99.0/24", "192.168.0.0/16", "198.18.0.0/15", "198.51.100.0/24", "203.0.113.0/24", "224.0.0.0/4", "240.0.0.0/4", "::/96", "64:ff9b::/96", "64:ff9b:1::/48", "100::/64", "2001::/32", "2001:db8::/32", "2002::/16", "fc00::/7", "fe80::/10", "ff00::/8"}
+	// IANA IPv4/IPv6 Special-Purpose Address Registries, including protocol
+	// anycast and transition ranges. Only 2000::/3 is considered for IPv6 below.
+	// https://www.iana.org/assignments/iana-ipv4-special-registry/
+	// https://www.iana.org/assignments/iana-ipv6-special-registry/
+	raw := []string{
+		"0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16",
+		"172.16.0.0/12", "192.0.0.0/24", "192.0.2.0/24", "192.31.196.0/24", "192.52.193.0/24",
+		"192.88.99.0/24", "192.168.0.0/16", "192.175.48.0/24", "198.18.0.0/15",
+		"198.51.100.0/24", "203.0.113.0/24", "224.0.0.0/4", "240.0.0.0/4",
+		"2001::/23", "2001:db8::/32", "2002::/16", "2620:4f:8000::/48", "3fff::/20",
+		"168.63.129.16/32", // Azure host platform virtual IP
+	}
 	result := make([]netip.Prefix, 0, len(raw))
 	for _, s := range raw {
 		result = append(result, netip.MustParsePrefix(s))
@@ -37,13 +49,27 @@ var forbiddenPrefixes = func() []netip.Prefix {
 	return result
 }()
 
+var globalIPv6 = netip.MustParsePrefix("2000::/3")
+
 func PublicIP(a netip.Addr) bool {
 	a = a.Unmap()
-	if !a.IsValid() || !a.IsGlobalUnicast() || a.IsPrivate() || a.IsLoopback() || a.IsLinkLocalUnicast() {
+	if !a.IsValid() || a.Zone() != "" || !a.IsGlobalUnicast() || a.IsPrivate() || a.IsLoopback() || a.IsLinkLocalUnicast() || a.Is6() && !globalIPv6.Contains(a) {
 		return false
 	}
 	for _, p := range forbiddenPrefixes {
 		if p.Contains(a) {
+			return false
+		}
+	}
+	return true
+}
+
+func (p Policy) AllowsAddress(ip netip.Addr) bool {
+	if !PublicIP(ip) {
+		return false
+	}
+	for _, prefix := range p.Blocked {
+		if prefix.Contains(ip.Unmap()) {
 			return false
 		}
 	}
@@ -88,7 +114,7 @@ func (p Policy) Resolve(ctx context.Context, host, port string) ([]netip.Addr, e
 	// Reject mixed public/private answers too. The connection below is pinned to a
 	// validated literal IP; no second name resolution can change its destination.
 	for _, ip := range addresses {
-		if !PublicIP(ip) {
+		if !p.AllowsAddress(ip) {
 			literal := false
 			if _, e := netip.ParseAddr(host); e == nil {
 				literal = true
@@ -156,7 +182,10 @@ func (p Policy) DialContext(ctx context.Context, network, address string) (net.C
 }
 
 func InternalHost(host string) bool {
-	return !strings.Contains(host, ".") && !strings.Contains(host, ":") || strings.HasSuffix(host, ".localhost") || host == "localhost" || strings.HasSuffix(host, ".local") || strings.HasSuffix(host, ".internal") || strings.HasSuffix(host, ".home.arpa")
+	return !strings.Contains(host, ".") && !strings.Contains(host, ":") ||
+		strings.HasSuffix(host, ".localhost") || strings.HasSuffix(host, ".local") ||
+		strings.HasSuffix(host, ".internal") || strings.HasSuffix(host, ".home.arpa") ||
+		strings.HasSuffix(host, ".lan")
 }
 
 var longSecret = regexp.MustCompile(`^[A-Za-z0-9_\-=+.]{48,}$`)
