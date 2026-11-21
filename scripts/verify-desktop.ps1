@@ -26,6 +26,54 @@ function Wait-Runtime {
  }while([DateTime]::UtcNow -lt $deadline)
  throw 'Native startup timed out'
 }
+function Confirm-VisibleWorkspace([uint32]$WorkerId) {
+ if (-not ('NativeWorkspaceProbe' -as [type])) {
+  Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+
+public static class NativeWorkspaceProbe {
+    [StructLayout(LayoutKind.Sequential)]
+    struct Rect { public int Left, Top, Right, Bottom; }
+    delegate bool Enumerate(IntPtr hwnd, IntPtr state);
+    [DllImport("user32.dll")] static extern bool EnumWindows(Enumerate callback, IntPtr state);
+    [DllImport("user32.dll")] static extern bool EnumChildWindows(IntPtr hwnd, Enumerate callback, IntPtr state);
+    [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
+    [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr hwnd);
+    [DllImport("user32.dll")] static extern bool GetClientRect(IntPtr hwnd, out Rect rect);
+
+    public static bool HasVisibleContent(uint worker) {
+        bool visible = false;
+        EnumWindows((hwnd, state) => {
+            uint owner;
+            GetWindowThreadProcessId(hwnd, out owner);
+            if (owner != worker || !IsWindowVisible(hwnd)) return true;
+            EnumChildWindows(hwnd, (child, unused) => {
+                Rect rect;
+                visible = IsWindowVisible(child) && GetClientRect(child, out rect) &&
+                          rect.Right - rect.Left >= 100 && rect.Bottom - rect.Top >= 100;
+                return !visible;
+            }, IntPtr.Zero);
+            return !visible;
+        }, IntPtr.Zero);
+        return visible;
+    }
+}
+'@
+ }
+ $elapsed=[Diagnostics.Stopwatch]::StartNew()
+ $visibleSince=$null
+ while ($elapsed.Elapsed.TotalSeconds -lt 12) {
+  if ([NativeWorkspaceProbe]::HasVisibleContent($WorkerId)) {
+   if ($null -eq $visibleSince) { $visibleSince=$elapsed.Elapsed.TotalSeconds }
+   if ($elapsed.Elapsed.TotalSeconds - $visibleSince -ge 3) { return }
+  } else {
+   $visibleSince=$null
+  }
+  Start-Sleep -Milliseconds 150
+ }
+ throw 'The native window did not keep its WebView visible after startup'
+}
 function Owned-Processes {
  $all=@(Get-CimInstance Win32_Process)
  $owned=@{};if($supervisor){$owned[[int]$supervisor.Id]=$true}
@@ -45,6 +93,8 @@ try {
  $health=(Invoke-RestMethod ($runtime.url+'/api/health')).data
  if($health.version -ne $expectedVersion){throw 'Unexpected version'}
  if($Scenario -eq 'normal'){
+  Confirm-VisibleWorkspace $runtime.pid
+  Write-Host 'Native workspace stayed visible after startup'
   & (Join-Path $PSScriptRoot 'smoke.ps1') -BaseURL $runtime.url -OutputDirectory (Join-Path $caseDir 'exports/api-acceptance')
   if(-not $?){throw 'Packaged API acceptance failed'}
   foreach($file in Get-ChildItem -LiteralPath (Join-Path $caseDir 'exports/api-acceptance') -File|Where-Object Extension -in @('.yaml','.json')){

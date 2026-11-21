@@ -15,26 +15,22 @@ import (
 )
 
 const (
-	wmClose             = 0x0010
-	wmSize              = 0x0005
-	wmWindowPosChanging = 0x0046
-	wmNCDestroy         = 0x0082
-	wmNCCalcSize        = 0x0083
-	wmNCHitTest         = 0x0084
-	wmNCLButtonDown     = 0x00A1
-	wmFinishClose       = 0x8001
+	wmClose         = 0x0010
+	wmSize          = 0x0005
+	wmNCDestroy     = 0x0082
+	wmNCCalcSize    = 0x0083
+	wmNCHitTest     = 0x0084
+	wmNCLButtonDown = 0x00A1
+	wmFinishClose   = 0x8001
 
-	swpNoActivate = 0x0010
-	swpShowWindow = 0x0040
-	htClient      = 1
-	htCaption     = 2
-	htTop         = 12
-	htTopLeft     = 13
-	htTopRight    = 14
-	swShow        = 5
-	swMinimize    = 6
-	swMaximize    = 3
-	swRestore     = 9
+	htClient   = 1
+	htCaption  = 2
+	htTop      = 12
+	htTopLeft  = 13
+	htTopRight = 14
+	swMinimize = 6
+	swMaximize = 3
+	swRestore  = 9
 
 	gwlExStyle  = ^uintptr(19) // -20
 	wsExLayered = 0x00080000
@@ -44,6 +40,7 @@ const (
 
 var (
 	showWindow          = user32.NewProc("ShowWindow")
+	isWindowVisible     = user32.NewProc("IsWindowVisible")
 	isZoomed            = user32.NewProc("IsZoomed")
 	isIconic            = user32.NewProc("IsIconic")
 	getCursorPos        = user32.NewProc("GetCursorPos")
@@ -70,11 +67,6 @@ var (
 
 type windowPoint struct{ X, Y int32 }
 type windowRect struct{ Left, Top, Right, Bottom int32 }
-type windowPosition struct {
-	HWND, InsertAfter   uintptr
-	X, Y, Width, Height int32
-	Flags               uint32
-}
 type monitorInfo struct {
 	Size          uint32
 	Monitor, Work windowRect
@@ -94,15 +86,16 @@ func windowMessageData[T any](value uintptr) *T {
 }
 
 type windowsFrame struct {
-	hwnd, subclass            uintptr
-	view                      webview2.WebView
-	shown, closing, maximized bool
-	revealTimer, closeTimer   *time.Timer
-	closeStarted              time.Time
+	hwnd, subclass     uintptr
+	view               webview2.WebView
+	closing, maximized bool
+	closeTimer         *time.Timer
+	closeStarted       time.Time
 }
 
 // The pinned WebView2 wrapper creates and shows its HWND in one call. Attach
 // the frame to that exact window on the worker's own thread before ShowWindow.
+// Let ShowWindow run normally so WebView2 initializes against a visible parent.
 func newWindowsFrame(options webview2.WebViewOptions) (*windowsFrame, error) {
 	frame := &windowsFrame{}
 	frame.subclass = windows.NewCallback(frame.windowProc)
@@ -148,19 +141,7 @@ func (f *windowsFrame) installBridge(origin string, paths portable.Paths) error 
 		return err
 	}
 	f.view.Init(windowBridge(origin, paths, "void window.__castoriceWindowCommand("+strconv.Quote(key)+", action);"))
-	f.revealTimer = time.AfterFunc(5*time.Second, func() {
-		f.view.Dispatch(f.reveal)
-	})
 	return nil
-}
-
-func (f *windowsFrame) reveal() {
-	if f.shown || f.hwnd == 0 {
-		return
-	}
-	f.shown = true
-	f.revealTimer.Stop()
-	showWindow.Call(f.hwnd, swShow)
 }
 
 func (f *windowsFrame) command(action string) {
@@ -168,8 +149,6 @@ func (f *windowsFrame) command(action string) {
 		return
 	}
 	switch action {
-	case "ready":
-		f.reveal()
 	case "minimize":
 		showWindow.Call(f.hwnd, swMinimize)
 	case "toggle-maximize":
@@ -196,13 +175,6 @@ func (f *windowsFrame) windowProc(hwnd, message, wp, lp, id, data uintptr) uintp
 		return result
 	}
 	switch message {
-	case wmWindowPosChanging:
-		if !f.shown && lp != 0 {
-			position := windowMessageData[windowPosition](lp)
-			if position.Flags&swpShowWindow != 0 {
-				position.Flags = position.Flags&^swpShowWindow | swpNoActivate
-			}
-		}
 	case wmNCCalcSize:
 		// Hide the caption while retaining WS_CAPTION for DWM and the system
 		// menu. Restored windows retain native side and bottom resize borders.
@@ -250,7 +222,8 @@ func (f *windowsFrame) windowProc(hwnd, message, wp, lp, id, data uintptr) uintp
 			return 0
 		}
 		minimized, _, _ := isIconic.Call(hwnd)
-		if f.shown && minimized == 0 && f.view != nil && windowAnimationsEnabled() {
+		visible, _, _ := isWindowVisible.Call(hwnd)
+		if visible != 0 && minimized == 0 && f.view != nil && windowAnimationsEnabled() {
 			f.closing = true
 			// Fade the native frame and its WebView together, even when the
 			// renderer is occluded and JavaScript animations are suspended.
@@ -283,9 +256,6 @@ func (f *windowsFrame) windowProc(hwnd, message, wp, lp, id, data uintptr) uintp
 			return result
 		}
 	case wmNCDestroy:
-		if f.revealTimer != nil {
-			f.revealTimer.Stop()
-		}
 		if f.closeTimer != nil {
 			f.closeTimer.Stop()
 		}
