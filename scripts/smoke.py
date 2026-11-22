@@ -49,11 +49,14 @@ if args.check_compose_sandbox:
 task = request("/api/scans", {"url": "https://example.com", "options": options})
 if args.check_compose_sandbox:
     probe = r'''
-awk '/^NoNewPrivs:/{ if ($2 != 1) exit 3 } /^Seccomp:/{ if ($2 != 2) exit 4 }' /proc/self/status || exit $?
+awk '/^NoNewPrivs:/{nnp=$2} /^Seccomp:/{mode=$2}
+     END {if (nnp != 1) exit 3; if (mode != 2) exit 4}' /proc/self/status || exit $?
 baseline=$(awk '/^Seccomp_filters:/{print $2}' /proc/self/status)
+if [ "${baseline:-0}" -lt 1 ]; then exit 4; fi
 printf 'Container seccomp filters: %s\n' "$baseline"
 for file in /proc/[0-9]*/cmdline; do
-  if [ -r "$file" ] && tr '\000' '\n' < "$file" 2>/dev/null | grep -qx -- '--type=renderer'; then
+  # Chromium can put the entire process title in one NUL-terminated entry.
+  if [ -r "$file" ] && tr '\000' '\n' < "$file" 2>/dev/null | grep -Eq -- '(^|[[:space:]])--type=renderer([[:space:]]|$)'; then
     awk -v base="$baseline" '
       /^NSpid:/{depth=NF-1}
       /^Seccomp:/{mode=$2}
