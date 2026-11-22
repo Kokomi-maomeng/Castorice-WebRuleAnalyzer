@@ -159,10 +159,11 @@ async function verify(name, fixturePort) {
     assert.equal(await page.getByRole('spinbutton', { name: '每页观察 / 秒' }).inputValue(), '1');
     await page.getByRole('button', { name: '完成' }).click();
     let domainReads = 0;
+    const releaseDomains = Promise.withResolvers();
     await page.route(/\/api\/scans\/[^/]+\/domains$/, async (route) => {
       if (++domainReads === 1) {
         const first = await route.fetch();
-        await delay(5500);
+        await releaseDomains.promise;
         await route.fulfill({ response: first });
       } else {
         await route.continue();
@@ -177,10 +178,17 @@ async function verify(name, fixturePort) {
     assert.equal(scan.target_scheme, 'http');
     assert.equal(scan.target_port, fixturePort);
     assert.equal(await target.inputValue(), 'scan.test');
-    await page.getByText('已自动清除前缀、路径或参数').waitFor();
-    await page.getByText('正在补取最终采集结果…').waitFor();
+    try {
+      await page.getByText('已自动清除前缀、路径或参数').waitFor();
+      await page.getByText('正在补取最终采集结果…').waitFor({ timeout: 25000 });
+      const finished = await request(`/scans/${id}`);
+      assert.equal(finished.status, 'completed', finished.error || finished.end_reason);
+    } finally {
+      releaseDomains.resolve();
+    }
     await page.getByRole('button', { name: 'api.scan.test', exact: true }).waitFor();
-    assert(domainReads >= 2, 'Fetch again after terminal update');
+    await waitFor(() => domainReads >= 2, 'Fetch again after terminal update');
+    await page.getByText('正在补取最终采集结果…').waitFor({ state: 'hidden' });
     const all = await request(`/scans/${id}/requests?limit=200`);
     const exact = await request(`/scans/${id}/requests?host=scan.test&exact_host=true&limit=200`);
     assert(all.total > exact.total && exact.total > 0 && exact.items.every(({ hostname }) => hostname === 'scan.test'));

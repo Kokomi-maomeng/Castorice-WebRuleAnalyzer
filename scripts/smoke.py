@@ -45,24 +45,29 @@ token = request("/api/session")["token"]
 options = request("/api/settings")["scan"]
 options.update(mode="quick", visible=False, max_seconds=40, navigation_seconds=20, observe_seconds=3, quiet_millis=600)
 if args.check_compose_sandbox:
-    options.update(observe_seconds=12, quiet_millis=6000)
+    options.update(observe_seconds=20, quiet_millis=10000)
 task = request("/api/scans", {"url": "https://example.com", "options": options})
 if args.check_compose_sandbox:
     probe = r'''
 awk '/^NoNewPrivs:/{ if ($2 != 1) exit 3 } /^Seccomp:/{ if ($2 != 2) exit 4 }' /proc/self/status || exit $?
 baseline=$(awk '/^Seccomp_filters:/{print $2}' /proc/self/status)
+printf 'Container seccomp filters: %s\n' "$baseline"
 for file in /proc/[0-9]*/cmdline; do
   if [ -r "$file" ] && tr '\000' '\n' < "$file" 2>/dev/null | grep -qx -- '--type=renderer'; then
     awk -v base="$baseline" '
-      /^NSpid:/{nested=(NF >= 3)}
-      /^Seccomp:/{filtered=($2 == 2)}
-      /^Seccomp_filters:/{extra=($2 > base)}
-      END { if (!nested || !filtered || !extra) exit 1 }' "${file%/cmdline}/status" && exit 0
+      /^NSpid:/{depth=NF-1}
+      /^Seccomp:/{mode=$2}
+      /^Seccomp_filters:/{filters=$2}
+      END {
+        printf "Renderer PID namespace depth: %d; seccomp mode: %d; filters: %d\n", depth, mode, filters
+        if (depth < 2 || mode != 2 || filters <= base) exit 1
+      }' "${file%/cmdline}/status" && exit 0
   fi
 done
 exit 1
 '''
-    for _ in range(25):
+    probe_output = set()
+    for _ in range(40):
         state = subprocess.run(
             ["docker", "compose", "exec", "-T", "analyzer", "sh", "-c", probe],
             check=False, capture_output=True, timeout=10,
@@ -71,9 +76,18 @@ exit 1
             break
         if state.returncode in (3, 4):
             raise RuntimeError("Container security settings were not applied")
+        probe_output.update(state.stdout.decode().splitlines())
+        current = request("/api/scans/" + task["id"])
+        if current["status"] not in {"starting", "running", "stopping"}:
+            task = current
+            break
         time.sleep(0.5)
-    else:
-        raise RuntimeError("No Chromium renderer with a nested PID namespace and an additional seccomp filter")
+    if state.returncode != 0:
+        diagnostics = "\n".join(sorted(probe_output))
+        raise RuntimeError(
+            "No Chromium renderer with a nested PID namespace and an additional seccomp filter. "
+            f"Scan: {task['status']} ({task.get('end_reason', '')}). {task.get('error', '')}\n{diagnostics}"
+        )
 deadline = time.monotonic() + 50
 while task["status"] in {"starting", "running", "stopping"}:
     if time.monotonic() > deadline:

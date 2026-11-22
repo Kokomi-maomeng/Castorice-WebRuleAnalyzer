@@ -20,7 +20,7 @@ import (
 )
 
 func TestV2flyConversionFailureKeepsLastSnapshot(t *testing.T) {
-	store, err := storage.Open(filepath.Join(t.TempDir(), "rules.db"))
+	store, err := storage.Open(filepath.Join(t.TempDir(), "data", "rules.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +86,7 @@ type transportFunc func(*http.Request) (*http.Response, error)
 func (f transportFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
 func TestPreferencesDuringAnotherSourceUpdate(t *testing.T) {
-	store, err := storage.Open(filepath.Join(t.TempDir(), "rules.db"))
+	store, err := storage.Open(filepath.Join(t.TempDir(), "data", "rules.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,7 +166,7 @@ func (u *upstream) RoundTrip(r *http.Request) (*http.Response, error) {
 }
 
 func TestAutoUpdateRawAndAtomicOfflineRecovery(t *testing.T) {
-	store, err := storage.Open(filepath.Join(t.TempDir(), "rules.db"))
+	store, err := storage.Open(filepath.Join(t.TempDir(), "data", "rules.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -254,7 +254,7 @@ func TestLargeAppIsNotGeneric(t *testing.T) {
 }
 
 func TestLegacyV2flyCacheGetsExactOriginalWithoutChangingRules(t *testing.T) {
-	store, err := storage.Open(filepath.Join(t.TempDir(), "legacy.db"))
+	store, err := storage.Open(filepath.Join(t.TempDir(), "data", "legacy.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

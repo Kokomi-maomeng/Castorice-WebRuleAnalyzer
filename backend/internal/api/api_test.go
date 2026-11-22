@@ -20,7 +20,7 @@ import (
 
 func testAPI(t *testing.T) (*Server, *httptest.Server) {
 	t.Helper()
-	store, err := storage.Open(filepath.Join(t.TempDir(), "api.db"))
+	store, err := storage.Open(filepath.Join(t.TempDir(), "data", "api.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -12,7 +12,7 @@ import (
 )
 
 func TestUpdateMatchDoesNotRecreateDeletedHistory(t *testing.T) {
-	s, err := Open(filepath.Join(t.TempDir(), "history.db"))
+	s, err := Open(filepath.Join(t.TempDir(), "data", "history.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,7 +38,7 @@ func TestUpdateMatchDoesNotRecreateDeletedHistory(t *testing.T) {
 }
 
 func TestDeleteHistoryBeyondVisiblePageAndCascade(t *testing.T) {
-	s, err := Open(filepath.Join(t.TempDir(), "history.db"))
+	s, err := Open(filepath.Join(t.TempDir(), "data", "history.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

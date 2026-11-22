@@ -56,7 +56,7 @@ func TestDLCBoundsAndCancellation(t *testing.T) {
 	}
 }
 func TestClearPreservesSourcePreferencesAcrossRestart(t *testing.T) {
-	s, err := storage.Open(filepath.Join(t.TempDir(), "rules.db"))
+	s, err := storage.Open(filepath.Join(t.TempDir(), "data", "rules.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

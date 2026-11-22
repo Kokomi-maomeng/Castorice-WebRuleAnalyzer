@@ -9,7 +9,7 @@ import (
 )
 
 func TestBatchHistoryFilteringAndRestart(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "history.db")
+	path := filepath.Join(t.TempDir(), "data", "history.db")
 	store, err := Open(path)
 	if err != nil {
 		t.Fatal(err)

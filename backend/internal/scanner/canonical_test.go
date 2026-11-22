@@ -35,7 +35,7 @@ func TestExploreCanonicalRedirect(t *testing.T) {
 	}))
 	defer site.Close()
 	u, _ := url.Parse(site.URL)
-	st, err := storage.Open(filepath.Join(t.TempDir(), "audit.db"))
+	st, err := storage.Open(filepath.Join(t.TempDir(), "data", "audit.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

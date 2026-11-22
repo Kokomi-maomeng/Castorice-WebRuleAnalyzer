@@ -121,7 +121,7 @@ func fixtureManager(t *testing.T) (*Manager, string, string) {
 	t.Cleanup(site.Close)
 	u, _ := url.Parse(site.URL)
 	root := t.TempDir()
-	store, err := storage.Open(filepath.Join(root, "test.db"))
+	store, err := storage.Open(filepath.Join(root, "data", "test.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

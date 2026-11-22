@@ -4,19 +4,19 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"github.com/castorice/Castorice-WebRuleAnalyzer/backend/internal/model"
-	"github.com/castorice/Castorice-WebRuleAnalyzer/backend/internal/portable"
 	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/castorice/Castorice-WebRuleAnalyzer/backend/internal/model"
+	"github.com/castorice/Castorice-WebRuleAnalyzer/backend/internal/portable"
 	"github.com/castorice/Castorice-WebRuleAnalyzer/backend/internal/storage"
 )
 
 func TestServiceShutdownReleasesListener(t *testing.T) {
-	s, err := Start(Options{Address: "127.0.0.1:0", DataDir: t.TempDir()})
+	s, err := Start(Options{Address: "127.0.0.1:0", DataDir: filepath.Join(t.TempDir(), "data")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +43,7 @@ func TestServiceShutdownReleasesListener(t *testing.T) {
 }
 
 func TestSharedDataDirectoryRefusesSecondServiceBeforeRecovery(t *testing.T) {
-	dir := t.TempDir()
+	dir := filepath.Join(t.TempDir(), "data")
 	first, err := Start(Options{Address: "127.0.0.1:0", DataDir: dir})
 	if err != nil {
 		t.Fatal(err)
@@ -85,7 +85,7 @@ func TestProtectedServiceRequiresAccessForPageAPIAndEvents(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, err := Start(Options{Address: "127.0.0.1:0", DataDir: dir, AccessPasswordFile: file})
+	s, err := Start(Options{Address: "127.0.0.1:0", DataDir: filepath.Join(dir, "data"), AccessPasswordFile: file})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,12 +117,12 @@ func TestProtectedServiceRequiresAccessForPageAPIAndEvents(t *testing.T) {
 
 func TestContainerOriginMustBeExplicitAndExact(t *testing.T) {
 	for _, origin := range []string{"", "https://user:secret@example.com", "https://example.com/path", "https://example.com?x=1"} {
-		if s, err := Start(Options{Address: "0.0.0.0:0", DataDir: t.TempDir(), PublicURL: origin}); err == nil {
+		if s, err := Start(Options{Address: "0.0.0.0:0", DataDir: filepath.Join(t.TempDir(), "data"), PublicURL: origin}); err == nil {
 			s.Close()
 			t.Fatal("unsafe origin accepted", origin)
 		}
 	}
-	s, err := Start(Options{Address: "0.0.0.0:0", DataDir: t.TempDir(), PublicURL: "http://127.0.0.1:19110"})
+	s, err := Start(Options{Address: "0.0.0.0:0", DataDir: filepath.Join(t.TempDir(), "data"), PublicURL: "http://127.0.0.1:19110"})
 	if err != nil {
 		t.Fatal(err)
 	}
