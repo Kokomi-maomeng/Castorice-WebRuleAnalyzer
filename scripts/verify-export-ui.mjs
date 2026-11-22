@@ -45,19 +45,45 @@ try {
  await page.waitForFunction(() => [...document.querySelectorAll('button')].some(b => b.textContent.trim() === '预览与导出规则' && !b.disabled));
  await page.getByRole('button', { name: '预览与导出规则', exact: true }).click();
  await ready();
- await page.getByRole('combobox', { name: '导出范围', exact: true }).click();
- await page.getByRole('option', { name: '抓取 + 开源规则库', exact: true }).click();
+ const dialog = page.getByRole('dialog');
+ const merge = dialog.getByRole('radio', { name: '合并规则库', exact: true });
+ const category = dialog.getByRole('combobox', { name: '规则分类', exact: true });
+ await merge.check();
  if (process.env.CASTORICE_INIT_RULES === '1') {
-  await page.getByRole('button', { name: '下载规则库', exact: true }).waitFor();
+  const downloadLibrary = dialog.getByRole('button', { name: '下载规则库', exact: true });
+  await downloadLibrary.waitFor();
+  assert.equal(await category.getAttribute('aria-invalid'), 'true');
+  assert(await merge.evaluate(input => input.closest('label').hasAttribute('data-missing-library')));
   assert(await page.getByRole('checkbox', { name: /^导出 DOMAIN,/ }).count() > 0, 'empty cache hid captured entries');
   assert(await page.getByRole('button', { name: '下载文件' }).isDisabled(), 'empty merge enabled download');
-  await page.getByRole('button', { name: '下载规则库', exact: true }).click();
-  await page.getByText('正在下载规则库，完成后分类会自动显示。', { exact: true }).waitFor();
-  await page.waitForFunction(() => !document.body.textContent.includes('正在下载规则库，完成后分类会自动显示。'), null, { timeout: 240000 });
-  assert(await page.evaluate(async () => (await (await fetch('/api/rules/sources')).json()).data.every(s => s.category_count > 0)), 'both sources must initialize');
+  const help = dialog.getByRole('button', { name: '查看规则库下载提示' });
+  await help.hover();
+  const tip = page.getByRole('tooltip').filter({ hasText: '两套开源规则库尚未下载，下载后可搜索分类并合并' });
+  await tip.waitFor();
+  await help.click();
+  await page.mouse.move(0, 0);
+  await tip.waitFor();
+  await help.press('Escape');
+  await tip.waitFor({ state: 'hidden' });
+  await page.screenshot({ path: path.join(output, 'missing-library.png') });
+  await downloadLibrary.click();
+  const progress = dialog.locator('.export-library-field').getByRole('progressbar', { name: '正在下载规则库' });
+  await progress.waitFor();
+  const relation = await progress.evaluate(element => {
+    const bar = element.getBoundingClientRect();
+    const field = element.parentElement.querySelector('.MuiOutlinedInput-root').getBoundingClientRect();
+    return { alignment: Math.abs(bar.left - field.left), widthDifference: Math.abs(bar.width - field.width), gap: bar.top - field.bottom };
+  });
+  assert(relation.alignment < 1 && relation.widthDifference < 1 && Math.abs(relation.gap) < 2, JSON.stringify(relation));
+  await progress.waitFor({ state: 'hidden', timeout: 360000 });
+  assert(await page.evaluate(async () => (await (await fetch('/api/rules/sources')).json()).data.filter(s => s.category_count > 0).length === 2), 'both sources must initialize');
+  assert.equal(await category.getAttribute('aria-invalid'), 'false');
+  assert.equal(await downloadLibrary.count(), 0);
   report.real.initialization = true;
  }
- const category = page.getByRole('combobox', { name: '规则分类', exact: true });
+ const filename = dialog.getByRole('textbox', { name: '文件名称', exact: true });
+ assert.equal(await filename.inputValue(), 'castorice-rules');
+ assert(await filename.evaluate(input => Boolean(input.closest('.export-actions'))));
  await category.click();
  assert.equal(await page.getByRole('listbox').count(), 0, 'empty category input showed arbitrary options');
  await category.fill('Facebook');
@@ -105,8 +131,12 @@ try {
  assert.equal(await page.locator('.preview-line').count(), 200);
  await page.getByRole('button', { name: '下一页', exact: true }).click();
  assert.equal(await page.locator('.line-number').first().innerText(), '201');
+ const formatControl = dialog.getByRole('combobox', { name: '输出格式', exact: true });
+ const formatWidth = (await formatControl.boundingBox()).width;
  for (const [label, format] of [['Clash / Mihomo YAML','clash'],['Mihomo Rule Provider','provider'],['sing-box Source Rule Set v3','singbox']]) {
-  await page.getByRole('combobox', { name: '输出格式', exact: true }).click(); await page.getByRole('option', { name: label, exact: true }).click(); await ready(format);
+  await formatControl.click(); await page.getByRole('option', { name: label, exact: true }).click(); await ready(format);
+  assert(Math.abs((await formatControl.boundingBox()).width - formatWidth) < 1);
+  assert(await formatControl.evaluate(element => element.scrollWidth <= element.clientWidth + 1));
   const content = latest.content;
   if (format === 'singbox') assert.equal(JSON.parse(content).version, 3);
   const promise = page.waitForEvent('download'); await page.getByRole('button', { name: '下载文件', exact: true }).click(); const file = await promise;

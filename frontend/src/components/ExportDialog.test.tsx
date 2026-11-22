@@ -90,6 +90,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+  vi.unstubAllGlobals();
 });
 describe("导出预览", () => {
   const category: RuleCategory = {
@@ -116,6 +117,109 @@ describe("导出预览", () => {
       />,
     );
   }
+  it("缺库时标记合并选项与分类，在两套来源下载期间保持进度，失败后可继续下载", async () => {
+    vi.useFakeTimers();
+    let sources = emptySources;
+    const transfers = new Map<
+      string,
+      { complete: () => void; fail: (error: Error) => void }
+    >();
+    mockAPI.mockImplementation(
+      async (path: string, _method: string, body?: { source?: string }) => {
+        if (path.startsWith("/rules/sources")) return sources;
+        if (path === "/rules/categories")
+          return sources.some(({ category_count }) => category_count)
+            ? [category]
+            : [];
+        if (path === "/rules/sync" && body?.source) {
+          return new Promise<void>((resolve, reject) => {
+            const id = body.source!;
+            transfers.set(id, {
+              complete: () => {
+                sources = sources.map((source) =>
+                  source.id === id
+                    ? { ...source, category_count: 1, status: "ready" }
+                    : source,
+                );
+                resolve();
+              },
+              fail: reject,
+            });
+          });
+        }
+        return output;
+      },
+    );
+    show("observed");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(200);
+    });
+    const merge = screen.getByRole("radio", { name: "合并规则库" });
+    fireEvent.click(merge);
+    const input = screen.getByRole("combobox", { name: "规则分类" });
+    expect(merge.closest("label")).toHaveAttribute("data-missing-library");
+    expect(input).toHaveAttribute("aria-invalid", "true");
+    fireEvent.click(screen.getByRole("button", { name: "查看规则库下载提示" }));
+    expect(screen.getByRole("tooltip")).toHaveTextContent(
+      "两套开源规则库尚未下载，下载后可搜索分类并合并",
+    );
+    const button = screen.getByRole("button", {
+      name: /^下载规则库$/,
+    });
+    fireEvent.click(button);
+    const progress = screen.getByRole("progressbar", {
+      name: "正在下载规则库",
+    });
+    expect(input.closest(".export-library-field")).toContainElement(progress);
+    expect(button).toBeDisabled();
+    await act(async () => {
+      transfers.get("blackmatrix7")!.complete();
+    });
+    expect(transfers.has("v2fly")).toBe(true);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(6200);
+    });
+    expect(progress).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "导出设置" }));
+    expect(progress).toBeInTheDocument();
+    await act(async () => {
+      transfers.get("v2fly")!.fail(new Error("服务响应超时"));
+    });
+    expect(
+      screen.queryByRole("progressbar", { name: "正在下载规则库" }),
+    ).toBeNull();
+    expect(screen.getByText(/服务响应超时/)).toBeInTheDocument();
+    expect(input).toHaveAttribute("aria-invalid", "true");
+    fireEvent.click(button);
+    await act(async () => {
+      transfers.get("v2fly")!.complete();
+    });
+    expect(screen.queryByRole("button", { name: /^下载规则库$/ })).toBeNull();
+    expect(input).toHaveAttribute("aria-invalid", "false");
+    expect(merge.closest("label")).not.toHaveAttribute("data-missing-library");
+  });
+  it("文件名称移到操作区，清空后禁用软件目录保存并保留默认文件名", async () => {
+    vi.stubGlobal("castoriceDesktop", { version: "v1.7" });
+    show("observed");
+    const name = screen.getByRole("textbox", { name: "文件名称" });
+    expect(name.closest(".export-actions")).not.toBeNull();
+    expect(name).toHaveValue("castorice-rules");
+    const save = screen.getByRole("button", { name: "保存到软件目录" });
+    await waitFor(() => expect(save).toBeEnabled());
+    fireEvent.change(name, { target: { value: "  " } });
+    expect(save).toBeDisabled();
+    fireEvent.click(save);
+    expect(mockDownload).not.toHaveBeenCalled();
+    expect(name).toHaveAttribute("placeholder", "castorice-rules");
+    fireEvent.change(name, { target: { value: "自定义文件" } });
+    await waitFor(() => expect(save).toBeEnabled());
+    expect(mockAPI).toHaveBeenCalledWith(
+      "/export",
+      "POST",
+      expect.objectContaining({ filename: "自定义文件" }),
+      expect.anything(),
+    );
+  });
   it("分类输入后才显示候选，轮询与新分类对象不清除搜索内容", async () => {
     vi.useFakeTimers();
     let version = "one";
@@ -261,8 +365,7 @@ describe("导出预览", () => {
     expect(
       screen.getByRole("checkbox", { name: "导出 DOMAIN,covered.example.com" }),
     ).toBeInTheDocument();
-    fireEvent.mouseDown(screen.getByRole("combobox", { name: "导出范围" }));
-    fireEvent.click(screen.getByRole("option", { name: "仅抓取结果" }));
+    fireEvent.click(screen.getByRole("radio", { name: "仅抓取结果" }));
     fireEvent.mouseDown(filter);
     expect(
       screen.queryByRole("option", { name: "规则库补充" }),

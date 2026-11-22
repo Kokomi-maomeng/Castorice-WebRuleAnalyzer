@@ -46,3 +46,6 @@ Write-Host "Linux package: $packageDir (Linux: chmod +x castorice start.sh)"
 if($LASTEXITCODE -ne 0){throw 'Package document links failed'}
 & python (Join-Path $PSScriptRoot 'package-linux.py') $packageDir
 if($LASTEXITCODE -ne 0){throw 'Linux archive failed'}
+$archive=$packageDir+'.tar.gz'
+$archiveHash=(Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+[IO.File]::WriteAllText(($archive+'.sha256'),$archiveHash+'  '+(Split-Path $archive -Leaf)+"`n")

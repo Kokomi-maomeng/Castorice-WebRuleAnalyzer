@@ -2,16 +2,14 @@ import { useMemo, useState } from "react";
 import {
   Box,
   Button,
+  ButtonBase,
   Checkbox,
   Chip,
   Divider,
-  FormControlLabel,
   IconButton,
   InputAdornment,
   MenuItem,
   Paper,
-  Radio,
-  RadioGroup,
   Stack,
   TextField,
   Tooltip,
@@ -20,13 +18,13 @@ import {
 import {
   ContentCopyRounded,
   DownloadRounded,
-  PublicRounded,
   SearchRounded,
   TravelExploreRounded,
 } from "@mui/icons-material";
 import type { DomainRecord, ScanTask } from "../types";
 import { copy } from "../services/api";
 import { isExportable, time } from "../utils/format";
+import ExportScope from "./ExportScope";
 interface Props {
   domains: DomainRecord[];
   task?: ScanTask;
@@ -88,7 +86,7 @@ export default function DomainPanel(p: Props) {
           />
         </Stack>
 
-        <Stack direction="row" sx={{ mt: 1, gap: 1 }}>
+        <Box className="domain-filters">
           <TextField
             placeholder="搜索域名"
             value={query}
@@ -110,16 +108,18 @@ export default function DomainPanel(p: Props) {
           />
           <TextField
             select
+            className="domain-sort"
             value={sort}
             onChange={(e) => setSort(e.target.value)}
-            slotProps={{ htmlInput: { "aria-label": "域名排序" } }}
-            sx={{ minWidth: 104 }}
+            slotProps={{
+              select: { SelectDisplayProps: { "aria-label": "域名排序" } },
+            }}
           >
             <MenuItem value="name">字母顺序</MenuItem>
             <MenuItem value="count">请求次数</MenuItem>
             <MenuItem value="time">发现时间</MenuItem>
           </TextField>
-        </Stack>
+        </Box>
       </Box>
       <Divider />
       <Box sx={{ flex: 1, minHeight: 0, overflow: "auto" }}>
@@ -146,83 +146,87 @@ export default function DomainPanel(p: Props) {
             </Typography>
           </Stack>
         ) : (
-          list.slice(0, limit).map((d) => (
-            <Box
-              key={d.hostname}
-              className="motion-row"
-              sx={{
-                display: "flex",
-                alignItems: "center",
-                px: 1.5,
-                py: 1,
-                borderBottom: 1,
-                borderColor: "divider",
-                "&:hover": { bgcolor: "action.hover" },
-              }}
-            >
-              <Checkbox
-                size="small"
-                checked={isExportable(d) && !p.excluded.has(d.hostname)}
-                disabled={!isExportable(d)}
-                onChange={() => p.toggle(d.hostname)}
-                slotProps={{ input: { "aria-label": `选择 ${d.hostname}` } }}
-              />
-              <Box sx={{ flex: 1, minWidth: 0, ml: 0.5 }}>
-                <Button
+          list.slice(0, limit).map((d) => {
+            const exportable = isExportable(d);
+            return (
+              <Box
+                key={d.hostname}
+                className="domain-row motion-row"
+                sx={{
+                  borderBottom: 1,
+                  borderColor: "divider",
+                  "&:hover, &:focus-within": { bgcolor: "action.hover" },
+                }}
+              >
+                <ButtonBase
+                  className="domain-request"
+                  aria-label={d.hostname}
                   onClick={() => p.onRequests(d.hostname)}
-                  sx={{
-                    p: 0,
-                    textAlign: "left",
-                    display: "block",
-                    minWidth: 0,
-                    color: "text.primary",
-                    lineHeight: 1.5,
-                    borderRadius: 1,
-                  }}
                 >
                   <span className="domain-name">{d.hostname}</span>
-                </Button>
-                <Stack
-                  direction="row"
-                  sx={{ mt: 0.6, gap: 0.7, alignItems: "center" }}
-                >
+                  <Stack
+                    component="span"
+                    direction="row"
+                    sx={{ gap: 0.7, alignItems: "center", flexWrap: "wrap" }}
+                  >
+                    <Typography variant="caption" color="text.secondary">
+                      {d.request_count} 次 · {time(d.first_seen)}
+                    </Typography>
+                    {d.kind !== "domain" && (
+                      <Chip
+                        component="span"
+                        size="small"
+                        label={d.kind.toUpperCase()}
+                      />
+                    )}
+                    {d.kind === "domain" && !exportable && (
+                      <Chip
+                        component="span"
+                        size="small"
+                        label="非完整域名，无法导出"
+                      />
+                    )}
+                    {matched.has(d.hostname) && (
+                      <Chip
+                        component="span"
+                        label="规则命中"
+                        color="secondary"
+                        size="small"
+                        variant="outlined"
+                      />
+                    )}
+                  </Stack>
                   <Typography variant="caption" color="text.secondary">
-                    {d.request_count} 次 · {time(d.first_seen)}
+                    {d.resource_types.join(" · ")}
                   </Typography>
-                  {d.kind !== "domain" && (
-                    <Chip size="small" label={d.kind.toUpperCase()} />
-                  )}
-                  {d.kind === "domain" && !isExportable(d) && (
-                    <Chip size="small" label="非完整域名，无法导出" />
-                  )}
-                  {matched.has(d.hostname) && (
-                    <Chip
-                      label="规则命中"
-                      color="secondary"
-                      size="small"
-                      variant="outlined"
-                    />
-                  )}
-                </Stack>
-                <Typography variant="caption" color="text.secondary">
-                  {d.resource_types.join(" · ")}
-                </Typography>
+                </ButtonBase>
+                <Box className="domain-select">
+                  <Checkbox
+                    className="domain-row-action"
+                    checked={exportable && !p.excluded.has(d.hostname)}
+                    disabled={!exportable}
+                    onChange={() => p.toggle(d.hostname)}
+                    slotProps={{
+                      input: { "aria-label": `选择 ${d.hostname}` },
+                    }}
+                  />
+                </Box>
+                <Tooltip title="复制域名">
+                  <IconButton
+                    className="domain-copy domain-row-action"
+                    aria-label={`复制 ${d.hostname}`}
+                    onClick={() =>
+                      void copy(d.hostname)
+                        .then(() => p.notify("域名已复制"))
+                        .catch((e) => p.notify(String(e)))
+                    }
+                  >
+                    <ContentCopyRounded />
+                  </IconButton>
+                </Tooltip>
               </Box>
-              <Tooltip title="复制域名">
-                <IconButton
-                  size="small"
-                  aria-label={`复制 ${d.hostname}`}
-                  onClick={() =>
-                    void copy(d.hostname)
-                      .then(() => p.notify("域名已复制"))
-                      .catch((e) => p.notify(String(e)))
-                  }
-                >
-                  <ContentCopyRounded sx={{ fontSize: 16 }} />
-                </IconButton>
-              </Tooltip>
-            </Box>
-          ))
+            );
+          })
         )}
         {list.length > limit && (
           <Button fullWidth onClick={() => setLimit((l) => l + 100)}>
@@ -231,35 +235,13 @@ export default function DomainPanel(p: Props) {
         )}
       </Box>
       <Divider />
-      <Box sx={{ p: 1.5, flexShrink: 0, bgcolor: "action.hover" }}>
-        <Stack direction="row" sx={{ alignItems: "center", gap: 0.8 }}>
-          <PublicRounded color="primary" sx={{ fontSize: 17 }} />
-          <Typography variant="subtitle2">导出范围</Typography>
-          <Typography
-            variant="caption"
-            color="text.secondary"
-            sx={{ ml: "auto" }}
-          >
+      <Box className="domain-footer" sx={{ bgcolor: "action.hover" }}>
+        <Box className="domain-export-controls">
+          <ExportScope value={p.mode} onChange={p.setMode} />
+          <Typography variant="caption" color="text.secondary">
             已选 {selected.length} 个域名
           </Typography>
-        </Stack>
-        <RadioGroup
-          row
-          value={p.mode}
-          onChange={(e) => p.setMode(e.target.value as Props["mode"])}
-          sx={{ mt: 0.8 }}
-        >
-          <FormControlLabel
-            value="observed"
-            control={<Radio size="small" />}
-            label={<Typography variant="body2">仅抓取结果</Typography>}
-          />
-          <FormControlLabel
-            value="merged"
-            control={<Radio size="small" />}
-            label={<Typography variant="body2">合并规则库</Typography>}
-          />
-        </RadioGroup>
+        </Box>
         <Button
           variant="contained"
           fullWidth

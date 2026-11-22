@@ -88,6 +88,13 @@ async function verifyHistoryLayout(page, baseTask) {
     const list = dialog.locator('.history-content');
     const next = dialog.getByRole('button', { name: '下一页历史' });
     await footer.getByText('1–30 / 67').waitFor();
+    const search = dialog.getByRole('textbox', { name: '搜索历史地址' });
+    assert(await search.evaluate(input => {
+      const wrapper = input.closest('.MuiFormControl-root');
+      const field = wrapper.querySelector('.MuiOutlinedInput-root').getBoundingClientRect();
+      const label = wrapper.querySelector('label').getBoundingClientRect();
+      return Math.abs((field.top + field.height / 2) - (label.top + label.height / 2)) <= 1.5;
+    }), 'History text field label is vertically centered');
     for (const [width, height] of [[1220, 800], [640, 360], [320, 256]]) {
       await page.setViewportSize({ width, height });
       await list.evaluate(node => { node.scrollTop = 0; });
@@ -179,7 +186,32 @@ async function verify(name, fixturePort) {
     assert(all.total > exact.total && exact.total > 0 && exact.items.every(({ hostname }) => hostname === 'scan.test'));
     assert(all.items.some(({ url }) => url === `http://scan.test:${fixturePort}/`), 'Scan started from the site root');
     assert(!JSON.stringify(await request(`/scans/${id}`)).includes('discard-this'), 'Pasted path did not enter the record');
-    await page.getByRole('button', { name: 'scan.test', exact: true }).click();
+    const domainSort = page.getByRole('combobox', { name: '域名排序' });
+    for (const choice of ['请求次数', '发现时间', '字母顺序']) {
+      await domainSort.click();
+      await page.getByRole('option', { name: choice, exact: true }).click();
+      assert.equal(await domainSort.innerText(), choice);
+      assert(await domainSort.evaluate(element => {
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        const style = getComputedStyle(element);
+        return range.getBoundingClientRect().width <= element.clientWidth - parseFloat(style.paddingInlineStart) - parseFloat(style.paddingInlineEnd) + 1;
+      }), `${choice} fits in the sort field`);
+    }
+    const row = page.locator('.domain-row').filter({ has: page.getByRole('button', { name: 'scan.test', exact: true }) });
+    const checkbox = row.getByRole('checkbox', { name: '选择 scan.test' });
+    const selectTarget = await checkbox.evaluate(input => {
+      const {width, height} = input.closest('.domain-row-action').getBoundingClientRect();
+      return {width, height};
+    });
+    const copyTarget = await row.getByRole('button', { name: '复制 scan.test' }).boundingBox();
+    assert(selectTarget.width >= 44 && selectTarget.height >= 44);
+    assert.equal(copyTarget.width, selectTarget.width);
+    assert.equal(copyTarget.height, selectTarget.height);
+    await checkbox.click();
+    assert.equal(await page.getByRole('tab', { name: '网络请求' }).getAttribute('aria-selected'), 'false');
+    await checkbox.click();
+    await row.getByText(/次 ·/).click();
     assert.equal(await page.getByRole('textbox', { name: '精确主机' }).inputValue(), 'scan.test');
     await page.getByRole('tab', { name: '抓取流程' }).click();
     const recent = page.getByRole('region', { name: '最近采集事件' });

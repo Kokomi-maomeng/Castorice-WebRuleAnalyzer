@@ -4,16 +4,17 @@ Web 分流规则分析器。输入网址，用独立 Chrome / Edge / Chromium �
 
 ## 下载与运行
 
-Windows 版使用便携 ZIP。**解压到可写目录后双击 `Castorice-WebRuleAnalyzer.exe`**，需要 Edge WebView2 Runtime 和 Chrome、Edge 或 Chromium。公开版本请从版本页下载。本地候选版以其随附校验值和测试记录为准。 [GitHub Releases](https://github.com/Kokomi-maomeng/Castorice-WebRuleAnalyzer/releases/latest)
+Windows 版使用便携 ZIP。**解压到可写目录后双击 `Castorice-WebRuleAnalyzer.exe`**，需要 Edge WebView2 Runtime 和 Chrome、Edge 或 Chromium。版本页提供安装包、SHA-256 校验值和测试记录。 [GitHub Releases](https://github.com/Kokomi-maomeng/Castorice-WebRuleAnalyzer/releases/latest)
 
 软件数据存于 EXE 旁的 `data/`，导出文件存于 `exports/`。先关闭旧版再备份并迁移这两个目录。跨电脑迁移前请确认新电脑也具备系统组件和目录权限。 [用户运行说明](docs/用户运行说明.md) · [导出接入说明](docs/EXPORT-INTEGRATION.md)
 
 ## v1.7 的改动
 
 - 服务使用独立数据锁，反向代理和容器访问需要单用户认证。Linux 以普通用户运行 Chromium 沙箱。
-- 弱网会补取终态结果。点域名后按主机精确筛选，脱敏历史重扫要重新输入原地址。
+- 弱网会补取终态结果。点击域名行可按主机精确筛选请求，勾选和复制使用等大的独立按钮。脱敏历史重扫需填写域名。
 - 辅助交互记录同文档路由和导航结果。超短窗口可滚动到域名与导出，日志警告文字提高对比度。
 - 支持历史规则版本提示、原文入口和缓存更新回滚。合并复制先校验版本，受浏览器限制时可手动选取全文。
+- 导出范围直接二选一。需要补充规则库时，可在分类框旁下载并查看进度；文件名称移到保存操作旁。
 
 ## v1.6 的改动
 
@@ -51,7 +52,7 @@ Windows 版使用便携 ZIP。**解压到可写目录后双击 `Castorice-WebRul
 ## 操作
 
 1. 输入 URL 或域名，选择快速扫描、自动探索或辅助交互，点击“开始采集”。
-2. 左侧只显示本次真实观察域名；点击域名查看相关请求。
+2. 左侧显示本次实际观察的域名。点击一行可查看该主机的相关请求。
 3. 在“规则命中”核对目标、第三方依赖与具体命中规则；可直接打开分类原文。
 4. 开源规则库 → 规则库设置，开启需要的来源自动更新，或手动下载。首次下载需要网络与时间，下载完成后本地搜索可离线使用。
 5. 选择域名，预览并导出。默认仅观察结果与精确 DOMAIN；合并外部分类需要核对与选择，不自动加入所有第三方应用规则。

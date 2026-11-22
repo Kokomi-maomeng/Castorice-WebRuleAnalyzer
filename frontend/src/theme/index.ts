@@ -1,4 +1,7 @@
 import { createTheme } from "@mui/material/styles";
+
+const smallFieldHeight = 40;
+
 export const makeTheme = (dark: boolean, reducedMotion = false) =>
   createTheme({
     transitions: {
@@ -51,7 +54,24 @@ export const makeTheme = (dark: boolean, reducedMotion = false) =>
       },
       MuiPaper: { defaultProps: { elevation: 0 } },
       MuiTextField: { defaultProps: { size: "small" } },
-      MuiOutlinedInput: { styleOverrides: { root: { borderRadius: 12 } } },
+      MuiOutlinedInput: {
+        styleOverrides: {
+          root: {
+            borderRadius: 12,
+            "&.MuiInputBase-sizeSmall": { minHeight: smallFieldHeight },
+          },
+        },
+      },
+      MuiInputLabel: {
+        styleOverrides: {
+          root: {
+            "&.MuiInputLabel-outlined.MuiInputLabel-sizeSmall:not(.MuiInputLabel-shrink)":
+              {
+                transform: `translate(14px, calc(${smallFieldHeight / 2}px - .5lh)) scale(1)`,
+              },
+          },
+        },
+      },
       MuiDialog: {
         styleOverrides: {
           paper: {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Autocomplete,
@@ -53,6 +53,8 @@ import type {
 } from "../types";
 import { api, copy, download } from "../services/api";
 import { errorMessage, ruleCatalogKey } from "../utils/format";
+import ContextHelp from "./ContextHelp";
+import ExportScope from "./ExportScope";
 
 interface Props {
   open?: boolean;
@@ -69,6 +71,13 @@ const suffixWarning =
   "已主动选择 DOMAIN-SUFFIX：这会包含观察 Hostname 的全部子域名，扩大匹配范围。";
 const suffixHelp =
   "后缀匹配会包含观察域名的全部子域名；默认精确 DOMAIN 更保守。";
+const defaultFilename = "castorice-rules";
+const formats: { value: ExportFormat; label: string }[] = [
+  { value: "clash", label: "Clash / Mihomo YAML" },
+  { value: "provider", label: "Mihomo Rule Provider" },
+  { value: "singbox", label: "sing-box Source Rule Set v3" },
+];
+const ruleSourcesPath = "/rules/sources?compact=true";
 
 function Hint(p: { label: string; text: string; warning?: boolean }) {
   const [open, setOpen] = useState(false);
@@ -166,7 +175,7 @@ export default function ExportDialog(p: Props) {
   const [mode, setMode] = useState(p.mode);
   const [format, setFormat] = useState<ExportFormat>(p.settings.export_format);
   const [policy, setPolicy] = useState(p.settings.policy);
-  const [filename, setFilename] = useState("castorice-rules");
+  const [filename, setFilename] = useState(defaultFilename);
   const [suffix, setSuffix] = useState(false);
   const [listOnly, setListOnly] = useState(false);
   const [categories, setCategories] = useState<RuleCategory[]>([]);
@@ -189,6 +198,7 @@ export default function ExportDialog(p: Props) {
   }>();
   const [error, setError] = useState("");
   const [libraryError, setLibraryError] = useState("");
+  const [syncError, setSyncError] = useState("");
   const [loading, setLoading] = useState(false);
   const [loadingLibrary, setLoadingLibrary] = useState(true);
   const [loadingCategory, setLoadingCategory] = useState(false);
@@ -221,8 +231,19 @@ export default function ExportDialog(p: Props) {
     };
   }, []);
 
+  const applyCategories = useCallback((items: RuleCategory[]) => {
+    setCategories(items);
+    setCategoryIDs((old) => {
+      if (categoryLoading.current) return old;
+      const next = old.filter((id) => items.some((item) => item.id === id));
+      committedCategories.current = next;
+      return next.length === old.length ? old : next;
+    });
+  }, []);
+
   // Poll while open: another window or automatic updating may populate an empty cache.
   useEffect(() => {
+    if (syncing) return;
     const controller = new AbortController();
     let pending = false;
     let catalog = "";
@@ -232,7 +253,7 @@ export default function ExportDialog(p: Props) {
       try {
         const request = { signal: controller.signal };
         const sources = await api<RuleSource[]>(
-          "/rules/sources?compact=true",
+          ruleSourcesPath,
           "GET",
           undefined,
           request,
@@ -249,15 +270,7 @@ export default function ExportDialog(p: Props) {
           );
           if (controller.signal.aborted) return;
           catalog = nextCatalog;
-          setCategories(c);
-          setCategoryIDs((old) => {
-            if (categoryLoading.current) return old;
-            const next = old.every((id) => c.some((item) => item.id === id))
-              ? old
-              : old.filter((id) => c.some((item) => item.id === id));
-            committedCategories.current = next;
-            return next;
-          });
+          applyCategories(c);
         }
         setLibraryError("");
       } catch (e) {
@@ -273,7 +286,7 @@ export default function ExportDialog(p: Props) {
       controller.abort();
       clearInterval(timer);
     };
-  }, [reload]);
+  }, [applyCategories, reload, syncing]);
 
   const selectedCategories = useMemo(
     () => categories.filter((c) => categoryIDs.includes(c.id)),
@@ -294,6 +307,7 @@ export default function ExportDialog(p: Props) {
         : [],
     ),
   );
+  const filenameForExport = filename.trim() || defaultFilename;
   const job = useMemo<ExportJob>(
     () => ({
       task_id: p.task.id,
@@ -302,7 +316,7 @@ export default function ExportDialog(p: Props) {
       category_versions: JSON.parse(categorySnapshot) as Record<string, string>,
       format,
       policy,
-      filename,
+      filename: filenameForExport,
       list_only: listOnly,
       use_suffix: suffix,
       domains: JSON.parse(domainSnapshot) as string[],
@@ -316,7 +330,7 @@ export default function ExportDialog(p: Props) {
       categorySnapshot,
       format,
       policy,
-      filename,
+      filenameForExport,
       listOnly,
       suffix,
       excluded,
@@ -366,12 +380,10 @@ export default function ExportDialog(p: Props) {
   async function syncLibrary() {
     setSyncing(true);
     setLibraryError("");
-    const pending = sources.filter(
-      (s) => !s.category_count && s.status !== "syncing",
-    );
+    setSyncError("");
     const failures: string[] = [];
-    // Source updates share one atomic cache writer; queue them instead of racing.
-    for (const source of pending) {
+    // The cache has one writer. Keep the download active through both sources and the refresh.
+    for (const source of missingSources) {
       try {
         await api(
           "/rules/sync",
@@ -383,11 +395,24 @@ export default function ExportDialog(p: Props) {
         failures.push(`${source.id}：${errorMessage(e)}`);
       }
     }
-    if (!mounted.current) return;
-    setSyncing(false);
-    setReload((v) => v + 1);
-    if (failures.length) p.notify(failures.join("；"));
-    else p.onRematch();
+    try {
+      if (!mounted.current) return;
+      const [latestSources, latestCategories] = await Promise.all([
+        api<RuleSource[]>(ruleSourcesPath),
+        api<RuleCategory[]>("/rules/categories"),
+      ]);
+      if (!mounted.current) return;
+      setSources(latestSources);
+      applyCategories(latestCategories);
+      if (!failures.length) p.onRematch();
+    } catch (e) {
+      failures.push(errorMessage(e));
+    } finally {
+      if (mounted.current) {
+        setSyncError(failures.join("。"));
+        setSyncing(false);
+      }
+    }
   }
   async function choose(values: RuleCategory[]) {
     const request = ++categoryRequest.current;
@@ -496,6 +521,19 @@ export default function ExportDialog(p: Props) {
   }, [actualContentPage, lineSize]);
   const updating = syncing || sources.some((s) => s.status === "syncing");
   const missingSources = sources.filter((s) => !s.category_count);
+  const showLibraryControls = !loadingLibrary && missingSources.length > 0;
+  const libraryHelp =
+    missingSources.length === sources.length
+      ? "两套开源规则库尚未下载，下载后可搜索分类并合并"
+      : "还有规则库尚未下载，下载后可搜索该来源的分类";
+  const downloadFailure =
+    syncError ||
+    missingSources
+      .flatMap((source) =>
+        source.error ? [`${source.id}：${source.error}`] : [],
+      )
+      .join("。");
+  const canSaveFile = fresh && (!window.castoriceDesktop || !!filename.trim());
   const scopeWarnings = [
     ...(p.task.status !== "completed" ||
     (p.task.summary &&
@@ -592,34 +630,46 @@ export default function ExportDialog(p: Props) {
         dividers
         sx={{ display: "flex", flexDirection: "column", minHeight: 0 }}
       >
-        <Collapse in={settingsOpen} sx={{ flexShrink: 0 }}>
-          <Box id="export-settings" className="export-settings">
-            <Box className="export-options">
+        <Box className="export-settings">
+          <Box className="export-primary-controls">
+            <ExportScope
+              value={mode}
+              missingLibrary={mode === "merged" && showLibraryControls}
+              onChange={(next) => {
+                setMode(next);
+                setStateFilter("all");
+                setExcluded(new Set());
+                setPage(0);
+              }}
+            />
+            <Box className="export-format">
+              {formats.map(({ value, label }) => (
+                <Typography
+                  key={value}
+                  component="span"
+                  className="export-format-size"
+                  aria-hidden="true"
+                >
+                  {label}
+                </Typography>
+              ))}
               <TextField
                 select
-                label="导出范围"
-                value={mode}
-                onChange={(e) => {
-                  setMode(e.target.value as typeof mode);
-                  setStateFilter("all");
-                  setExcluded(new Set());
-                  setPage(0);
-                }}
-              >
-                <MenuItem value="observed">仅抓取结果</MenuItem>
-                <MenuItem value="merged">抓取 + 开源规则库</MenuItem>
-              </TextField>
-              <TextField
-                select
+                fullWidth
                 label="输出格式"
                 value={format}
                 onChange={(e) => setFormat(e.target.value as ExportFormat)}
               >
-                <MenuItem value="clash">Clash / Mihomo YAML</MenuItem>
-                <MenuItem value="provider">Mihomo Rule Provider</MenuItem>
-                <MenuItem value="singbox">sing-box Source Rule Set v3</MenuItem>
+                {formats.map(({ value, label }) => (
+                  <MenuItem key={value} value={value}>
+                    {label}
+                  </MenuItem>
+                ))}
               </TextField>
+            </Box>
+            {settingsOpen && (
               <TextField
+                className="export-policy"
                 label="策略组名称"
                 value={policy}
                 onChange={(e) => setPolicy(e.target.value)}
@@ -635,174 +685,180 @@ export default function ExportDialog(p: Props) {
                   },
                 }}
               />
-              <TextField
-                label="文件名称（自动扩展名）"
-                value={filename}
-                onChange={(e) => setFilename(e.target.value)}
-              />
-            </Box>
-            {mode === "merged" && (
-              <Box sx={{ mt: 1.25 }}>
-                <Autocomplete
-                  multiple
-                  options={categories}
-                  value={selectedCategories}
-                  inputValue={categoryQuery}
-                  onInputChange={(_, value, reason) => {
-                    // MUI's reset on new option/value objects must not erase typing.
-                    if (reason === "input" || reason === "clear")
-                      setCategoryQuery(value);
-                  }}
-                  open={categoryOpen && !!categoryQuery.trim()}
-                  onOpen={() => setCategoryOpen(true)}
-                  onClose={() => setCategoryOpen(false)}
-                  loading={loadingLibrary || loadingCategory}
-                  loadingText={
-                    loadingCategory
-                      ? "正在下载并验证分类…"
-                      : "正在读取规则分类…"
-                  }
-                  noOptionsText={
-                    categories.length
-                      ? "没有匹配的分类，请换个名称搜索"
-                      : "尚未下载规则库，请点击下方下载按钮"
-                  }
-                  getOptionLabel={(c) => `${c.name} · ${c.source}`}
-                  getOptionKey={(c) => c.id}
-                  isOptionEqualToValue={(a, b) => a.id === b.id}
-                  filterOptions={(options, state) => {
-                    const q = state.inputValue.trim().toLowerCase();
-                    if (!q) return [];
-                    return options
-                      .filter((c) =>
-                        `${c.name} ${c.source}`.toLowerCase().includes(q),
-                      )
-                      .sort(
-                        (a, b) =>
-                          Number(b.name.toLowerCase() === q) -
-                            Number(a.name.toLowerCase() === q) ||
-                          Number(b.name.toLowerCase().startsWith(q)) -
-                            Number(a.name.toLowerCase().startsWith(q)),
-                      )
-                      .slice(0, 80);
-                  }}
-                  onChange={(_, values) => void choose(values)}
-                  renderValue={(values, getItemProps) => (
-                    <Box className="export-category-tags">
-                      {values.map((c, index) => {
-                        const { key, ...props } = getItemProps({ index });
-                        return (
-                          <Chip
-                            key={key}
-                            {...props}
-                            label={`${c.name} · ${c.source}`}
-                            title={`${c.name} · ${c.source}`}
+            )}
+          </Box>
+          {(mode === "merged" || syncing) && (
+            <Box className="export-library">
+              <Box className="export-library-controls">
+                <Box
+                  className="export-library-field"
+                  data-downloading={updating || undefined}
+                >
+                  <Autocomplete
+                    multiple
+                    size="small"
+                    disabled={mode !== "merged"}
+                    options={categories}
+                    value={selectedCategories}
+                    inputValue={categoryQuery}
+                    onInputChange={(_, value, reason) => {
+                      // MUI's reset on new option/value objects must not erase typing.
+                      if (reason === "input" || reason === "clear")
+                        setCategoryQuery(value);
+                    }}
+                    open={categoryOpen && !!categoryQuery.trim()}
+                    onOpen={() => setCategoryOpen(true)}
+                    onClose={() => setCategoryOpen(false)}
+                    loading={loadingLibrary || loadingCategory}
+                    loadingText={
+                      loadingCategory
+                        ? "正在下载并验证分类…"
+                        : "正在读取规则分类…"
+                    }
+                    noOptionsText={
+                      categories.length
+                        ? "没有匹配的分类，请换个名称搜索"
+                        : "请先下载规则库"
+                    }
+                    getOptionLabel={(c) => `${c.name} · ${c.source}`}
+                    getOptionKey={(c) => c.id}
+                    isOptionEqualToValue={(a, b) => a.id === b.id}
+                    filterOptions={(options, state) => {
+                      const q = state.inputValue.trim().toLowerCase();
+                      if (!q) return [];
+                      return options
+                        .filter((c) =>
+                          `${c.name} ${c.source}`.toLowerCase().includes(q),
+                        )
+                        .sort(
+                          (a, b) =>
+                            Number(b.name.toLowerCase() === q) -
+                              Number(a.name.toLowerCase() === q) ||
+                            Number(b.name.toLowerCase().startsWith(q)) -
+                              Number(a.name.toLowerCase().startsWith(q)),
+                        )
+                        .slice(0, 80);
+                    }}
+                    onChange={(_, values) => void choose(values)}
+                    renderValue={(values, getItemProps) => (
+                      <Box className="export-category-tags">
+                        {values.map((c, index) => {
+                          const { key, ...props } = getItemProps({ index });
+                          return (
+                            <Chip
+                              key={key}
+                              {...props}
+                              label={`${c.name} · ${c.source}`}
+                              title={`${c.name} · ${c.source}`}
+                              size="small"
+                            />
+                          );
+                        })}
+                      </Box>
+                    )}
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        label="规则分类"
+                        error={showLibraryControls}
+                        required
+                        slotProps={{
+                          ...params.slotProps,
+                          htmlInput: {
+                            ...params.slotProps.htmlInput,
+                            "aria-label": "规则分类",
+                          },
+                        }}
+                        placeholder="搜索分类名称，如 Facebook"
+                      />
+                    )}
+                    renderOption={(props, option, state) => {
+                      const { key, ...rest } = props;
+                      return (
+                        <li key={key} {...rest}>
+                          <Checkbox
+                            checked={state.selected}
                             size="small"
+                            tabIndex={-1}
+                            disableRipple
+                            sx={{ pointerEvents: "none" }}
                           />
-                        );
-                      })}
-                    </Box>
-                  )}
-                  renderInput={(params) => (
-                    <TextField
-                      {...params}
-                      label="规则分类"
-                      required
-                      slotProps={{
-                        ...params.slotProps,
-                        htmlInput: {
-                          ...params.slotProps.htmlInput,
-                          "aria-label": "规则分类",
-                        },
-                      }}
-                      placeholder="搜索分类名称，如 Facebook"
+                          <Box sx={{ minWidth: 0 }}>
+                            <Typography
+                              variant="body2"
+                              sx={{ overflowWrap: "anywhere" }}
+                            >
+                              {option.name}
+                            </Typography>
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                            >
+                              {option.source} ·{" "}
+                              {option.loaded
+                                ? `${option.rule_count} 条`
+                                : "按需下载"}
+                              {option.broad ? " · 通用集合" : ""}
+                            </Typography>
+                          </Box>
+                        </li>
+                      );
+                    }}
+                  />
+                  {updating && (
+                    <LinearProgress
+                      aria-label="正在下载规则库"
+                      className="export-library-progress"
                     />
                   )}
-                  renderOption={(props, option, state) => {
-                    const { key, ...rest } = props;
-                    return (
-                      <li key={key} {...rest}>
-                        <Checkbox
-                          checked={state.selected}
-                          size="small"
-                          tabIndex={-1}
-                          disableRipple
-                          sx={{ pointerEvents: "none" }}
-                        />
-                        <Box sx={{ minWidth: 0 }}>
-                          <Typography
-                            variant="body2"
-                            sx={{ overflowWrap: "anywhere" }}
-                          >
-                            {option.name}
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            {option.source} ·{" "}
-                            {option.loaded
-                              ? `${option.rule_count} 条`
-                              : "按需下载"}
-                            {option.broad ? " · 通用集合" : ""}
-                          </Typography>
-                        </Box>
-                      </li>
-                    );
-                  }}
-                />
-                {libraryError && (
-                  <Alert
-                    severity="error"
-                    sx={{ mt: 1 }}
-                    action={
-                      <Button
-                        onClick={() => {
-                          setLoadingLibrary(true);
-                          setReload((v) => v + 1);
-                        }}
-                      >
-                        重试
-                      </Button>
-                    }
-                  >
-                    {libraryError}
-                  </Alert>
-                )}
-                {(!categories.length ||
-                  missingSources.length > 0 ||
-                  updating) &&
-                  !loadingLibrary && (
-                    <Alert
-                      severity="info"
-                      sx={{ mt: 1 }}
-                      action={
-                        !updating && missingSources.length > 0 ? (
-                          <Button onClick={() => void syncLibrary()}>
-                            下载{categories.length ? "缺少的规则源" : "规则库"}
-                          </Button>
-                        ) : undefined
-                      }
+                </Box>
+                {showLibraryControls && (
+                  <Stack direction="row" className="export-library-actions">
+                    <Button
+                      variant="outlined"
+                      startIcon={<DownloadRounded />}
+                      disabled={updating}
+                      onClick={() => void syncLibrary()}
                     >
-                      {updating
-                        ? "正在下载规则库，完成后分类会自动显示。"
-                        : categories.length
-                          ? `${missingSources.map((s) => s.id).join("、")} 尚未下载，可补充此来源。`
-                          : "两套开源规则库尚未下载。下载后可搜索分类并合并。"}
-                      {updating && <LinearProgress sx={{ mt: 1 }} />}
-                      {sources
-                        .filter((s) => s.error)
-                        .map((s) => (
-                          <Typography
-                            key={s.id}
-                            variant="caption"
-                            sx={{ display: "block" }}
-                          >
-                            {s.id}：{s.error}
-                          </Typography>
-                        ))}
-                    </Alert>
-                  )}
+                      下载规则库
+                    </Button>
+                    <ContextHelp label="查看规则库下载提示" error>
+                      {libraryHelp}
+                    </ContextHelp>
+                  </Stack>
+                )}
               </Box>
-            )}
-            <Stack direction="row" className="export-toggles">
+              {libraryError && (
+                <Alert
+                  severity="error"
+                  sx={{ mt: 1 }}
+                  action={
+                    <Button
+                      onClick={() => {
+                        setLoadingLibrary(true);
+                        setReload((v) => v + 1);
+                      }}
+                    >
+                      重试
+                    </Button>
+                  }
+                >
+                  {libraryError}
+                </Alert>
+              )}
+              {!updating && downloadFailure && (
+                <Alert severity="error" sx={{ mt: 1 }}>
+                  {downloadFailure}
+                </Alert>
+              )}
+            </Box>
+          )}
+          <Collapse in={settingsOpen}>
+            <Stack
+              id="export-settings"
+              direction="row"
+              className="export-toggles"
+            >
               <Stack direction="row" sx={{ alignItems: "center" }}>
                 <FormControlLabel
                   control={
@@ -844,8 +900,8 @@ export default function ExportDialog(p: Props) {
                 }
               />
             </Stack>
-          </Box>
-        </Collapse>
+          </Collapse>
+        </Box>
         {error && (
           <Alert
             severity="error"
@@ -1167,12 +1223,20 @@ export default function ExportDialog(p: Props) {
       </DialogContent>
       <DialogActions
         className="export-actions"
+        disableSpacing
         sx={{ px: 2, py: 1.25, flexWrap: "wrap", gap: 0.5 }}
       >
+        <TextField
+          className="export-filename"
+          label="文件名称"
+          placeholder={defaultFilename}
+          value={filename}
+          onChange={(e) => setFilename(e.target.value)}
+        />
         <Button onClick={p.onClose}>关闭</Button>
         {result?.attribution && (
           <Button
-            disabled={!fresh}
+            disabled={!canSaveFile}
             onClick={() =>
               useFreshResult((current) =>
                 download(
@@ -1200,7 +1264,7 @@ export default function ExportDialog(p: Props) {
         <Button
           variant="contained"
           startIcon={<DownloadRounded />}
-          disabled={!fresh}
+          disabled={!canSaveFile}
           onClick={() =>
             useFreshResult((current) =>
               download(current.content, current.filename, current.mime).then(
