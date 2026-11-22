@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -10,8 +11,34 @@ import (
 	"github.com/castorice/Castorice-WebRuleAnalyzer/backend/internal/model"
 )
 
+func TestUpdateMatchDoesNotRecreateDeletedHistory(t *testing.T) {
+	s, err := Open(filepath.Join(t.TempDir(), "data", "history.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	task := model.ScanTask{ID: "saved", Status: "completed", StartedAt: time.Now()}
+	if err = s.Save(task, nil, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	stale, err := s.Task(task.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.DeleteHistory([]string{task.ID}, false, ""); err != nil {
+		t.Fatal(err)
+	}
+	stale.MatchNote = "new result"
+	if err = s.UpdateMatch(stale); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("deleted history could be updated: %v", err)
+	}
+	if _, err = s.Task(task.ID); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("deleted history was restored: %v", err)
+	}
+}
+
 func TestDeleteHistoryBeyondVisiblePageAndCascade(t *testing.T) {
-	s, err := Open(filepath.Join(t.TempDir(), "history.db"))
+	s, err := Open(filepath.Join(t.TempDir(), "data", "history.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

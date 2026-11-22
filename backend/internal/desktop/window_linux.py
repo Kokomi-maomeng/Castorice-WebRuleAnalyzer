@@ -20,8 +20,8 @@ def main():
 
     window = Gtk.Window(title="Castorice-WebRuleAnalyzer")
     window.set_decorated(False)
-    window.set_default_size(1280, 800)
-    window.set_size_request(600, 420)
+    window.set_default_size(*config["size"])
+    window.set_size_request(*config["minimum_size"])
     window.set_position(Gtk.WindowPosition.CENTER)
     window.connect("destroy", lambda *_: Gtk.main_quit())
 
@@ -29,7 +29,14 @@ def main():
     context = WebKit2.WebContext.new_ephemeral()
     view = WebKit2.WebView(web_context=context, user_content_manager=manager)
     window.add(view)
+    view.show()
     last_press = None
+    closing = False
+
+    def reveal():
+        if not closing and not window.get_visible():
+            window.show()
+        return GLib.SOURCE_REMOVE
 
     def edge_at(x, y):
         if window.is_maximized():
@@ -73,7 +80,9 @@ def main():
         if not (view.get_uri() or "").startswith(origin + "/"):
             return
         action = message.get_js_value().to_string()
-        if action == "minimize":
+        if action == "ready":
+            reveal()
+        elif action == "minimize":
             window.iconify()
         elif action == "toggle-maximize":
             (window.unmaximize if window.is_maximized() else window.maximize)()
@@ -111,6 +120,31 @@ def main():
         window.close()
         return GLib.SOURCE_REMOVE
 
+    def close_with_transition(_window, _event):
+        nonlocal closing
+        if closing:
+            return True
+        if not window.get_visible() or not window.get_settings().get_property("gtk-enable-animations"):
+            return False
+        closing = True
+        duration = config["close_transition_ms"]
+        if window.is_composited():
+            started = GLib.get_monotonic_time()
+
+            def fade():
+                progress = (GLib.get_monotonic_time() - started) / (duration * 1000)
+                if progress >= 1:
+                    window.destroy()
+                    return GLib.SOURCE_REMOVE
+                window.set_opacity(1 - progress**2)
+                return GLib.SOURCE_CONTINUE
+
+            GLib.timeout_add(16, fade)
+        else:
+            view.evaluate_javascript(config["closing_event"], -1, None, None, None, None, None)
+            GLib.timeout_add(duration, window.destroy)
+        return True
+
     manager.connect("script-message-received::castoriceWindow", command)
     manager.register_script_message_handler("castoriceWindow")
     manager.add_script(WebKit2.UserScript.new(
@@ -121,10 +155,11 @@ def main():
     view.connect("button-press-event", press)
     view.connect("motion-notify-event", motion)
     window.connect("window-state-event", window_state)
+    window.connect("delete-event", close_with_transition)
     view.connect("web-process-terminated", lambda *_: close())
     GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGTERM, close)
     view.load_uri(origin + "/")
-    window.show_all()
+    GLib.timeout_add_seconds(5, reveal)
     Gtk.main()
 
 

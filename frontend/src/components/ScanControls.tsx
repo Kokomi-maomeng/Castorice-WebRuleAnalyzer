@@ -1,7 +1,9 @@
 import NetworkOptions from "./NetworkOptions";
 import NetworkDialog from "./NetworkDialog";
 import ScanModeSelect from "./ScanModeSelect";
-import { useState } from "react";
+import ScanNumberFields, { invalidScanField } from "./ScanNumberFields";
+import ContextHelp from "./ContextHelp";
+import { useState, type ClipboardEvent } from "react";
 import {
   Box,
   Button,
@@ -10,6 +12,7 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  Fade,
   FormControlLabel,
   IconButton,
   InputAdornment,
@@ -17,6 +20,7 @@ import {
   Stack,
   Switch,
   TextField,
+  Typography,
 } from "@mui/material";
 import {
   ArrowForwardRounded,
@@ -26,12 +30,19 @@ import {
   StopRounded,
   TuneRounded,
 } from "@mui/icons-material";
-import type { ScanOptions } from "../types";
+import type { ScanOptions, ScanTarget } from "../types";
 
 interface Props {
   canShowBrowser: boolean;
   url: string;
+  target?: ScanTarget;
+  addressIssue: string;
+  addressNotice: string;
+  showingEarlierResult: boolean;
+  historyTarget?: string;
+  browserAvailable: boolean;
   setURL: (v: string) => void;
+  onNormalize: (v: string, freshlyEdited?: boolean) => void;
   options: ScanOptions;
   setOptions: (v: ScanOptions) => void;
   running: boolean;
@@ -47,27 +58,9 @@ export default function ScanControls(p: Props) {
   const { mode } = p.options;
   const set = <K extends keyof ScanOptions>(key: K, value: ScanOptions[K]) =>
     p.setOptions({ ...p.options, [key]: value });
-  const number = (
-    label: string,
-    key: keyof ScanOptions,
-    min: number,
-    max: number,
-  ) => (
-    <TextField
-      label={label}
-      type="number"
-      value={p.options[key]}
-      onChange={(e) => set(key, Number(e.target.value))}
-      onBlur={(e) => {
-        const value = Number(e.target.value);
-        const bounded = Math.min(max, Math.max(min, Math.trunc(value)));
-        if (bounded !== value) set(key, bounded);
-      }}
-      slotProps={{ htmlInput: { min, max } }}
-      disabled={p.running}
-      fullWidth
-    />
-  );
+  const invalid = invalidScanField(p.options);
+  const canStart =
+    !p.running && !p.busy && p.browserAvailable && p.url.trim() && !invalid;
   const modeSelect = () => (
     <ScanModeSelect
       value={mode}
@@ -87,39 +80,89 @@ export default function ScanControls(p: Props) {
         component="form"
         onSubmit={(e) => {
           e.preventDefault();
-          if (!p.running && !p.busy && p.url.trim()) p.onStart();
+          if (canStart) p.onStart();
         }}
         className="scan-form"
       >
-        <TextField
-          fullWidth
-          label="要分析的网站"
-          value={p.url}
-          disabled={p.running}
-          onChange={(e) => p.setURL(e.target.value)}
-          onKeyDown={(e) => {
-            if (
-              e.key === "Enter" &&
-              !e.nativeEvent.isComposing &&
-              !p.url.trim() &&
-              !p.running &&
-              !p.busy
-            ) {
-              e.preventDefault();
-              p.onReset();
-            }
-          }}
-          autoComplete="off"
-          slotProps={{
-            input: {
-              startAdornment: (
-                <InputAdornment position="start">
-                  <LinkRounded color="primary" />
-                </InputAdornment>
-              ),
-            },
-          }}
-        />
+        <Box className="scan-address">
+          <TextField
+            fullWidth
+            label="要分析的网站"
+            value={p.url}
+            error={!!p.addressIssue}
+            disabled={p.running}
+            onChange={(e) => p.setURL(e.target.value)}
+            onBlur={(e) => {
+              if (!p.busy && !p.running && !p.addressIssue)
+                p.onNormalize(e.target.value);
+            }}
+            onKeyDown={(e) => {
+              if (
+                e.key === "Enter" &&
+                !e.nativeEvent.isComposing &&
+                !p.url.trim() &&
+                !p.running &&
+                !p.busy
+              ) {
+                e.preventDefault();
+                p.onReset();
+              }
+            }}
+            autoComplete="off"
+            slotProps={{
+              htmlInput: {
+                spellCheck: false,
+                autoCapitalize: "none",
+                inputMode: "url",
+                onPaste: (e: ClipboardEvent<HTMLInputElement>) => {
+                  const input = e.currentTarget;
+                  if (
+                    p.busy ||
+                    input.selectionStart !== 0 ||
+                    input.selectionEnd !== input.value.length
+                  )
+                    return;
+                  const value = e.clipboardData.getData("text");
+                  if (!value) return;
+                  e.preventDefault();
+                  p.setURL(value);
+                  p.onNormalize(value, true);
+                },
+              },
+              input: {
+                readOnly: p.busy,
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <LinkRounded color="primary" />
+                  </InputAdornment>
+                ),
+                endAdornment: p.addressIssue && (
+                  <InputAdornment position="end">
+                    <ContextHelp label="查看地址问题" error>
+                      {p.addressIssue}
+                      {p.showingEarlierResult && (
+                        <div>下方仍显示上次采集结果。</div>
+                      )}
+                    </ContextHelp>
+                  </InputAdornment>
+                ),
+              },
+            }}
+          />
+          <Box aria-live="polite" className="sr-only">
+            {p.addressIssue}
+          </Box>
+          <Fade in={!!p.addressNotice} mountOnEnter unmountOnExit>
+            <Paper
+              className="scan-address-notice"
+              role="status"
+              elevation={2}
+              sx={{ borderColor: "divider" }}
+            >
+              {p.addressNotice}
+            </Paper>
+          </Fade>
+        </Box>
         {modeSelect()}
         <Button
           className="advanced-button"
@@ -153,7 +196,7 @@ export default function ScanControls(p: Props) {
                   <ArrowForwardRounded />
                 )
               }
-              disabled={p.busy || !p.url.trim()}
+              disabled={!canStart}
             >
               开始采集
             </Button>
@@ -168,6 +211,20 @@ export default function ScanControls(p: Props) {
           </Button>
         </Stack>
       </Box>
+      {p.historyTarget && (
+        <Typography
+          variant="body2"
+          color="text.secondary"
+          sx={{ mt: 0.75, overflowWrap: "anywhere" }}
+        >
+          历史域名 {p.historyTarget}。原地址已脱敏，重新采集时请填写域名。
+        </Typography>
+      )}
+      {invalid && (
+        <Typography variant="body2" color="error">
+          请在高级配置中修正「{invalid}」。
+        </Typography>
+      )}
       <Dialog
         open={advanced}
         aria-labelledby="advanced-config-title"
@@ -188,20 +245,20 @@ export default function ScanControls(p: Props) {
         <DialogContent dividers>
           <Box className="advanced-grid" sx={{ pt: 0.5 }}>
             <Box sx={{ gridColumn: "1 / -1" }}>{modeSelect()}</Box>
-            {number("总时长 / 秒", "max_seconds", 1, 3600)}
-            {number("导航超时 / 秒", "navigation_seconds", 1, 120)}
-            {mode !== "interactive" &&
-              number("每页观察 / 秒", "observe_seconds", 1, 300)}
-            {mode !== "interactive" &&
-              number("静默等待 / 毫秒", "quiet_millis", 100, 30000)}
-            {mode !== "quick" && number("最多页面", "max_pages", 1, 200)}
-            {mode === "explore" && number("探索深度", "max_depth", 0, 8)}
-            {mode === "explore" &&
-              number("页面间隔 / 毫秒", "interval_millis", 0, 30000)}
+            <ScanNumberFields
+              options={p.options}
+              change={p.setOptions}
+              disabled={p.running}
+            />
             <Box sx={{ gridColumn: "1 / -1" }}>
               <NetworkOptions options={p.options} onChange={p.setOptions} />
             </Box>
           </Box>
+          {mode === "interactive" && !window.castoriceDesktop && (
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+              受控浏览器在运行采集服务的电脑上打开。远程访问此网页时，请在服务端图形会话操作。
+            </Typography>
+          )}
           {p.canShowBrowser && mode !== "interactive" && (
             <FormControlLabel
               sx={{ mt: 0.75 }}
@@ -226,7 +283,8 @@ export default function ScanControls(p: Props) {
           <NetworkDialog
             open
             onClose={() => setDiagnosing(false)}
-            url={p.url}
+            url={p.target?.url || p.url}
+            label={p.target?.host}
             options={p.options}
             onApply={p.setOptions}
             notify={p.notify}

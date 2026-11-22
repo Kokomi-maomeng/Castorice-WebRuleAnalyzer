@@ -2,7 +2,9 @@ package scanner
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"net/http"
 	"net/http/httptest"
 	"net/netip"
 	"net/url"
@@ -20,7 +22,92 @@ import (
 	"github.com/castorice/Castorice-WebRuleAnalyzer/backend/internal/security"
 	"github.com/castorice/Castorice-WebRuleAnalyzer/backend/internal/storage"
 	"github.com/castorice/Castorice-WebRuleAnalyzer/backend/internal/testsite"
+	"github.com/chromedp/cdproto/target"
+	"github.com/chromedp/chromedp"
 )
+
+func TestInteractiveNavigationTracksSPATitleAndFailedPage(t *testing.T) {
+	if !browser.VisibleSupported() {
+		t.Skip("interactive scan requires a graphical session")
+	}
+	m, base, sessions := fixtureManager(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 35*time.Second)
+	defer cancel()
+	o := options()
+	o.Mode = "interactive"
+	o.MaxPages = 3
+	task, err := m.Start(ctx, base, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Stop(task.ID)
+	waitFor := func(ready func(model.ScanTask) bool) model.ScanTask {
+		t.Helper()
+		for ctx.Err() == nil {
+			current, e := m.Task(task.ID)
+			if e == nil && ready(current) {
+				return current
+			}
+			time.Sleep(75 * time.Millisecond)
+		}
+		last, _ := m.Task(task.ID)
+		t.Fatalf("timed out waiting for interactive page: %+v", last)
+		return model.ScanTask{}
+	}
+	waitFor(func(task model.ScanTask) bool { return len(task.Pages) == 1 && task.Pages[0].Status == "visited" })
+	files, err := filepath.Glob(filepath.Join(sessions, "scan-*", "DevToolsActivePort"))
+	if err != nil || len(files) != 1 {
+		t.Fatal("isolated profile is missing its DevTools port", err)
+	}
+	raw, err := os.ReadFile(files[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := strings.Fields(string(raw))[0]
+	devTools := "http://127.0.0.1:" + port
+	response, err := (&http.Client{Timeout: 3 * time.Second}).Get(devTools + "/json/list")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var tabs []struct {
+		ID  target.ID `json:"id"`
+		URL string    `json:"url"`
+	}
+	err = json.NewDecoder(response.Body).Decode(&tabs)
+	response.Body.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var id target.ID
+	for _, tab := range tabs {
+		if tab.URL == base+"/" {
+			id = tab.ID
+			break
+		}
+	}
+	if id == "" {
+		t.Fatal("could not find the controlled fixture tab")
+	}
+	allocator, disconnect := chromedp.NewRemoteAllocator(ctx, devTools)
+	defer disconnect()
+	tab, detach := chromedp.NewContext(allocator, chromedp.WithTargetID(id))
+	defer detach()
+	if err = chromedp.Run(tab, chromedp.Click(`a[href="/#/spa"]`, chromedp.ByQuery)); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(func(task model.ScanTask) bool {
+		return strings.HasSuffix(task.CurrentPage, "#/spa") && task.PageTitle == "SPA fixture route" &&
+			len(task.Pages) == 2 && task.Pages[1].Status == "visited"
+	})
+	if err = chromedp.Run(tab, chromedp.Navigate(base+"/error-page")); err != nil && !strings.Contains(err.Error(), "context canceled") {
+		t.Log("browser may close at the page limit:", err)
+	}
+	finished := waitTask(t, m, task.ID)
+	if finished.EndReason != "page_limit" || finished.MainStatus != 503 || len(finished.Pages) != 3 ||
+		finished.Pages[2].Status != "failed" || finished.Summary.FailedPages != 1 || finished.PageTitle == "SPA fixture route" {
+		t.Fatalf("incorrect interactive coverage: %+v", finished)
+	}
+}
 
 func fixtureManager(t *testing.T) (*Manager, string, string) {
 	t.Helper()
@@ -34,7 +121,7 @@ func fixtureManager(t *testing.T) (*Manager, string, string) {
 	t.Cleanup(site.Close)
 	u, _ := url.Parse(site.URL)
 	root := t.TempDir()
-	store, err := storage.Open(filepath.Join(root, "test.db"))
+	store, err := storage.Open(filepath.Join(root, "data", "test.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -3,7 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useScan } from "./useScan";
 import type { RequestFilter } from "../types";
 const { mockAPI } = vi.hoisted(() => ({ mockAPI: vi.fn() }));
-vi.mock("../services/api", () => ({ api: mockAPI }));
+vi.mock("../services/api", async (original) => ({
+  ...(await original<typeof import("../services/api")>()),
+  api: mockAPI,
+}));
 class FakeEventSource {
   static OPEN = 1;
   static instances: FakeEventSource[] = [];
@@ -18,8 +21,8 @@ class FakeEventSource {
     this.listener = fn;
   }
   close = vi.fn();
-  emit(id: string) {
-    this.listener?.({ data: JSON.stringify({ id, status: "running" }) });
+  emit(id: string, status = "running") {
+    this.listener?.({ data: JSON.stringify({ id, status }) });
   }
 }
 beforeEach(() => {
@@ -103,6 +106,8 @@ describe("实时任务隔离", () => {
     const { result, rerender } = renderHook(({ id }) => useScan(id, filter), {
       initialProps: { id: "one" },
     });
+    await waitFor(() => expect(result.current.total).toBe(57));
+    act(() => FakeEventSource.instances[0].emit("one"));
     await waitFor(() => expect(resolveLate).toBeDefined());
     rerender({ id: "" });
     expect(result.current.total).toBe(0);
@@ -110,5 +115,39 @@ describe("实时任务隔离", () => {
     expect(result.current.total).toBe(0);
     expect(result.current.task).toBeUndefined();
     expect(result.current.domains).toEqual([]);
+  });
+  it("读取中收到终态后补取结果，成功后才关闭实时连接", async () => {
+    let release: (rows: unknown[]) => void;
+    const delayed = new Promise<unknown[]>((resolve) => {
+      release = resolve;
+    });
+    const original = mockAPI.getMockImplementation()!;
+    const final = [{ hostname: "scan.test" }];
+    let domainReads = 0;
+    mockAPI.mockImplementation((path: string) =>
+      path.endsWith("/domains")
+        ? ++domainReads === 1
+          ? delayed
+          : Promise.resolve(final)
+        : original(path),
+    );
+    const { result } = renderHook(() =>
+      useScan("one", {
+        host: "",
+        method: "",
+        status: "",
+        type: "",
+        page: 0,
+      }),
+    );
+    await waitFor(() => expect(domainReads).toBe(1));
+    const stream = FakeEventSource.instances[0];
+    act(() => stream.emit("one", "completed"));
+    expect(result.current.syncingResults).toBe(true);
+    expect(stream.close).not.toHaveBeenCalled();
+    await act(async () => release([]));
+    await waitFor(() => expect(result.current.domains).toEqual(final));
+    expect(result.current.syncingResults).toBe(false);
+    expect(stream.close).toHaveBeenCalledOnce();
   });
 });

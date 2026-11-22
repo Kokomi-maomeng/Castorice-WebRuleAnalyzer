@@ -1,20 +1,45 @@
-# v1.6 验收报告
+# v1.7 本地验证记录
 
-2026-11-18
+Windows 与 Linux 包中的 BUILD-INFO.json 记录构建输入、平台和可执行文件 SHA-256。
 
-| 范围 | 验收内容 |
+## 2026-11-23 v1.7 发布验收
+
+| 范围 | 验证结果 |
 | --- | --- |
-| 工作区 | 用带历史的数据库重新打开和刷新，网址与结果为空。历史按需打开，采集中仍可停止，清空操作保留历史和设置。 |
-| 界面 | 检查扫描模式帮助、按模式显示参数、高级配置中的网络诊断、规则库术语帮助和多层弹窗的状态恢复。网页工具栏检查了 9 种尺寸，最小为 320×568。 |
-| Windows 11 | 便携 EXE 的最大化、还原、真实采集、三种格式导出、正常关闭、采集中关闭、强制退出和重新启动。 |
-| Debian 13 | VMware 内用隔离 Wayland 会话验证桌面窗口拖动、最大化/还原、边缘缩放、采集中关闭、真实采集和导出。Docker 使用回环端口映射完成真实采集和三种导出。 |
-| 代码与安全 | 前端 31 项测试，Go 全包测试、真实 Chromium、两套上游规则、DNS、vet、源码及两个成品的 govulncheck。使用 Go 1.26.11，生产 npm 依赖审计通过。 |
-| 分发 | 检查待提交文件、Git 历史及发行附件，附件中的文档限制为当前使用、开发及验收指南。 |
+| Windows 11 x64 | 原生窗口保持可见。验证实际采集、三种规则导出、空文件名禁用保存、默认文件名保存到软件目录，以及清空和刷新后恢复空工作区。 |
+| 网页与交互 | Chrome、Edge、Playwright Firefox 和 WebKit 检查三种排序的完整显示、域名整行跳转、勾选与复制等大的 44 像素区域、地址规范化及固定历史底栏。 |
+| 规则库与导出 | 从空缓存真实下载两套来源。检查缺库标红、悬停与点击说明、进度条贴合输入框、分类搜索及三种导出。用模拟超时验证下载失败后可重试。 |
+| 缩放与密集预览 | 覆盖九种视口和 200% 等效缩放。1280×800 和 1280×720 内容区分别显示 7 行和 5 行完整记录，选择分类时列表位置保持稳定。 |
+| Debian 13 虚拟机 | 解压 Linux x64 包，检查校验值、普通用户沙箱、无头服务和 X11 GTK/WebKit 桌面。实扫保留示例站，核对三种导出、中文文件保存及关闭。 |
+| 容器配置 | 检查标准及 AppArmor Compose 配置，Debian 编译 AppArmor 策略。GitHub Actions 的 Docker 作业负责运行容器沙箱验收。 |
 
-快速扫描保留总时长、导航超时、每页观察、静默等待。自动探索补充探索深度、页面数与页面间隔。辅助交互显示总时长、导航超时、页面数并始终打开采集窗口。DNS 和代理对三种模式有效。
+## 2026-11-22 Windows 启动白屏修复
 
-规则库核对上游原文，提示中的 `include:分类名` 表示引用其他分类。扫描模式与规则库说明支持悬停、点击与键盘焦点。
+在本机 Windows 11、125% 缩放和 WebView2 Runtime 下复现。旧版能正常返回首页和前端资源，WebView 内已有应用页面，但启动时隐藏窗口的处理会让 WebView 子窗口保持隐藏。修复后让 WebView 在可见的父窗口中初始化，标题栏仍在首次显示前完成设置。
 
-开发工具依赖 picomatch 4.0.7 仍有尚未发布修复的 [GHSA-fc5q-39xc-vjpf](https://github.com/advisories/GHSA-fc5q-39xc-vjpf)。它只参与构建和测试，发行应用运行时不加载该模块。CI 单独审计生产依赖，开发审计记录此单项例外。
+Windows 验收现在连续检查原生窗口及其内容子窗口的可见性，并与实际桌面画面及重启结果交叉核对。
 
-[GitHub Actions](https://github.com/Kokomi-maomeng/Castorice-WebRuleAnalyzer/actions) · [v1.6 下载和 SHA-256](https://github.com/Kokomi-maomeng/Castorice-WebRuleAnalyzer/releases/tag/v1.6) · [v1.5 历史验收](https://github.com/Kokomi-maomeng/Castorice-WebRuleAnalyzer/blob/v1.5/docs/TEST-REPORT.md)
+## 2026-11-19 窗口与地址修订
+
+| 范围 | 验证结果 |
+| --- | --- |
+| Windows 原生窗口 | 在 1920×1080、125% 缩放下记录首次窗口显示事件；客户区与窗口上沿齐平。最大化客户区为 1920×1020，与系统工作区一致。最小化、还原与逐帧关闭淡出通过。 |
+| 共用界面 | Chrome、Edge、Playwright Firefox 和 WebKit 检查输入框内提示、前缀和路径清理、采集站点首页及新历史显示。67 条历史的计数和翻页在 1220×800、640×360 及 320×256 下保持可见。补测高级配置、网络诊断、设置、规则库和触屏提示。 |
+| 导出与规则预览 | 单独复测三种下载格式、九种视口、大规则分类、分类选择和主题切换。200% 等效视口下检查底栏与列表位置。 |
+| Debian 13 | 在本机虚拟机使用隔离的 Linux x64 服务及 X11 GTK/WebKit 桌面。扫描、三种文件导出、中文文件保存、地址校验和通过工具栏关闭桌面实例均通过。 |
+
+## v1.7 初次验证
+
+| 范围 | 完成的验证 |
+| --- | --- |
+| Windows 11 原生窗口 | 从中文和空格路径启动，实扫保留示例站，导出 Clash/Mihomo、Rule Provider 与 sing-box。正常关闭、采集中关闭、强制退出和启动恢复通过。扫描停止后核对临时 Profile、所属进程和监听端口。 |
+| 网页浏览器 | Chrome、Edge、Playwright Firefox 和 Playwright WebKit 通过真实隔离站扫描、弱网终态补取、精确主机筛选、脱敏历史重扫保护及三种文件下载。320×256 等效视口使用键盘和鼠标滚轮到达导出按钮。 |
+| 辅助采集 | 使用独立 Chromium 窗口记录 SPA 路由、标题与 HTTP 503 导航，达到页面数上限后结束采集。 |
+| Debian 13 | 普通用户运行 Linux amd64 无头服务及隔离 X11 桌面，实扫保留示例站并生成三种规则。验证原生保存、服务关闭、gzip 资源传输及数据目录权限。 |
+| HTTPS 反代 | 使用临时 Caddy 和独立 TLS CA，本地验证匿名访问页面/API/SSE 返回 401，有权访问并获得扫描终态事件。 |
+| 容器配置 | 中文和空格目录下的默认及 AppArmor Compose 配置检查通过，Debian 完成 AppArmor 语法编译。容器完整启动和容器内 Chromium 沙箱状态待运行环境复核。 |
+| 代码与依赖 | 前端、Go 全包、Go vet、真实浏览器、上游规则和 DNS 检查通过。生产 npm 审计无公告命中。 |
+
+本地便携 EXE 未签名，另一台电脑需要 WebView2 Runtime 和已安装的 Chromium 系浏览器。实际 iOS/Safari、Android、Windows 10、企业安全策略与不同物理网络环境仍需复验。CSS 视口模拟提供了布局覆盖。
+
+开发依赖 picomatch 4.0.7 仍有上游未修复的公告。它只由构建与测试工具处理仓库内的匹配表达式，便携成品的运行依赖不包含该 Node 模块。 [GitHub 安全公告](https://github.com/advisories/GHSA-fc5q-39xc-vjpf) · [v1.6 历史验收](https://github.com/Kokomi-maomeng/Castorice-WebRuleAnalyzer/blob/v1.6/docs/TEST-REPORT.md)

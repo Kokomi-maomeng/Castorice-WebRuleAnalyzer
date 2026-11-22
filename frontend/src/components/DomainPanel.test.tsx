@@ -33,6 +33,10 @@ const domains: DomainRecord[] = [
     source: "browser-observed",
   },
 ];
+const { mockCopy } = vi.hoisted(() => ({
+  mockCopy: vi.fn(async () => {}),
+}));
+vi.mock("../services/api", () => ({ copy: mockCopy }));
 describe("观察域名面板", () => {
   it("保留第三方观察域名，IP 不可作为普通域名导出", () => {
     const toggle = vi.fn();
@@ -58,7 +62,7 @@ describe("观察域名面板", () => {
     );
     expect(toggle).toHaveBeenCalledWith("cdn.thirdparty.com");
   });
-  it("合并模式仍然只展示传入的观察清单，域名可跳转关联请求", () => {
+  it("点整行打开关联请求，勾选和复制各自独立", () => {
     const onRequests = vi.fn();
     render(
       <DomainPanel
@@ -73,8 +77,16 @@ describe("观察域名面板", () => {
       />,
     );
     expect(screen.getByText("已选 1 个域名")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "app.example.com" }));
+    fireEvent.click(screen.getByText("Document · Fetch"));
     expect(onRequests).toHaveBeenCalledWith("app.example.com");
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: "选择 app.example.com" }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "复制 app.example.com" }),
+    );
+    expect(mockCopy).toHaveBeenCalledWith("app.example.com");
+    expect(onRequests).toHaveBeenCalledTimes(1);
     fireEvent.change(screen.getByRole("textbox", { name: "搜索域名" }), {
       target: { value: "missing" },
     });

@@ -31,19 +31,22 @@ type dnsCache struct {
 // reinterpreted; the independently resolved result is revalidated by Policy. The
 // TLS endpoint is pinned to 1.1.1.1 with normal hostname/certificate checks.
 type AutoResolver struct {
-	OnFallback  func(string)
-	System      Resolver
-	Independent bool
-	endpoint    string
-	client      *http.Client
-	mu          sync.Mutex
-	cache       map[string]dnsCache
+	OnFallback    func(string)
+	System        Resolver
+	Independent   bool
+	endpoint      string
+	client        *http.Client
+	mu            sync.Mutex
+	cache         map[string]dnsCache
+	AllowsAddress func(netip.Addr) bool
 }
 
 func ValidDNSProvider(provider string) bool {
 	return provider == "" || provider == "cloudflare" || provider == "google"
 }
-func NewAutoResolver() *AutoResolver { return NewResolver("auto", "", "") }
+func IsFakeAddress(ip netip.Addr) bool {
+	return fakeIPPrefix.Contains(ip.Unmap()) || fakeIPv6Prefix.Contains(ip)
+}
 func NewResolver(mode, provider, upstream string) *AutoResolver {
 	endpoint, addresses := "cloudflare-dns.com:443", []string{"1.1.1.1:443", "1.0.0.1:443"}
 	if provider == "google" {
@@ -77,9 +80,9 @@ func (r *AutoResolver) LookupNetIP(ctx context.Context, network, host string) ([
 		}
 		hasFake := false
 		for _, ip := range ips {
-			if fakeIPPrefix.Contains(ip.Unmap()) || fakeIPv6Prefix.Contains(ip) {
+			if IsFakeAddress(ip) {
 				hasFake = true
-			} else if !PublicIP(ip) {
+			} else if !PublicIP(ip) || r.AllowsAddress != nil && !r.AllowsAddress(ip) {
 				return ips, nil
 			}
 		}

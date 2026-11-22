@@ -3,19 +3,22 @@ import {
   Alert,
   Box,
   Button,
+  Checkbox,
   CircularProgress,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
+  FormControlLabel,
   IconButton,
   Stack,
   Typography,
 } from "@mui/material";
 import { CloseRounded, ContentCopyRounded } from "@mui/icons-material";
 import { api, copy } from "../services/api";
-import type { NetworkDiagnosis, ScanOptions } from "../types";
+import type { DNSCheck, NetworkDiagnosis, ScanOptions } from "../types";
 import { errorMessage } from "../utils/format";
+import { scanAddressIssue } from "../utils/scanAddress";
 import DiagnosticAlert from "./DiagnosticAlert";
 import NetworkOptions from "./NetworkOptions";
 
@@ -23,6 +26,7 @@ export default function NetworkDialog(p: {
   open: boolean;
   onClose: () => void;
   url: string;
+  label?: string;
   options: ScanOptions;
   onApply: (o: ScanOptions) => void;
   notify: (s: string) => void;
@@ -32,6 +36,7 @@ export default function NetworkDialog(p: {
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const generation = useRef(0);
+  const [compareSecure, setCompareSecure] = useState(false);
   useEffect(
     () => () => {
       generation.current++;
@@ -47,10 +52,12 @@ export default function NetworkDialog(p: {
       const data = await api<NetworkDiagnosis>("/network/diagnose", "POST", {
         url: p.url,
         options: draft,
+        compare_secure: compareSecure,
+        root_only: true,
       });
       if (g === generation.current) setResult(data);
     } catch (e) {
-      if (g === generation.current) setError(errorMessage(e));
+      if (g === generation.current) setError(scanAddressIssue(e));
     } finally {
       if (g === generation.current) setBusy(false);
     }
@@ -81,9 +88,30 @@ export default function NetworkDialog(p: {
       </DialogTitle>
       <DialogContent dividers>
         <Typography sx={{ mb: 2, overflowWrap: "anywhere" }}>
-          检测目标：{p.url || "请先在主界面输入网站"}
+          {p.label ? `检测目标：${p.label}` : "请在主界面填写有效的域名。"}
         </Typography>
         <NetworkOptions options={draft} onChange={change} />
+        {draft.dns_mode === "secure" ? (
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            选择独立安全 DNS 会将公网目标名交给{" "}
+            {draft.dns_provider === "google" ? "Google" : "Cloudflare"} 解析。
+          </Typography>
+        ) : (
+          <FormControlLabel
+            sx={{ mt: 1 }}
+            control={
+              <Checkbox
+                checked={compareSecure}
+                disabled={busy}
+                onChange={(_, checked) => {
+                  setCompareSecure(checked);
+                  setResult(undefined);
+                }}
+              />
+            }
+            label={`另用 ${draft.dns_provider === "google" ? "Google" : "Cloudflare"} HTTPS DNS 对照解析`}
+          />
+        )}
         <Button
           sx={{ my: 2 }}
           variant="outlined"
@@ -97,14 +125,21 @@ export default function NetworkDialog(p: {
         {result && (
           <Stack className="motion-panel" sx={{ gap: 1 }}>
             <Typography variant="body2">连接路径：{result.route}</Typography>
-            {[
-              ["系统解析", result.system],
-              ["独立安全解析", result.secure],
-            ].map(([label, check]) => {
-              const value = check as NetworkDiagnosis["system"];
+            {result.secure_note && (
+              <Typography variant="body2" color="text.secondary">
+                {result.secure_note}
+              </Typography>
+            )}
+            {(
+              [
+                ["系统解析", result.system],
+                ["独立安全解析", result.secure],
+              ] as [string, DNSCheck | undefined][]
+            ).map(([label, value]) => {
+              if (!value) return null;
               return (
                 <Box
-                  key={label as string}
+                  key={label}
                   sx={{
                     p: 1.5,
                     border: 1,
@@ -112,9 +147,7 @@ export default function NetworkDialog(p: {
                     borderRadius: 2,
                   }}
                 >
-                  <Typography sx={{ fontWeight: 600 }}>
-                    {label as string}
-                  </Typography>
+                  <Typography sx={{ fontWeight: 600 }}>{label}</Typography>
                   <Typography
                     className="mono"
                     sx={{ overflowWrap: "anywhere", my: 0.5 }}

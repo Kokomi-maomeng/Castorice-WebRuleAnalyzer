@@ -110,7 +110,7 @@ func Match(target string, observed []model.DomainRecord, categories []model.Rule
 		if len(best) == 0 {
 			continue
 		}
-		hit := model.RuleMatch{CategoryID: c.ID, Category: c.Name, Source: c.Source, Version: c.Version, Broad: c.Broad, Confidence: "low", Relation: "dependency", MatchedDomains: []string{}, Evidence: []model.RuleEvidence{}, Reasons: []string{}}
+		hit := model.RuleMatch{CategoryID: c.ID, Category: c.Name, Source: c.Source, Version: c.Version, Path: c.Path, Broad: c.Broad, Confidence: "low", Relation: "dependency", MatchedDomains: []string{}, Evidence: []model.RuleEvidence{}, Reasons: []string{}}
 		targetSpecificity := 0
 		for i, host := range hosts {
 			rule, ok := best[i]

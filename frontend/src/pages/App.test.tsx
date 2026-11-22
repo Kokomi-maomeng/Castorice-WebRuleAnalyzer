@@ -8,10 +8,15 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
-import { defaultSettings } from "../utils/format";
+import { defaultSettings } from "../test-settings";
+import { APIError } from "../services/api";
 import type { ScanTask } from "../types";
 const { mockAPI } = vi.hoisted(() => ({ mockAPI: vi.fn() }));
-vi.mock("../services/api", () => ({ api: mockAPI, copy: vi.fn() }));
+vi.mock("../services/api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../services/api")>()),
+  api: mockAPI,
+  copy: vi.fn(),
+}));
 const task: ScanTask = {
   id: "saved",
   target_url: "https://example.com",
@@ -43,28 +48,42 @@ beforeEach(() => {
   localStorage.clear();
   FakeEventSource.instances = [];
   vi.stubGlobal("EventSource", FakeEventSource);
-  mockAPI.mockImplementation(async (path: string) => {
-    if (path === "/settings") return defaultSettings;
-    if (path === "/health") return { visible_browser: true };
-    if (path === "/scans") return [task];
-    if (path.startsWith("/scans/history?"))
-      return { items: [task], total: 1, finished_count: 1 };
-    if (path === "/scans/saved") return task;
-    if (path.endsWith("/domains"))
-      return [
-        {
-          hostname: "example.com",
-          kind: "domain",
-          first_seen: task.started_at,
-          request_count: 57,
-          resource_types: ["Document"],
-          request_ids: [],
-          source: "browser-observed",
-        },
-      ];
-    if (path.includes("/requests?")) return { items: [], total: 57 };
-    return [];
-  });
+  mockAPI.mockImplementation(
+    async (path: string, _method?: string, body?: { url: string }) => {
+      if (path === "/settings") return defaultSettings;
+      if (path === "/health") return { visible_browser: true };
+      if (path === "/scans/target" && body) {
+        const input = new URL(
+          /^https?:\/\//.test(body.url) ? body.url : "https://" + body.url,
+        );
+        return {
+          host: input.hostname,
+          url: input.origin + "/",
+          removed_prefix: /^https?:\/\//.test(body.url),
+          removed_suffix:
+            input.pathname !== "/" || !!input.search || !!input.hash,
+        };
+      }
+      if (path === "/scans") return [task];
+      if (path.startsWith("/scans/history?"))
+        return { items: [task], total: 1, finished_count: 1 };
+      if (path === "/scans/saved") return task;
+      if (path.endsWith("/domains"))
+        return [
+          {
+            hostname: "example.com",
+            kind: "domain",
+            first_seen: task.started_at,
+            request_count: 57,
+            resource_types: ["Document"],
+            request_ids: [],
+            source: "browser-observed",
+          },
+        ];
+      if (path.includes("/requests?")) return { items: [], total: 57 };
+      return [];
+    },
+  );
 });
 afterEach(() => {
   cleanup();
@@ -92,19 +111,40 @@ describe("清空工作区", () => {
     await openHistory();
   });
 
-  it("新地址未启动时明确标识上一任务结果，不把旧结果当作新分析", async () => {
+  it("旧版脱敏历史保留结果，输入框等待重新填写域名", async () => {
+    const original = mockAPI.getMockImplementation()!;
+    const old = {
+      ...task,
+      target_url: "https://example.com/path?item=%5BREDACTED%5D",
+      target_redacted: true,
+    };
+    mockAPI.mockImplementation((path: string, ...args: unknown[]) =>
+      path.startsWith("/scans/history?")
+        ? Promise.resolve({ items: [old], total: 1, finished_count: 1 })
+        : path === "/scans/saved"
+          ? Promise.resolve(old)
+          : original(path, ...args),
+    );
+    render(<App />);
+    await openHistory();
+    expect(screen.getByRole("textbox", { name: "要分析的网站" })).toHaveValue(
+      "",
+    );
+    expect(screen.getByText(/历史域名 example.com/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "开始采集" })).toBeDisabled();
+  });
+
+  it("从输入框提示新地址的 DNS 错误并保留上次结果", async () => {
     const original = mockAPI.getMockImplementation()!;
     mockAPI.mockImplementation(
       (path: string, method?: string, ...args: unknown[]) => {
         if (path === "/scans" && method === "POST")
           return Promise.reject(
-            Object.assign(new Error("系统解析返回回环地址"), {
-              diagnostic: {
-                code: "dns_non_public",
-                stage: "safety",
-                message: "系统解析返回回环地址",
-                hint: "请运行网络诊断",
-              },
+            new APIError("系统解析返回回环地址", 400, "dns_non_public", {
+              code: "dns_non_public",
+              stage: "safety",
+              message: "系统解析返回回环地址",
+              hint: "请运行网络诊断",
             }),
           );
         return original(path, method, ...args);
@@ -115,9 +155,15 @@ describe("清空工作区", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "要分析的网站" }), {
       target: { value: "target.example.net" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "开始采集" }));
-    await screen.findByText(/本次未启动；下方仍显示上一任务/);
-    expect(screen.getByText("请运行网络诊断")).toBeInTheDocument();
+    fireEvent.submit(screen.getByRole("textbox", { name: "要分析的网站" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "查看地址问题" }),
+    );
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+      /解析到了非公网地址/,
+    );
+    expect(screen.queryByText("请运行网络诊断")).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
     expect(
       screen.getByRole("button", { name: "example.com" }),
     ).toBeInTheDocument();
@@ -219,9 +265,39 @@ describe("清空工作区", () => {
   });
 });
 
+it("清理粘贴地址并保留实际连接协议和端口", async () => {
+  const original = mockAPI.getMockImplementation()!;
+  mockAPI.mockImplementation(
+    (path: string, method?: string, ...args: unknown[]) =>
+      path === "/scans" && method === "POST"
+        ? Promise.resolve({
+            ...task,
+            target_url: "example.com",
+            target_scheme: "http",
+            target_port: "8080",
+          })
+        : original(path, method, ...args),
+  );
+  render(<App />);
+  const input = await screen.findByRole("textbox", { name: "要分析的网站" });
+  fireEvent.paste(input, {
+    clipboardData: { getData: () => "http://example.com:8080/path?test=value" },
+  });
+  await screen.findByText("已自动清除前缀、路径或参数");
+  expect(input).toHaveValue("example.com");
+  fireEvent.submit(input);
+  await waitFor(() =>
+    expect(mockAPI).toHaveBeenCalledWith("/scans", "POST", {
+      url: "http://example.com:8080/",
+      options: defaultSettings.scan,
+      root_only: true,
+    }),
+  );
+});
+
 it("按模式显示有效参数并从高级配置打开网络诊断", async () => {
   render(<App />);
-  const advanced = screen.getByRole("button", { name: "高级配置" });
+  const advanced = await screen.findByRole("button", { name: "高级配置" });
   await waitFor(() => expect(advanced).toBeEnabled());
   expect(screen.queryByRole("button", { name: "网络诊断" })).toBeNull();
   fireEvent.click(advanced);
@@ -239,7 +315,9 @@ it("按模式显示有效参数并从高级配置打开网络诊断", async () =
   const pages = panel.getByLabelText("最多页面");
   fireEvent.change(pages, { target: { value: "" } });
   fireEvent.blur(pages);
-  expect(pages).toHaveValue(1);
+  expect(pages).toBeInvalid();
+  fireEvent.change(pages, { target: { value: "2" } });
+  expect(pages).toBeValid();
   fireEvent.click(panel.getByRole("button", { name: "扫描模式，自动探索" }));
   fireEvent.click(screen.getByRole("button", { name: "辅助交互" }));
   expect(panel.getByLabelText("最多页面")).toBeInTheDocument();

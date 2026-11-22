@@ -8,7 +8,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import ExportDialog from "./ExportDialog";
-import { defaultSettings } from "../utils/format";
+import { defaultSettings } from "../test-settings";
 import type {
   DomainRecord,
   ExportJob,
@@ -81,7 +81,7 @@ beforeEach(() => {
   mockAPI.mockImplementation(
     async (path: string, _method: string, body?: { excluded?: string[] }) => {
       if (path === "/rules/categories") return [];
-      if (path === "/rules/sources") return emptySources;
+      if (path.startsWith("/rules/sources")) return emptySources;
       if (body?.excluded?.length) throw new Error("没有可导出的已选择域名规则");
       return output;
     },
@@ -90,6 +90,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+  vi.unstubAllGlobals();
 });
 describe("导出预览", () => {
   const category: RuleCategory = {
@@ -116,12 +117,115 @@ describe("导出预览", () => {
       />,
     );
   }
+  it("缺库时标记合并选项与分类，在两套来源下载期间保持进度，失败后可继续下载", async () => {
+    vi.useFakeTimers();
+    let sources = emptySources;
+    const transfers = new Map<
+      string,
+      { complete: () => void; fail: (error: Error) => void }
+    >();
+    mockAPI.mockImplementation(
+      async (path: string, _method: string, body?: { source?: string }) => {
+        if (path.startsWith("/rules/sources")) return sources;
+        if (path === "/rules/categories")
+          return sources.some(({ category_count }) => category_count)
+            ? [category]
+            : [];
+        if (path === "/rules/sync" && body?.source) {
+          return new Promise<void>((resolve, reject) => {
+            const id = body.source!;
+            transfers.set(id, {
+              complete: () => {
+                sources = sources.map((source) =>
+                  source.id === id
+                    ? { ...source, category_count: 1, status: "ready" }
+                    : source,
+                );
+                resolve();
+              },
+              fail: reject,
+            });
+          });
+        }
+        return output;
+      },
+    );
+    show("observed");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(200);
+    });
+    const merge = screen.getByRole("radio", { name: "合并规则库" });
+    fireEvent.click(merge);
+    const input = screen.getByRole("combobox", { name: "规则分类" });
+    expect(merge.closest("label")).toHaveAttribute("data-missing-library");
+    expect(input).toHaveAttribute("aria-invalid", "true");
+    fireEvent.click(screen.getByRole("button", { name: "查看规则库下载提示" }));
+    expect(screen.getByRole("tooltip")).toHaveTextContent(
+      "两套开源规则库尚未下载，下载后可搜索分类并合并",
+    );
+    const button = screen.getByRole("button", {
+      name: /^下载规则库$/,
+    });
+    fireEvent.click(button);
+    const progress = screen.getByRole("progressbar", {
+      name: "正在下载规则库",
+    });
+    expect(input.closest(".export-library-field")).toContainElement(progress);
+    expect(button).toBeDisabled();
+    await act(async () => {
+      transfers.get("blackmatrix7")!.complete();
+    });
+    expect(transfers.has("v2fly")).toBe(true);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(6200);
+    });
+    expect(progress).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "导出设置" }));
+    expect(progress).toBeInTheDocument();
+    await act(async () => {
+      transfers.get("v2fly")!.fail(new Error("服务响应超时"));
+    });
+    expect(
+      screen.queryByRole("progressbar", { name: "正在下载规则库" }),
+    ).toBeNull();
+    expect(screen.getByText(/服务响应超时/)).toBeInTheDocument();
+    expect(input).toHaveAttribute("aria-invalid", "true");
+    fireEvent.click(button);
+    await act(async () => {
+      transfers.get("v2fly")!.complete();
+    });
+    expect(screen.queryByRole("button", { name: /^下载规则库$/ })).toBeNull();
+    expect(input).toHaveAttribute("aria-invalid", "false");
+    expect(merge.closest("label")).not.toHaveAttribute("data-missing-library");
+  });
+  it("文件名称移到操作区，清空后禁用软件目录保存并保留默认文件名", async () => {
+    vi.stubGlobal("castoriceDesktop", { version: "v1.7" });
+    show("observed");
+    const name = screen.getByRole("textbox", { name: "文件名称" });
+    expect(name.closest(".export-actions")).not.toBeNull();
+    expect(name).toHaveValue("castorice-rules");
+    const save = screen.getByRole("button", { name: "保存到软件目录" });
+    await waitFor(() => expect(save).toBeEnabled());
+    fireEvent.change(name, { target: { value: "  " } });
+    expect(save).toBeDisabled();
+    fireEvent.click(save);
+    expect(mockDownload).not.toHaveBeenCalled();
+    expect(name).toHaveAttribute("placeholder", "castorice-rules");
+    fireEvent.change(name, { target: { value: "自定义文件" } });
+    await waitFor(() => expect(save).toBeEnabled());
+    expect(mockAPI).toHaveBeenCalledWith(
+      "/export",
+      "POST",
+      expect.objectContaining({ filename: "自定义文件" }),
+      expect.anything(),
+    );
+  });
   it("分类输入后才显示候选，轮询与新分类对象不清除搜索内容", async () => {
     vi.useFakeTimers();
     let version = "one";
     mockAPI.mockImplementation(async (path: string) => {
       if (path === "/rules/categories") return [{ ...category, version }];
-      if (path === "/rules/sources") return [];
+      if (path.startsWith("/rules/sources")) return [];
       return output;
     });
     show();
@@ -162,7 +266,7 @@ describe("导出预览", () => {
     let finish: ((c: RuleCategory) => void) | undefined;
     mockAPI.mockImplementation(async (path: string) => {
       if (path === "/rules/categories") return [{ ...category, loaded }];
-      if (path === "/rules/sources") return [];
+      if (path.startsWith("/rules/sources")) return [];
       if (path === "/rules/load")
         return new Promise<RuleCategory>((resolve) => {
           finish = resolve;
@@ -227,7 +331,7 @@ describe("导出预览", () => {
     mockAPI.mockImplementation(async (path: string) =>
       path === "/rules/categories"
         ? []
-        : path === "/rules/sources"
+        : path.startsWith("/rules/sources")
           ? []
           : { ...output, entries },
     );
@@ -261,8 +365,7 @@ describe("导出预览", () => {
     expect(
       screen.getByRole("checkbox", { name: "导出 DOMAIN,covered.example.com" }),
     ).toBeInTheDocument();
-    fireEvent.mouseDown(screen.getByRole("combobox", { name: "导出范围" }));
-    fireEvent.click(screen.getByRole("option", { name: "仅抓取结果" }));
+    fireEvent.click(screen.getByRole("radio", { name: "仅抓取结果" }));
     fireEvent.mouseDown(filter);
     expect(
       screen.queryByRole("option", { name: "规则库补充" }),
@@ -285,7 +388,7 @@ describe("导出预览", () => {
       async (path: string, _method: string, body?: { id?: string }) => {
         if (path === "/rules/categories")
           return [{ ...category, loaded: false }, second];
-        if (path === "/rules/sources") return [];
+        if (path.startsWith("/rules/sources")) return [];
         if (path === "/rules/load")
           return new Promise<RuleCategory>((resolve) =>
             pending.set(body!.id!, resolve),
@@ -369,7 +472,7 @@ describe("导出预览", () => {
     mockAPI.mockImplementation(
       async (path: string, _method: string, body?: ExportJob) => {
         if (path === "/rules/categories") return [category()];
-        if (path === "/rules/sources") return [];
+        if (path.startsWith("/rules/sources")) return [];
         if (body?.category_versions?.["v2fly:app"] !== version + ":hash")
           throw Object.assign(new Error("规则已更新"), { status: 409 });
         return { ...output, content: version };
@@ -407,6 +510,7 @@ describe("导出预览", () => {
         expect.objectContaining({
           category_versions: { "v2fly:app": "two:hash" },
         }),
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
       ),
     );
     expect(mockDownload).not.toHaveBeenCalled();
@@ -419,6 +523,17 @@ describe("导出预览", () => {
         output.mime,
       ),
     );
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "校验并准备复制" }),
+      ).toBeEnabled(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "校验并准备复制" }));
+    const copyButton = await screen.findByRole("button", { name: "复制内容" });
+    await waitFor(() => expect(copyButton).toBeEnabled());
+    expect(mockCopy).not.toHaveBeenCalled();
+    fireEvent.click(copyButton);
+    expect(mockCopy).toHaveBeenCalledWith("two");
   });
   it("全部取消后仍可恢复条目，错误时禁止下载旧内容", async () => {
     render(
@@ -492,7 +607,7 @@ describe("导出预览", () => {
     mockAPI.mockImplementation(
       async (path: string, _method: string, body?: { source?: string }) => {
         if (path === "/rules/categories") return downloaded ? [category] : [];
-        if (path === "/rules/sources")
+        if (path.startsWith("/rules/sources"))
           return downloaded
             ? emptySources.map((s) => ({
                 ...s,
@@ -565,7 +680,7 @@ describe("导出预览", () => {
     mockAPI.mockImplementation(async (path: string) =>
       path === "/rules/categories"
         ? []
-        : path === "/rules/sources"
+        : path.startsWith("/rules/sources")
           ? emptySources
           : { ...output, entries },
     );
@@ -620,7 +735,7 @@ describe("导出预览", () => {
     mockAPI.mockImplementation(async (path: string) =>
       path === "/rules/categories"
         ? []
-        : path === "/rules/sources"
+        : path.startsWith("/rules/sources")
           ? emptySources
           : { ...output, content },
     );
@@ -655,7 +770,7 @@ describe("导出预览", () => {
     mockAPI.mockImplementation(
       async (path: string, _method: string, job?: ExportJob) => {
         if (path === "/rules/categories") return [];
-        if (path === "/rules/sources") return emptySources;
+        if (path.startsWith("/rules/sources")) return emptySources;
         if (job?.policy === "old")
           return new Promise<ExportResult>((resolve) => {
             resolveOld = resolve;

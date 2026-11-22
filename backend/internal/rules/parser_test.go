@@ -1,11 +1,16 @@
 package rules
 
 import (
+	"context"
 	"strings"
 	"testing"
 
 	"github.com/castorice/Castorice-WebRuleAnalyzer/backend/internal/model"
 )
+
+func (p *DLCParser) Parse(name string) ([]model.RuleEntry, []string, error) {
+	return p.ParseContext(context.Background(), name)
+}
 
 func TestClashTypesAndUnsupported(t *testing.T) {
 	content := []byte("payload:\n  - DOMAIN,EXAMPLE.com.\n  - DOMAIN,example.com\n  - DOMAIN-SUFFIX,example.org\n  - DOMAIN-KEYWORD,service\n  - IP-CIDR,1.1.1.0/24\n  - DOMAIN,1.1.1.1\n  - AND,((DOMAIN,example.net))\n")

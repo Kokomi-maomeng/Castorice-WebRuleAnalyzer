@@ -1,0 +1,5 @@
+# Use on an AppArmor host that restricts unprivileged user namespaces.
+services:
+  analyzer:
+    security_opt:
+      - apparmor:castorice-browser

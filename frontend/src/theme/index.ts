@@ -1,4 +1,7 @@
 import { createTheme } from "@mui/material/styles";
+
+const smallFieldHeight = 40;
+
 export const makeTheme = (dark: boolean, reducedMotion = false) =>
   createTheme({
     transitions: {
@@ -22,6 +25,7 @@ export const makeTheme = (dark: boolean, reducedMotion = false) =>
       mode: dark ? "dark" : "light",
       primary: { main: dark ? "#c9b5ff" : "#6c4eab" },
       secondary: { main: dark ? "#8ed6c3" : "#287a69" },
+      warning: { main: dark ? "#ffb86b" : "#974400" },
       background: {
         default: dark ? "#121116" : "#f7f6fa",
         paper: dark ? "#1e1c23" : "#ffffff",
@@ -50,8 +54,36 @@ export const makeTheme = (dark: boolean, reducedMotion = false) =>
       },
       MuiPaper: { defaultProps: { elevation: 0 } },
       MuiTextField: { defaultProps: { size: "small" } },
-      MuiOutlinedInput: { styleOverrides: { root: { borderRadius: 12 } } },
-      MuiDialog: { styleOverrides: { paper: { borderRadius: 10 } } },
+      MuiOutlinedInput: {
+        styleOverrides: {
+          root: {
+            borderRadius: 12,
+            "&.MuiInputBase-sizeSmall": { minHeight: smallFieldHeight },
+          },
+        },
+      },
+      MuiInputLabel: {
+        styleOverrides: {
+          root: {
+            "&.MuiInputLabel-outlined.MuiInputLabel-sizeSmall:not(.MuiInputLabel-shrink)":
+              {
+                transform: `translate(14px, calc(${smallFieldHeight / 2}px - .5lh)) scale(1)`,
+              },
+          },
+        },
+      },
+      MuiDialog: {
+        styleOverrides: {
+          paper: {
+            borderRadius: 10,
+            "@media (max-width: 560px), (max-height: 560px)": {
+              margin: 8,
+              maxHeight: "calc(100% - 16px)",
+              "&.MuiDialog-paperFullWidth": { width: "calc(100% - 16px)" },
+            },
+          },
+        },
+      },
       MuiTableCell: {
         styleOverrides: {
           head: { fontWeight: 650 },

@@ -1,6 +1,9 @@
 .git
 .runtime
 dist
+data
+exports
+**/access-password
 frontend/node_modules
 backend/internal/webui/dist/assets
 *.log

@@ -26,6 +26,7 @@ import (
 	"github.com/castorice/Castorice-WebRuleAnalyzer/backend/internal/model"
 	"github.com/castorice/Castorice-WebRuleAnalyzer/backend/internal/portable"
 	"github.com/castorice/Castorice-WebRuleAnalyzer/backend/internal/scanner"
+	"github.com/castorice/Castorice-WebRuleAnalyzer/backend/internal/storage"
 	"github.com/jchv/go-webview2"
 	"github.com/jchv/go-webview2/webviewloader"
 	"golang.org/x/sys/windows"
@@ -76,9 +77,6 @@ func Supervisor() error {
 		return errors.New("此软件目录已有实例运行，或目录不可写。请先关闭原窗口。")
 	}
 	defer windows.CloseHandle(lock)
-	if err = scanner.CleanSessions(p.Sessions); err != nil {
-		return err
-	}
 	if err = p.ClearTemp(); err != nil {
 		return err
 	}
@@ -154,7 +152,12 @@ func Supervisor() error {
 	cleanupErrors := []string{}
 	if remaining == 0 {
 		// Only marked profiles are removed, including those left after a hard crash.
-		if e := scanner.CleanSessions(p.Sessions); e != nil {
+		if lock, e := storage.LockData(p.Data); e == nil {
+			if e = scanner.CleanSessions(p.Sessions); e != nil {
+				cleanupErrors = append(cleanupErrors, e.Error())
+			}
+			_ = lock.Close()
+		} else if !errors.Is(e, storage.ErrDataInUse) {
 			cleanupErrors = append(cleanupErrors, e.Error())
 		}
 		if e := p.ClearTemp(); e != nil {
@@ -242,13 +245,17 @@ func Worker(gate string) error {
 		return err
 	}
 	defer service.Close()
-	w := webview2.NewWithOptions(webview2.WebViewOptions{DataPath: p.WebView, AutoFocus: true, WindowOptions: webview2.WindowOptions{Title: "Castorice-WebRuleAnalyzer " + model.Version + " · Web分流规则分析器", Width: 1280, Height: 800, Center: true, IconId: 1}})
-	if w == nil {
-		return errors.New("WebView2 窗口初始化失败，请查看 data/logs/application.log")
+	frame, err := newWindowsFrame(webview2.WebViewOptions{DataPath: p.WebView, AutoFocus: true, WindowOptions: webview2.WindowOptions{
+		Title: "Castorice-WebRuleAnalyzer " + model.Version + " · Web分流规则分析器",
+		Width: windowWidth, Height: windowHeight, Center: true, IconId: 1,
+	}})
+	if err != nil {
+		return err
 	}
+	w := frame.view
 	defer w.Destroy()
-	w.SetSize(720, 480, webview2.HintMin)
-	if err = installWindowBar(w, service.URL, p); err != nil {
+	w.SetSize(minWindowWidth, minWindowHeight, webview2.HintMin)
+	if err = frame.installBridge(service.URL, p); err != nil {
 		return err
 	}
 	if testingWindow {
@@ -256,7 +263,7 @@ func Worker(gate string) error {
 		// as the title-bar close button. Absent in ordinary application windows.
 		_ = w.Bind("__castoriceTestClose", func() {
 			w.Dispatch(func() {
-				postMessage.Call(uintptr(w.Window()), 0x0010, 0, 0)
+				postMessage.Call(uintptr(w.Window()), wmClose, 0, 0)
 			})
 		})
 	}

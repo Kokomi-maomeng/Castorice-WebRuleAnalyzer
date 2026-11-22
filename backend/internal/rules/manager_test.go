@@ -25,7 +25,7 @@ func TestLiveRuleSourcesAndOfflineCache(t *testing.T) {
 	if os.Getenv("CASTORICE_RULES_LIVE") != "1" {
 		t.Skip("设置 CASTORICE_RULES_LIVE=1 下载并验证真实 GitHub 规则源")
 	}
-	store, err := storage.Open(filepath.Join(t.TempDir(), "rules.db"))
+	store, err := storage.Open(filepath.Join(t.TempDir(), "data", "rules.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

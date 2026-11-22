@@ -48,7 +48,7 @@ func TestInputErrorDetailsAndInternalDiagnosis(t *testing.T) {
 	var body struct {
 		Data model.NetworkDiagnosis `json:"data"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil || body.Data.Connected || body.Data.Connection == nil || body.Data.Connection.Code != "target_non_public" {
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil || body.Data.Connected || body.Data.Secure != nil || body.Data.Connection == nil || body.Data.Connection.Code != "target_non_public" {
 		t.Fatal(body, err)
 	}
 }

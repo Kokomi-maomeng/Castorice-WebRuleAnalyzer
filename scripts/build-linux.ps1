@@ -32,12 +32,20 @@ $launcher = $launcher.Replace("`r`n", "`n") + "`n"
 [IO.File]::WriteAllText((Join-Path $packageDir 'start.sh'),$launcher,[Text.UTF8Encoding]::new($false))
 $dockerfile=Join-Path $projectRoot 'deploy/Dockerfile.runtime'
 Copy-Item -LiteralPath $dockerfile -Destination (Join-Path $packageDir 'Dockerfile') -Force
-Copy-Item -LiteralPath (Join-Path $projectRoot 'compose.yaml') -Destination $packageDir -Force
+Copy-Item -LiteralPath (Join-Path $projectRoot 'compose.yaml'), (Join-Path $projectRoot 'compose.apparmor.yaml') -Destination $packageDir -Force
 New-Item -ItemType Directory -Path (Join-Path $packageDir 'deploy') -Force | Out-Null
-Copy-Item -LiteralPath (Join-Path $projectRoot 'deploy/castorice-browser.apparmor') -Destination (Join-Path $packageDir 'deploy') -Force
+foreach ($file in @('castorice-browser.apparmor', 'castorice-seccomp.json', 'LICENSE-moby-profiles', 'README.md', 'Caddyfile.example', 'castorice.service.example')) {
+ Copy-Item -LiteralPath (Join-Path $projectRoot "deploy/$file") -Destination (Join-Path $packageDir 'deploy') -Force
+}
 & (Join-Path $PSScriptRoot 'collect-licenses.ps1') -OutputFile (Join-Path $packageDir 'THIRD-PARTY-LICENSES.txt')
 $hash=(Get-FileHash -LiteralPath (Join-Path $packageDir 'castorice') -Algorithm SHA256).Hash.ToLowerInvariant()
 [IO.File]::WriteAllText((Join-Path $packageDir 'SHA256SUMS.txt'),$hash+'  castorice'+"`n")
 Write-Host "Linux package: $packageDir (Linux: chmod +x castorice start.sh)"
+& (Join-Path $PSScriptRoot 'write-build-info.ps1') -PackageDirectory $packageDir -Executable 'castorice' -Target 'linux/amd64'
+& node (Join-Path $PSScriptRoot 'check-package-links.mjs') $packageDir
+if($LASTEXITCODE -ne 0){throw 'Package document links failed'}
 & python (Join-Path $PSScriptRoot 'package-linux.py') $packageDir
 if($LASTEXITCODE -ne 0){throw 'Linux archive failed'}
+$archive=$packageDir+'.tar.gz'
+$archiveHash=(Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+[IO.File]::WriteAllText(($archive+'.sha256'),$archiveHash+'  '+(Split-Path $archive -Leaf)+"`n")

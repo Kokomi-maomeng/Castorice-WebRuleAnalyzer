@@ -1,12 +1,13 @@
 {
   "name": "castorice-webruleanalyzer",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "private": true,
   "type": "module",
   "scripts": {
     "prebuild": "node ../scripts/prepare-frontend.mjs",
     "dev": "vite --host 127.0.0.1",
     "build": "tsc -b && vite build",
+    "postbuild": "node ../scripts/compress-frontend.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "format": "prettier --write src",

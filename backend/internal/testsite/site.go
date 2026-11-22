@@ -49,7 +49,7 @@ func Handler(mappedHosts bool) http.Handler {
 	})
 	mux.HandleFunc("/script.js", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/javascript")
-		_, _ = fmt.Fprint(w, `setTimeout(()=>{const a=window.apiOrigin;fetch(a+'/api/data?token=fixture-secret').catch(()=>{});fetch(a+'/bad').catch(()=>{});fetch(a+'/disconnect').catch(()=>{});window.fixtureWS=new WebSocket(a.replace('http:','ws:')+'/ws');},100);setTimeout(()=>fetch(window.apiOrigin+'/api/late').catch(()=>{}),350);window.addEventListener('scroll',()=>fetch(window.apiOrigin+'/api/lazy').catch(()=>{}),{once:true});`)
+		_, _ = fmt.Fprint(w, `setTimeout(()=>{const a=window.apiOrigin;fetch(a+'/api/data?token=fixture-secret').catch(()=>{});fetch(a+'/bad').catch(()=>{});fetch(a+'/disconnect').catch(()=>{});window.fixtureWS=new WebSocket(a.replace('http:','ws:')+'/ws');},100);setTimeout(()=>fetch(window.apiOrigin+'/api/late').catch(()=>{}),350);window.addEventListener('scroll',()=>fetch(window.apiOrigin+'/api/lazy').catch(()=>{}),{once:true});window.addEventListener('hashchange',()=>{ if (location.hash === '#/spa') document.title = 'SPA fixture route'; });`)
 	})
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -64,6 +64,11 @@ func Handler(mappedHosts bool) http.Handler {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.WriteHeader(503)
 		_, _ = fmt.Fprint(w, "fixture unavailable")
+	})
+	mux.HandleFunc("/error-page", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(503)
+		_, _ = fmt.Fprint(w, `<!doctype html><title>Unavailable fixture page</title><p>503</p>`)
 	})
 	mux.HandleFunc("/disconnect", func(w http.ResponseWriter, r *http.Request) {
 		conn, _, err := w.(http.Hijacker).Hijack()

@@ -147,14 +147,13 @@ type dlcFile struct {
 	warnings []string
 }
 type DLCParser struct {
-	files           map[string]*dlcFile
-	source, version string
+	files map[string]*dlcFile
 }
 
 // Parse all source records before resolving includes, so affiliations (&target)
 // work even when the destination has no physical file in the repository.
 func NewDLCParser(files map[string][]byte, source, version string) (*DLCParser, error) {
-	p := &DLCParser{files: map[string]*dlcFile{}, source: source, version: version}
+	p := &DLCParser{files: map[string]*dlcFile{}}
 	ensure := func(name string) *dlcFile {
 		f := p.files[name]
 		if f == nil {
@@ -264,9 +263,6 @@ func (p *DLCParser) Names() []string {
 	}
 	sort.Strings(out)
 	return out
-}
-func (p *DLCParser) Parse(name string) ([]model.RuleEntry, []string, error) {
-	return p.ParseContext(context.Background(), name)
 }
 
 type resolvedFile struct {

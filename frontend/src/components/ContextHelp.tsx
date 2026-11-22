@@ -1,13 +1,15 @@
 import { useState, type ReactNode } from "react";
 import { IconButton, Tooltip } from "@mui/material";
-import { HelpOutlineRounded } from "@mui/icons-material";
+import { ErrorOutlineRounded, HelpOutlineRounded } from "@mui/icons-material";
 
 export default function ContextHelp({
   label,
   children,
+  error = false,
 }: {
   label: string;
   children: ReactNode;
+  error?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [pinned, setPinned] = useState(false);
@@ -23,11 +25,16 @@ export default function ContextHelp({
       open={open || pinned}
       onOpen={() => setOpen(true)}
       onClose={() => setOpen(false)}
-      placement="bottom-start"
-      slotProps={{ tooltip: { sx: { fontSize: 12, maxWidth: 340 } } }}
+      placement={error ? "bottom-end" : "bottom-start"}
+      arrow={error}
+      slotProps={{
+        tooltip: { sx: { fontSize: error ? 13 : 12, maxWidth: 340 } },
+      }}
     >
       <IconButton
         size="small"
+        type="button"
+        color={error ? "error" : "default"}
         aria-label={label}
         aria-pressed={pinned}
         onClick={() => (pinned ? close() : setPinned(true))}
@@ -39,7 +46,11 @@ export default function ContextHelp({
           }
         }}
       >
-        <HelpOutlineRounded fontSize="small" />
+        {error ? (
+          <ErrorOutlineRounded fontSize="small" />
+        ) : (
+          <HelpOutlineRounded fontSize="small" />
+        )}
       </IconButton>
     </Tooltip>
   );

@@ -27,7 +27,7 @@ flowchart LR
 ## 采集与生命周期
 
 - `manager.Start` 规范化/解析目标、校验参数、获取单任务槽，先保存任务再启动 Context 限时扫描。
-- `engine` 检测浏览器，创建独立临时 Profile 和逐连接校验代理。默认 headless，辅助交互可见。
+- 浏览器由服务从已检测的 Chrome、Edge、Chromium 列表选取。管理员可通过 CLI 指定可执行文件，网页输入只用于选择已有条目。引擎为每个任务创建临时 Profile 和逐连接校验代理。辅助交互使用服务端可见窗口。
 - 监听 requestWillBeSent、responseReceived、loadingFinished、loadingFailed、webSocketCreated、webSocketWillSendHandshakeRequest、webSocketHandshakeResponseReceived、webSocketClosed、webSocketFrameError，以及 SPA 路由/主框架导航事件。
 - 同 CDP RequestID 的重定向各跳生成不同记录 ID。耗时使用同一单调时钟差值；未完成请求不推测成功或完整耗时。WebSocket 不保存帧正文。
 - 事件回调只更新受互斥保护的内存记录。750ms 将脏请求、脏域名、新日志及小任务快照在一个 SQLite 事务批量写入；结束强制最终写入。
@@ -42,7 +42,7 @@ flowchart LR
 
 普通运行无法从 GUI/API 放开私网。测试程序只为精确 loopback IP:port 或 `.test:port → loopback IP` 开启显式内存白名单；既不接受网段或通配符，也不保存为用户偏好。
 
-默认本地服务只绑定回环地址；容器非回环监听需指定精确 public-url；校验 Host 防止 DNS Rebinding 访问 API；拒绝不同 Origin/cross-site 请求；写操作需同源获取的每次服务随机 CSRF 令牌。开发源只能由 `--dev-origin` 显式指定。API 不作为已实现的远程认证服务宣传。
+桌面和默认服务绑定回环。配置 `--public-url` 会对页面、API 与 SSE 启用单用户 HTTP Basic 认证，同时校验 Host 与 Origin。远程来源使用 HTTPS，写操作需要同源获取的服务令牌。服务自动生成独立密码或接受管理员配置的密码文件。开发来源通过 `--dev-origin` 显式配置。
 
 URL 查询参数值统一替换为 REDACTED，去掉凭据和片段，路径长令牌及已知 token/reset 等片段脱敏。数据模型没有请求头/正文/Cookie 字段。错误和日志经过同一 URL 脱敏器。UI 的“URL”因此是脱敏后的值，绝不声称与含认证参数的原文完全一致。
 
@@ -62,7 +62,9 @@ v1.2 按真实下载规则匹配每个观察主机，精确规则和更窄的标
 
 SQLite WAL、busy_timeout、单连接事务；任务、请求、域名、事件、规则来源、分类与设置独立表。请求 `(task_id,id)` 主键，索引 `(task_id,host,time)` 与 `(task_id,time)`；事件 ID 按任务递增；历史按开始时间倒序。结构化 payload 是统一 Go model 的 JSON，查询条件使用专用索引列及参数绑定。
 
-运行时只保留一个活动任务；已结束任务从 SQLite 分页读取。请求上限 20,000、日志内存窗口 2,000、覆盖账本 1,000；前端请求分页 50，域名/预览渐进加载。SSE 每 500ms 发送发生变化的任务快照，前端获取对应任务域名/请求页与增量日志；断线自动重连并补取完整状态，切换任务关闭旧连接且忽略迟到响应。
+服务在绑定端口和打开数据库前持有规范化数据目录的跨进程锁。崩溃恢复由成功取得锁和监听权的实例执行。Linux 数据目录需要 `0700`，SQLite 主文件与伴随文件使用 `0600`。重匹配仅更新仍存在的已结束记录，删除后的任务不会重新写入。
+
+运行时只保留一个活动任务。请求上限 20,000，日志窗口 2,000，请求每页 50。SSE 每 500ms 发送发生变化的快照，终态在事务提交后发送。前端合并刷新请求，在终态到达后重新读取域名、请求页和增量日志，补取成功后关闭事件流。切换任务会取消旧读取。
 
 ## HTTP API
 
@@ -78,7 +80,7 @@ SQLite WAL、busy_timeout、单连接事务；任务、请求、域名、事件�
 | GET /api/scans/{id} | 任务、参数、统计、页面、匹配 |
 | POST /api/scans/{id}/stop | Context 取消并释放资源 |
 | GET /api/scans/{id}/domains | 观察域名和关联请求 ID |
-| GET /api/scans/{id}/requests | `host/method/type/status/limit/offset` 过滤分页 |
+| GET /api/scans/{id}/requests | `host/method/type/status/limit/offset` 过滤分页，`exact_host=true` 使用完整主机名 |
 | GET /api/scans/{id}/events | SSE `update` 任务快照及心跳 |
 | GET /api/scans/{id}/logs | `after` 增量结构化日志 |
 | GET /api/rules/sources | 状态、许可证、Commit、更新时间 |
@@ -90,10 +92,11 @@ SQLite WAL、busy_timeout、单连接事务；任务、请求、域名、事件�
 | DELETE /api/browser/sessions | 空闲时清理本程序残留会话 |
 | POST /api/export | ExportJob，返回内容、逐条来源、统计、来源说明 |
 | GET / PUT /api/settings | 读取/校验/保存设置 |
+| PUT /api/settings/theme | 单独更新主题 |
 
-## v1.2 Linux 与 Docker
+## Linux 与 Docker
 
-Linux 默认启动回环 HTTP 服务并打开浏览器；Windows 默认原生 WebView2。容器非回环监听必须显式指定精确 public-url；Host/Origin/CSRF 校验继续保留。Compose 仅发布宿主回环端口，非 root Chromium 使用自身沙箱，数据持久化到卷。无图形会话时 API 拒绝可见/辅助模式，前端禁用对应选项。远程多用户认证不在本版范围，不直接开放匿名公网。
+Linux 服务及桌面以普通用户运行 Chromium 沙箱。Compose 仅发布宿主回环端口，采用定向 seccomp 策略、no-new-privileges 和独占数据卷。无图形会话时使用无头采集。外部接入采用单用户认证和受控的 HTTPS 反代。
 
 规则更新：blackmatrix7 有界并发下载全部分类原文，复用未变更 blob，并将规则来源 Commit 更新为新快照；v2fly 保存 data 原文及递归解析结果。单个文件 2 MiB、blackmatrix7 原文总计 96 MiB；整源成功且许可证校验通过后，在 SQLite 事务中切换，失败保留旧源。按来源持久化自动更新开关，服务生命周期内首次立即执行，随后每日检查、失败至多每小时重试；关闭服务取消更新并等候退出，不创建外部计划任务。
 
@@ -101,11 +104,11 @@ Linux 默认启动回环 HTTP 服务并打开浏览器；Windows 默认原生 We
 
 ## v1.3 预览与工作区
 
-导出设置与筛选属于前端临时状态。空合并先调用 observed 生成预览，并显示未选择分类提示；下载仍要求明确选择分类。两套规则源共享互斥的原子缓存写入器，初始化顺序调用 sync，避免并发请求相互拒绝；页面轮询分类与来源状态，加载分类后不自动放宽用户选择。
+导出设置与筛选属于前端临时状态。空合并先生成观察预览。两套规则源共享互斥的原子缓存写入器，初始化按来源依次执行。页面轮询来源元数据，分类版本或计数变化时才刷新完整分类索引。
 
-条目分页只限制 DOM 数量，默认 30 条；按规则键保存排除 Set，翻页和搜索不改变勾选。文件按行切片渲染，复制下载使用完整响应。下载权限绑定实际参数快照，迟到响应与过期内容不可下载；全部取消时保留可恢复的清单。覆盖计算按 DNS 标签边界查询已选后缀索引，保留最宽后缀优先与取消后恢复语义。导出请求体限制为 16 MiB，其他普通 JSON 接口保持 2 MiB、单对象与未知字段校验。
+条目默认每页 30 条，按规则键保存排除项。文件按行预览，复制与下载使用完整内容。合并复制先校验版本，再通过用户点击完成。预览、规则文件和来源说明采用 16 MiB 大小上限。合并还限制候选条目和来源数。普通 JSON 请求限制为 2 MiB，并执行单对象与未知字段校验。
 
-清空解除当前任务与 SSE，丢弃迟到请求，重置面板状态与请求总数；在本地保存明确空任务标记，不删除 SQLite 历史或设置。活动扫描禁止清空，保留停止入口。动效使用主题节奏、按压状态与 Collapse，系统减少动态效果同时影响主题与 CSS。
+清空解除当前任务与 SSE，丢弃迟到请求，重置面板状态和本次参数。历史和默认设置存于 SQLite。系统减少动态效果同时影响主题和 CSS。
 
 ## 统一窗口栏
 
@@ -142,6 +145,6 @@ DLC 解析限制每分类 100,000 规则、10,000 提示、1,000,000 工作单�
 
 DNS 模式为 system、auto、secure。auto 保留原有混合地址拒绝；secure 明确使用独立 HTTPS DNS。两种内置服务均固定到预置 IP、正常验证 TLS、不接受 DNS HTTP 重定向。单个地址族的普通故障允许采用另一族的已校验地址；实际返回的任何受限地址仍由 Policy 拒绝。目标始终连接校验后的字面 IP。本机 HTTP/SOCKS5 上游仅接受无认证的回环 IP:端口；上游连接器与目标白名单完全分离，HTTP CONNECT 和 SOCKS 请求也发送字面目标 IP。
 
-POST /api/network/diagnose 比较系统与独立解析并测试选定路径的 TCP 连接；内部名称、私网字面目标不会被发给外部 DNS。GET /api/scans/history 提供搜索和分页，DELETE /api/scans 接受 ids 或 all_finished；管理器互斥检查活动任务，SQLite 事务及外键级联清理任务关联数据。清空全部不受最近 100 条显示限制，不删除设置、规则缓存或独立导出文件。
+`POST /api/network/diagnose` 测试解析和选定路径的 TCP 连接。默认使用系统解析，`compare_secure` 或显式独立模式才启用 HTTPS DNS。内部名称以及系统解析已确认指向内部地址的名称留在本地。历史查询支持搜索和分页，删除事务级联清理任务关联数据。
 
 弹窗通过 open 状态完成退出过渡后卸载；新增键控条目及面板切换动画不随每次 SSE 更新重播，系统减少动态效果继续生效。

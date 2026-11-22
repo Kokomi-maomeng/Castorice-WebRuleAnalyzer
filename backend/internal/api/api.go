@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
 	"database/sql"
 	"encoding/hex"
@@ -36,6 +37,7 @@ type Server struct {
 	BaseURL    string
 	DevOrigin  string
 	Token      string
+	AccessHash *[32]byte
 	SaveExport func(string, string) (string, error)
 }
 type envelope struct {
@@ -59,11 +61,23 @@ func New(store *storage.Store, scans *scanner.Manager, rules *rules.Manager, bas
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, r *http.Request) {
-		respond(w, 200, map[string]any{"status": "ok", "version": model.Version, "name": "Castorice-WebRuleAnalyzer", "visible_browser": browser.VisibleSupported()})
+		respond(w, 200, map[string]any{"status": "ok", "version": model.Version, "name": "Castorice-WebRuleAnalyzer", "visible_browser": browser.VisibleSupported(), "browser_available": s.Scans.BrowserAvailable(), "browser_managed": s.Scans.BrowserManaged()})
 	})
 	mux.HandleFunc("GET /api/session", func(w http.ResponseWriter, r *http.Request) { respond(w, 200, map[string]string{"token": s.Token}) })
 	mux.HandleFunc("GET /api/browsers", func(w http.ResponseWriter, r *http.Request) { respond(w, 200, browser.Detect()) })
 	mux.HandleFunc("POST /api/scans", s.createScan)
+	mux.HandleFunc("POST /api/scans/target", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			URL string `json:"url"`
+		}
+		if !decode(w, r, &body) {
+			return
+		}
+		target, err := s.Scans.PrepareTarget(body.URL)
+		if !handleError(w, err) {
+			respond(w, 200, target)
+		}
+	})
 	mux.HandleFunc("GET /api/scans/history", func(w http.ResponseWriter, r *http.Request) {
 		limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 		offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
@@ -87,8 +101,10 @@ func (s *Server) Handler() http.Handler {
 	})
 	mux.HandleFunc("POST /api/network/diagnose", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
-			URL     string             `json:"url"`
-			Options *model.ScanOptions `json:"options"`
+			URL           string             `json:"url"`
+			Options       *model.ScanOptions `json:"options"`
+			CompareSecure bool               `json:"compare_secure"`
+			RootOnly      bool               `json:"root_only"`
 		}
 		if !decode(w, r, &body) {
 			return
@@ -101,7 +117,17 @@ func (s *Server) Handler() http.Handler {
 		if body.Options != nil {
 			o = *body.Options
 		}
-		result, err := s.Scans.Diagnose(r.Context(), body.URL, o)
+		if body.RootOnly {
+			target, err := s.Scans.PrepareTarget(body.URL)
+			if handleError(w, err) {
+				return
+			}
+			body.URL = target.URL
+		}
+		result, err := s.Scans.Diagnose(r.Context(), body.URL, o, body.CompareSecure)
+		if body.RootOnly {
+			result.URL = result.Host
+		}
 		if !handleError(w, err) {
 			respond(w, 200, result)
 		}
@@ -146,7 +172,15 @@ func (s *Server) Handler() http.Handler {
 		}
 		respond(w, 200, events)
 	})
-	mux.HandleFunc("GET /api/rules/sources", func(w http.ResponseWriter, r *http.Request) { respond(w, 200, s.Rules.Sources()) })
+	mux.HandleFunc("GET /api/rules/sources", func(w http.ResponseWriter, r *http.Request) {
+		sources := s.Rules.Sources()
+		if r.URL.Query().Get("compact") == "true" {
+			for i := range sources {
+				sources[i].LicenseText = ""
+			}
+		}
+		respond(w, 200, sources)
+	})
 	mux.HandleFunc("GET /api/rules/categories", func(w http.ResponseWriter, r *http.Request) {
 		all := s.Rules.Categories(false)
 		out := []model.RuleCategory{}
@@ -285,6 +319,9 @@ func (s *Server) Handler() http.Handler {
 		if handleError(w, err) {
 			return
 		}
+		if s.Scans.ValidateBrowserSelection(settings.Scan.BrowserPath) != nil {
+			settings.Scan.BrowserPath = ""
+		}
 		respond(w, 200, settings)
 	})
 	mux.HandleFunc("PUT /api/settings", func(w http.ResponseWriter, r *http.Request) {
@@ -295,10 +332,22 @@ func (s *Server) Handler() http.Handler {
 		if handleError(w, config.Validate(settings)) {
 			return
 		}
+		if handleError(w, s.Scans.ValidateBrowserSelection(settings.Scan.BrowserPath)) {
+			return
+		}
 		if handleError(w, s.Store.SaveSettings(settings)) {
 			return
 		}
 		respond(w, 200, settings)
+	})
+	mux.HandleFunc("PUT /api/settings/theme", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Theme string `json:"theme"`
+		}
+		if !decode(w, r, &body) || handleError(w, config.ValidateTheme(body.Theme)) || handleError(w, s.Store.SaveTheme(body.Theme)) {
+			return
+		}
+		respond(w, 200, body)
 	})
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) { fail(w, 404, "not_found", "接口不存在") })
 	mux.Handle("/", webui.Handler())
@@ -330,6 +379,15 @@ func (s *Server) guard(next http.Handler) http.Handler {
 			fail(w, 403, "origin_denied", "不允许来自其他站点的请求")
 			return
 		}
+		if s.AccessHash != nil {
+			user, password, ok := r.BasicAuth()
+			hash := sha256.Sum256([]byte(password))
+			if !ok || user != "castorice" || subtle.ConstantTimeCompare(hash[:], s.AccessHash[:]) != 1 {
+				w.Header().Set("WWW-Authenticate", `Basic realm="Castorice WebRuleAnalyzer", charset="UTF-8"`)
+				fail(w, 401, "access_required", "需要服务访问凭据")
+				return
+			}
+		}
 		if origin == s.DevOrigin && s.DevOrigin != "" {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Vary", "Origin")
@@ -353,8 +411,9 @@ func (s *Server) guard(next http.Handler) http.Handler {
 
 func (s *Server) createScan(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		URL     string             `json:"url"`
-		Options *model.ScanOptions `json:"options"`
+		URL      string             `json:"url"`
+		Options  *model.ScanOptions `json:"options"`
+		RootOnly bool               `json:"root_only"`
 	}
 	if !decode(w, r, &body) {
 		return
@@ -366,8 +425,14 @@ func (s *Server) createScan(w http.ResponseWriter, r *http.Request) {
 	options := settings.Scan
 	if body.Options != nil {
 		options = *body.Options
+	} else if s.Scans.ValidateBrowserSelection(options.BrowserPath) != nil {
+		options.BrowserPath = ""
 	}
-	task, err := s.Scans.Start(r.Context(), body.URL, options)
+	start := s.Scans.Start
+	if body.RootOnly {
+		start = s.Scans.StartSite
+	}
+	task, err := start(r.Context(), body.URL, options)
 	if handleError(w, err) {
 		return
 	}
@@ -377,7 +442,7 @@ func (s *Server) requests(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	limit, _ := strconv.Atoi(q.Get("limit"))
 	offset, _ := strconv.Atoi(q.Get("offset"))
-	requests, total, err := s.Scans.Requests(r.PathValue("id"), storage.RequestFilter{Host: q.Get("host"), Method: q.Get("method"), Type: q.Get("type"), Status: q.Get("status"), Limit: limit, Offset: offset})
+	requests, total, err := s.Scans.Requests(r.PathValue("id"), storage.RequestFilter{Host: q.Get("host"), ExactHost: q.Get("exact_host") == "true", Method: q.Get("method"), Type: q.Get("type"), Status: q.Get("status"), Limit: limit, Offset: offset})
 	if handleError(w, err) {
 		return
 	}
@@ -431,10 +496,23 @@ func (s *Server) export(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	result, err := exporter.Build(job, domains, categories)
+	if errors.Is(err, exporter.ErrExportTooLarge) {
+		fail(w, 422, "export_too_large", err.Error())
+		return
+	}
 	if handleError(w, err) {
 		return
 	}
-	respond(w, 200, result)
+	payload, err := json.Marshal(envelope{Data: result})
+	if handleError(w, err) {
+		return
+	}
+	if len(payload) > model.MaxExportBytes {
+		fail(w, 422, "export_too_large", exporter.ErrExportTooLarge.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_, _ = w.Write(payload)
 }
 
 func (s *Server) events(w http.ResponseWriter, r *http.Request) {
@@ -463,6 +541,10 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 		task, err := s.Scans.Task(id)
 		if err != nil {
 			return false
+		}
+		// Persist the final snapshot before announcing it to clients.
+		if revision >= 0 && !task.Active() {
+			return true
 		}
 		b, _ := json.Marshal(task)
 		_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(5 * time.Second))

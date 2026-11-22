@@ -64,7 +64,12 @@ it("其他来源更新不重载编辑区，同源更新保留草稿直到明确�
   await act(async () => {
     await vi.advanceTimersByTimeAsync(250);
   });
-  expect(mockAPI).toHaveBeenCalledWith("/rules/categories?q=app");
+  expect(mockAPI).toHaveBeenCalledWith(
+    "/rules/categories?q=app",
+    "GET",
+    undefined,
+    expect.objectContaining({ signal: expect.any(AbortSignal) }),
+  );
   expect(editor).toHaveValue("my draft");
   expect(
     mockAPI.mock.calls.filter(([path]) => path.startsWith("/rules/content")),

@@ -2,6 +2,7 @@ package exporter
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -9,6 +10,27 @@ import (
 	"github.com/castorice/Castorice-WebRuleAnalyzer/backend/internal/model"
 	"go.yaml.in/yaml/v3"
 )
+
+func TestObservedExportSkipsIncompleteNames(t *testing.T) {
+	result, err := Build(job(), domainRecords("unqualified", "app.example.com"), nil)
+	if err != nil || result.FinalRules != 1 || result.ObservedDomains != 1 || len(result.Warnings) != 1 ||
+		!strings.Contains(result.Content, "app.example.com") || strings.Contains(result.Content, "unqualified") {
+		t.Fatalf("export should preserve the eligible hostname: %+v, %v", result, err)
+	}
+}
+
+func TestMergeStopsBeforeOversizedPreview(t *testing.T) {
+	j := job()
+	j.Mode = "merged"
+	input := make([]model.RuleEntry, 40_001)
+	for i := range input {
+		input[i] = model.RuleEntry{Type: model.Domain, Value: fmt.Sprintf("d%d.example.com", i)}
+	}
+	_, err := Build(j, domainRecords("app.example.com"), []model.RuleCategory{cat(input...)})
+	if !errors.Is(err, ErrExportTooLarge) {
+		t.Fatalf("expected a size error before creating a preview: %v", err)
+	}
+}
 
 func domainRecords(values ...string) []model.DomainRecord {
 	out := []model.DomainRecord{}

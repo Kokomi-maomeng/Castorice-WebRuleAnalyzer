@@ -25,7 +25,13 @@ try {
   await page.getByRole('button', { name: '打开', exact: true }).first().click();
   await candidates[0].getByRole('button', { name: '预览与导出规则', exact: true }).click();
   const dialog = candidates[0].getByRole('dialog');
-  await dialog.getByRole('button', { name: '保存到软件目录', exact: true }).click();
+  const filename = dialog.getByRole('textbox', { name: '文件名称', exact: true });
+  const save = dialog.getByRole('button', { name: '保存到软件目录', exact: true });
+  assert.equal(await filename.inputValue(), 'castorice-rules');
+  await filename.fill('');
+  assert(await save.isDisabled(), 'The desktop save action must require a filename');
+  await filename.fill('castorice-rules');
+  await save.click();
   const exportDir = await candidates[0].evaluate(() => window.castoriceDesktop.exportDir);
   const file = path.join(exportDir, 'castorice-rules.yaml');
   for (let attempt = 0; attempt < 30; attempt++) {

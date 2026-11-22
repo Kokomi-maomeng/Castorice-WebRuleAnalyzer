@@ -9,6 +9,7 @@
 - 用户为排查问题提供的网址只用于当次复现。默认工作区保持空白；通用回归使用保留示例域或隔离测试站。实际规则源验收按上游分类验证。
 - 本机 Docker 与 eNSP 冲突时，只在用户指定虚拟机运行 Docker；不启用本机虚拟化或改动代理/DNS。
 - 虚拟机空间不足时，优先将测试目录放在足够大的 tmpfs。不要为测试清理用户数据或重启其他服务。
+- 本地验证版只构建和验收，推送、发布、覆盖既有部署由发布范围单独决定。
 
 ## 2. 实现与针对性回归
 
@@ -23,11 +24,14 @@
 
 ```powershell
 ./scripts/test.ps1 -Browser -LiveRules -LiveDNS
+node scripts/verify-local.mjs chrome msedge firefox webkit
 ./scripts/build.ps1 -BrowserTests
 ./scripts/build-linux.ps1 -SkipFrontend
 ```
 
 检查所有外部程序的退出码。不要把编译成功、健康接口或旧测试截图写成实际功能已经通过。
+
+首次运行网页验收前，执行 `npm --prefix frontend ci`、`npm --prefix frontend run build`，并用 `node frontend/node_modules/playwright-core/cli.js install firefox webkit` 安装所需浏览器。验收脚本自动使用随机回环端口、保留域测试站和临时数据目录，结果写入 `.runtime/local-acceptance-*/acceptance.json`。如 CI 已构建前端，可直接调用验收脚本。便携窗口验收使用同一打包二进制。
 
 更新版本号只修改项目根 version 与锁文件 packages[""].version，禁止全局替换锁文件的版本字符串。保留第三方依赖的版本、下载地址与 integrity；用空 npm 缓存或干净 CI 验证公开安装，避免本机缓存掩盖不存在的下载地址。
 
@@ -44,9 +48,11 @@
 # 独立服务已启动且已初始化规则库
 node scripts/verify-ui.mjs
 python scripts/smoke.py --base-url http://127.0.0.1:19110
-./scripts/verify-desktop.ps1 -PackageDirectory ./dist/Castorice-WebRuleAnalyzer-v1.3-windows-amd64 -Scenario normal -AutoClose
-./scripts/verify-desktop.ps1 -PackageDirectory ./dist/Castorice-WebRuleAnalyzer-v1.3-windows-amd64 -Scenario active-close -AutoClose
-./scripts/verify-desktop.ps1 -PackageDirectory ./dist/Castorice-WebRuleAnalyzer-v1.3-windows-amd64 -Scenario force-crash
+$tag = 'v' + ((Get-Content VERSION -Raw).Trim() -replace '\.0$','')
+$package = "./dist/Castorice-WebRuleAnalyzer-$tag-windows-amd64"
+./scripts/verify-desktop.ps1 -PackageDirectory $package -Scenario normal -AutoClose
+./scripts/verify-desktop.ps1 -PackageDirectory $package -Scenario active-close -AutoClose
+./scripts/verify-desktop.ps1 -PackageDirectory $package -Scenario force-crash
 ```
 
 替换示例版本号。测试数据只放 `.runtime/` 或外部临时目录；不在正式发布目录启动 EXE，避免个人历史进入 ZIP。
@@ -59,7 +65,7 @@ python scripts/smoke.py --base-url http://127.0.0.1:19110
 - 从干净 ZIP 再次解压启动，核对最终 EXE/ZIP SHA256。签名、系统组件依赖、未测平台应明确写入报告。
 
 ```powershell
-python scripts/audit-release.py --zip ./dist/Castorice-WebRuleAnalyzer-v1.3-windows-amd64.zip
+python scripts/audit-release.py --zip ($package + '.zip')
 ```
 
 ## 6. 发布与下载复验
@@ -67,13 +73,13 @@ python scripts/audit-release.py --zip ./dist/Castorice-WebRuleAnalyzer-v1.3-wind
 1. 更新版本、变更记录、用户说明、架构、安全边界和测试报告。
 2. 使用公开贡献者 Git 身份提交；检查推送目标和可见性，不能夹带其他项目资料。
 3. 推送分支后等待 CI；需要修复则重新验证，不能以绿色健康接口替代失败检查。
-4. 发布对应标签的 GitHub Release，同时上传 Windows 便携 ZIP、Linux amd64 tar.gz 和二者的 SHA256。版本来源为根 VERSION，CI 检查同步结果。
+4. 从固定标签和受控构建环境生成成品，保留 `BUILD-INFO.json`，验收后上传同一份 Windows ZIP、Linux tar.gz 和包级 SHA-256。版本来源为根 VERSION。发布前核对仓库的分支规则、必需 CI、依赖提醒、签名来源与不可变 Release 设置。
 5. 从 GitHub 下载附件，比较 SHA256，再次解压启动真实成品。确认 Release 标签与附件对应相同源码版本。
 6. 保存脱敏报告。关闭本次临时服务与测试浏览器；验证虚拟机原有服务未被改动。不要停止用户日常浏览器、代理或无关容器。
 
 v1.4 起，隐私检查同时接受 `--zip` 和 `--tar`；Linux 打包脚本设置可执行权限并排除运行目录。构建后运行源码与成品 govulncheck、生产依赖审计和完整开发依赖审计；下载 GitHub 附件后再次比对完整哈希并执行。
 
-v1.6 的开发依赖审计记录 picomatch 4.0.7 的 [GHSA-fc5q-39xc-vjpf](https://github.com/advisories/GHSA-fc5q-39xc-vjpf)。它只在构建与测试中处理仓库内的文件匹配表达式，发行应用不执行该 Node 模块。CI 保留生产依赖的高危检查，开发检查仅对该锁定版本和公告记录例外，发布修复版本后应移除例外。
+开发环境的 picomatch 4.0.7 有一条上游尚无修复的公告。生产依赖使用独立审计门槛，开发检查仅对该锁定版本和公告保留例外。项目维护人须在 2027-01-15 前复核，发现上游修复后更新依赖并移除例外。 [GHSA-fc5q-39xc-vjpf](https://github.com/advisories/GHSA-fc5q-39xc-vjpf)
 
 ## v1.3 之后复用的针对性检查
 

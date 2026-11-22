@@ -40,6 +40,7 @@ func defaults() []model.RuleSource {
 
 type Option func(*Manager)
 
+// WithHTTPClient allows rule-source tests to exercise snapshot handling offline.
 func WithHTTPClient(client *http.Client) Option {
 	return func(m *Manager) {
 		if client != nil {
@@ -77,7 +78,7 @@ func NewManager(store *storage.Store, options ...Option) (*Manager, error) {
 		return nil, err
 	}
 	for _, c := range categories {
-		c.Broad = Broad(c.Name, c.RuleCount)
+		c.Broad = Broad(c.Name)
 		valid := true
 		for _, r := range c.Rules {
 			if _, err := Normalize(r); err != nil {
@@ -135,11 +136,11 @@ func (m *Manager) fetch(ctx context.Context, address string, maxBytes int64) ([]
 	req.Header.Set("Accept", "application/vnd.github+json")
 	resp, err := m.client.Do(req)
 	if err != nil {
-		return nil, errors.New("规则源网络连接失败，请检查网络后重试")
+		return nil, fmt.Errorf("无法连接规则源 %s，请检查服务端网络或代理后重试", req.URL.Hostname())
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("上游 HTTP %d（GitHub 匿名 API 可能限流）", resp.StatusCode)
+		return nil, fmt.Errorf("规则源 %s 返回 HTTP %d（GitHub 匿名 API 可能限流）", req.URL.Hostname(), resp.StatusCode)
 	}
 	b, err := io.ReadAll(io.LimitReader(resp.Body, maxBytes+1))
 	if err != nil {
@@ -192,7 +193,7 @@ func (m *Manager) commit(ctx context.Context, repo string) (string, error) {
 	return list[0].SHA, nil
 }
 
-func Broad(name string, count int) bool {
+func Broad(name string) bool {
 	n := strings.ToLower(name)
 	for _, term := range []string{"category-", "geolocation-", "google", "alphabet", "microsoft", "apple", "amazon", "cloudflare", "cdn", "ads", "advertising", "global", "proxy", "proxylite", "crypto", "cryptocurrency", "direct", "reject", "china", "cn", "private", "tld-", "gfw", "gfwlist", "download"} {
 		if n == term || strings.HasPrefix(n, term) && strings.HasSuffix(term, "-") {
@@ -214,6 +215,7 @@ func (m *Manager) Sync(ctx context.Context, id string) error {
 		source.Error = ""
 		now := time.Now().UTC()
 		source.CheckedAt = &now
+		source.SyncAttemptAt = &now
 		m.sources[id] = source
 	}
 	m.mu.Unlock()
@@ -251,6 +253,9 @@ func (m *Manager) Sync(ctx context.Context, id string) error {
 		source.Status = "error"
 		if source.Version != "" {
 			source.Status = "cached"
+		}
+		if version != "" {
+			source.RemoteVersion = version
 		}
 		m.sources[id] = source
 		_ = m.store.SaveSource(source, nil, false)
@@ -334,7 +339,7 @@ func (m *Manager) syncBlackmatrix(ctx context.Context) ([]model.RuleCategory, st
 			continue
 		}
 		seen[name] = true
-		c := model.RuleCategory{ID: "blackmatrix7:" + name, Source: "blackmatrix7", Name: name, Path: "rule/Clash/" + entry.Path, Version: version, ContentHash: entry.SHA, Broad: Broad(name, 0), Warnings: []string{}}
+		c := model.RuleCategory{ID: "blackmatrix7:" + name, Source: "blackmatrix7", Name: name, Path: "rule/Clash/" + entry.Path, Version: version, ContentHash: entry.SHA, Broad: Broad(name), Warnings: []string{}}
 		out = append(out, c)
 	}
 	if len(out) == 0 {
@@ -360,7 +365,7 @@ func (m *Manager) syncBlackmatrix(ctx context.Context) ([]model.RuleCategory, st
 				var e error
 				if exists && old.Raw != "" && old.ContentHash == c.ContentHash {
 					loaded = old
-					loaded.Broad = Broad(loaded.Name, loaded.RuleCount)
+					loaded.Broad = Broad(loaded.Name)
 					loaded.Version = version
 					loaded.Rules = append([]model.RuleEntry(nil), old.Rules...)
 					for ri := range loaded.Rules {
@@ -420,7 +425,7 @@ func (m *Manager) downloadBlackmatrix(ctx context.Context, c model.RuleCategory)
 	c.Rules = entries
 	c.RuleCount = len(entries)
 	c.Warnings = warnings
-	c.Broad = Broad(c.Name, c.RuleCount)
+	c.Broad = Broad(c.Name)
 	return c, nil
 }
 
@@ -432,14 +437,15 @@ func (m *Manager) syncV2fly(ctx context.Context) ([]model.RuleCategory, string, 
 	}
 	archive, err := m.fetch(ctx, "https://codeload.github.com/"+repo+"/tar.gz/"+version, 20<<20)
 	if err != nil {
-		return nil, "", err
+		return nil, version, err
 	}
 	zipped, err := gzip.NewReader(bytes.NewReader(archive))
 	if err != nil {
 		return nil, "", errors.New("上游未返回有效 gzip 快照")
 	}
 	defer zipped.Close()
-	reader := tar.NewReader(io.LimitReader(zipped, 64<<20))
+	archiveLimit := &io.LimitedReader{R: zipped, N: (64 << 20) + 1}
+	reader := tar.NewReader(archiveLimit)
 	files := map[string][]byte{}
 	for {
 		header, e := reader.Next()
@@ -465,6 +471,12 @@ func (m *Manager) syncV2fly(ctx context.Context) ([]model.RuleCategory, string, 
 			return nil, "", errors.New("源码快照分类数超过限制")
 		}
 	}
+	if _, err := io.Copy(io.Discard, archiveLimit); err != nil {
+		return nil, version, fmt.Errorf("规则源码快照不完整：%w", err)
+	}
+	if archiveLimit.N <= 1 {
+		return nil, version, errors.New("解压后的规则源码快照超过大小限制")
+	}
 	if len(files) == 0 {
 		return nil, "", errors.New("未找到 data 目录，保留已有缓存")
 	}
@@ -481,10 +493,10 @@ func (m *Manager) syncV2fly(ctx context.Context) ([]model.RuleCategory, string, 
 		if ctx.Err() != nil {
 			return nil, "", ctx.Err()
 		}
-		c := model.RuleCategory{ID: "v2fly:" + name, Name: name, Source: "v2fly", Version: version, Path: "data/" + name, Raw: string(files[name]), Format: "text", Loaded: e == nil, Rules: entries, RuleCount: len(entries), Broad: Broad(name, len(entries)), Warnings: warnings}
 		if e != nil {
-			c.Warnings = append(c.Warnings, e.Error())
+			return nil, version, fmt.Errorf("v2fly 分类 %s 转换失败，保留已有缓存：%w", name, e)
 		}
+		c := model.RuleCategory{ID: "v2fly:" + name, Name: name, Source: "v2fly", Version: version, Path: "data/" + name, Raw: string(files[name]), Format: "text", Loaded: true, Rules: entries, RuleCount: len(entries), Broad: Broad(name), Warnings: warnings}
 		out = append(out, c)
 	}
 	return out, version, nil
@@ -504,6 +516,9 @@ func (m *Manager) Load(ctx context.Context, id string) (model.RuleCategory, erro
 	}
 	var err error
 	if c.Source == "v2fly" {
+		if !c.Loaded {
+			return c, errors.New("此分类的旧缓存未转换成功，请更新整个 v2fly 来源")
+		}
 		// v1.1 caches contain parsed entries but no original text. Fetch the
 		// exact historical file without changing its parsed rules or snapshot.
 		var raw []byte

@@ -16,7 +16,7 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 func TestFakeIPFallbackStillRejectsPrivateAndMixed(t *testing.T) {
-	r := NewAutoResolver()
+	r := NewResolver("auto", "", "")
 	defer r.Close()
 	r.System = resolverFunc(func(context.Context, string, string) ([]netip.Addr, error) {
 		return []netip.Addr{netip.MustParseAddr("198.18.2.1")}, nil
@@ -50,7 +50,7 @@ func TestFakeIPFallbackStillRejectsPrivateAndMixed(t *testing.T) {
 }
 
 func TestDualStackFakeIPFallback(t *testing.T) {
-	r := NewAutoResolver()
+	r := NewResolver("auto", "", "")
 	defer r.Close()
 	r.System = resolverFunc(func(context.Context, string, string) ([]netip.Addr, error) {
 		return []netip.Addr{netip.MustParseAddr("198.18.2.1"), netip.MustParseAddr("fdfe:dcba:9876::123")}, nil
@@ -73,7 +73,7 @@ func TestDualStackFakeIPFallback(t *testing.T) {
 }
 
 func TestKnownFakeMixedWithPublicUsesIndependentDNS(t *testing.T) {
-	r := NewAutoResolver()
+	r := NewResolver("auto", "", "")
 	defer r.Close()
 	fallbacks := 0
 	r.OnFallback = func(string) { fallbacks++ }
@@ -108,7 +108,7 @@ func TestLiveFixedHTTPSDNS(t *testing.T) {
 	if os.Getenv("CASTORICE_DNS_LIVE") != "1" {
 		t.Skip("设置 CASTORICE_DNS_LIVE=1 验证固定端点 HTTPS DNS")
 	}
-	r := NewAutoResolver()
+	r := NewResolver("auto", "", "")
 	defer r.Close()
 	r.System = resolverFunc(func(context.Context, string, string) ([]netip.Addr, error) {
 		return []netip.Addr{netip.MustParseAddr("198.18.2.1")}, nil

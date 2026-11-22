@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 )
 
 type Candidate struct {
@@ -46,18 +47,46 @@ func Detect() []Candidate {
 }
 
 func Find(explicit string) (string, error) {
-	if explicit != "" {
-		info, err := os.Stat(explicit)
-		if err != nil || info.IsDir() {
-			return "", errors.New("浏览器路径不存在，请在设置中选择 Chrome、Edge 或 Chromium 可执行文件")
-		}
-		return explicit, nil
-	}
 	found := Detect()
+	if explicit != "" {
+		for _, candidate := range found {
+			if explicit == candidate.Path || runtime.GOOS == "windows" && strings.EqualFold(explicit, candidate.Path) {
+				return candidate.Path, nil
+			}
+		}
+		return "", errors.New("所选浏览器不在已检测列表中，请在设置中选择自动检测")
+	}
 	if len(found) == 0 {
-		return "", errors.New("未检测到 Chrome、Edge 或 Chromium，请安装浏览器或在设置中填写路径")
+		return "", errors.New("未检测到 Chrome、Edge 或 Chromium，请安装其中一个后重试")
 	}
 	return found[0].Path, nil
+}
+
+// ManagedPath is for the process owner (CLI), never for settings or API requests.
+func ManagedPath(path string) (string, error) {
+	if path == "" {
+		return "", nil
+	}
+	if !filepath.IsAbs(path) {
+		return "", errors.New("--browser-path 需要 Chrome、Edge 或 Chromium 的绝对路径")
+	}
+	name := strings.TrimSuffix(strings.ToLower(filepath.Base(path)), ".exe")
+	switch name {
+	case "chrome", "google chrome", "google-chrome", "google-chrome-stable", "msedge", "microsoft edge", "microsoft-edge", "microsoft-edge-stable", "chromium", "chromium-browser":
+		if found, err := exec.LookPath(path); err == nil {
+			if info, err := os.Stat(found); err == nil && info.Mode().IsRegular() {
+				return found, nil
+			}
+		}
+	}
+	return "", errors.New("--browser-path 必须指向可执行的 Chrome、Edge 或 Chromium")
+}
+
+func CheckSandboxUser() error {
+	if runtime.GOOS == "linux" && os.Geteuid() == 0 {
+		return errors.New("请使用普通用户启动 Linux 服务或桌面窗口，以启用 Chromium 沙箱")
+	}
+	return nil
 }
 
 func OpenURL(url string) error {

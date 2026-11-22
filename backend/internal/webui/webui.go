@@ -3,7 +3,10 @@ package webui
 import (
 	"embed"
 	"io/fs"
+	"mime"
 	"net/http"
+	"path"
+	"strconv"
 	"strings"
 )
 
@@ -22,10 +25,49 @@ func Handler() http.Handler {
 			return
 		}
 		if strings.HasPrefix(r.URL.Path, "/assets/") {
-			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+			w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
+			name := strings.TrimPrefix(path.Clean(r.URL.Path), "/")
+			if !strings.HasPrefix(name, "assets/") || strings.HasSuffix(name, ".gz") {
+				http.NotFound(w, r)
+				return
+			}
+			if _, err := fs.Stat(root, name+".gz"); err == nil {
+				w.Header().Add("Vary", "Accept-Encoding")
+				if acceptsGzip(r.Header.Get("Accept-Encoding")) {
+					w.Header().Set("Content-Encoding", "gzip")
+					w.Header().Set("Content-Type", mime.TypeByExtension(path.Ext(name)))
+					gzipRequest := r.Clone(r.Context())
+					gzipRequest.URL.Path += ".gz"
+					files.ServeHTTP(w, gzipRequest)
+					return
+				}
+			}
 		} else {
 			w.Header().Set("Cache-Control", "no-store")
 		}
 		files.ServeHTTP(w, r)
 	})
+}
+
+func acceptsGzip(header string) bool {
+	wildcard := false
+	for _, part := range strings.Split(header, ",") {
+		encoding, params, _ := strings.Cut(part, ";")
+		encoding = strings.TrimSpace(strings.ToLower(encoding))
+		if encoding != "gzip" && encoding != "*" {
+			continue
+		}
+		q := 1.0
+		for _, param := range strings.Split(params, ";") {
+			key, value, _ := strings.Cut(strings.TrimSpace(param), "=")
+			if key == "q" {
+				q, _ = strconv.ParseFloat(strings.TrimSpace(value), 64)
+			}
+		}
+		if encoding == "gzip" {
+			return q > 0
+		}
+		wildcard = q > 0
+	}
+	return wildcard
 }

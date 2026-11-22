@@ -1,6 +1,9 @@
 package rules_test
 
 import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
 	"context"
 	"errors"
 	"io"
@@ -16,6 +19,61 @@ import (
 	"github.com/castorice/Castorice-WebRuleAnalyzer/backend/internal/storage"
 )
 
+func TestV2flyConversionFailureKeepsLastSnapshot(t *testing.T) {
+	store, err := storage.Open(filepath.Join(t.TempDir(), "data", "rules.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	old := model.RuleCategory{ID: "v2fly:app", Source: "v2fly", Name: "app", Version: "previous", Loaded: true,
+		Raw: "app.example.com\n", Rules: []model.RuleEntry{{Type: model.Suffix, Value: "app.example.com"}}}
+	source := model.RuleSource{ID: "v2fly", Version: old.Version, Status: "ready", CategoryCount: 1, LoadedCount: 1}
+	if err = store.SaveSource(source, []model.RuleCategory{old}, true); err != nil {
+		t.Fatal(err)
+	}
+	var archive bytes.Buffer
+	zipped := gzip.NewWriter(&archive)
+	tarball := tar.NewWriter(zipped)
+	for name, text := range map[string]string{"app": "replacement.example.net\n", "broken": "include:missing-file\n"} {
+		if err = tarball.WriteHeader(&tar.Header{Name: "snapshot/data/" + name, Mode: 0600, Size: int64(len(text))}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err = io.WriteString(tarball, text); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err = tarball.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err = zipped.Close(); err != nil {
+		t.Fatal(err)
+	}
+	client := &http.Client{Transport: transportFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.Host == "api.github.com" {
+			return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`[{"sha":"newer"}]`))}, nil
+		}
+		if req.URL.Host == "codeload.github.com" {
+			return &http.Response{StatusCode: 200, Body: io.NopCloser(bytes.NewReader(archive.Bytes()))}, nil
+		}
+		return nil, errors.New("unexpected host")
+	})}
+	manager, err := rules.NewManager(store, rules.WithHTTPClient(client))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = manager.Sync(context.Background(), "v2fly"); err == nil || !strings.Contains(err.Error(), "broken") {
+		t.Fatalf("expected the failed category to be reported: %v", err)
+	}
+	reloaded, err := rules.NewManager(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kept, ok := reloaded.Category(old.ID)
+	if !ok || kept.Version != old.Version || kept.Raw != old.Raw || reloaded.Sources()[1].Status != "cached" {
+		t.Fatalf("previous snapshot lost: %+v", kept)
+	}
+}
+
 type upstream struct {
 	mu           sync.Mutex
 	version      string
@@ -28,7 +86,7 @@ type transportFunc func(*http.Request) (*http.Response, error)
 func (f transportFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
 func TestPreferencesDuringAnotherSourceUpdate(t *testing.T) {
-	store, err := storage.Open(filepath.Join(t.TempDir(), "rules.db"))
+	store, err := storage.Open(filepath.Join(t.TempDir(), "data", "rules.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +166,7 @@ func (u *upstream) RoundTrip(r *http.Request) (*http.Response, error) {
 }
 
 func TestAutoUpdateRawAndAtomicOfflineRecovery(t *testing.T) {
-	store, err := storage.Open(filepath.Join(t.TempDir(), "rules.db"))
+	store, err := storage.Open(filepath.Join(t.TempDir(), "data", "rules.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -190,13 +248,13 @@ func TestAutoUpdateRawAndAtomicOfflineRecovery(t *testing.T) {
 }
 
 func TestLargeAppIsNotGeneric(t *testing.T) {
-	if rules.Broad("Facebook", 10000) || !rules.Broad("Google", 5) {
+	if rules.Broad("Facebook") || !rules.Broad("Google") {
 		t.Fatal("classification relies on file size")
 	}
 }
 
 func TestLegacyV2flyCacheGetsExactOriginalWithoutChangingRules(t *testing.T) {
-	store, err := storage.Open(filepath.Join(t.TempDir(), "legacy.db"))
+	store, err := storage.Open(filepath.Join(t.TempDir(), "data", "legacy.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

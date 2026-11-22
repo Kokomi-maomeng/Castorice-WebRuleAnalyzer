@@ -20,7 +20,6 @@ import (
 	"github.com/castorice/Castorice-WebRuleAnalyzer/backend/internal/app"
 	"github.com/castorice/Castorice-WebRuleAnalyzer/backend/internal/browser"
 	"github.com/castorice/Castorice-WebRuleAnalyzer/backend/internal/portable"
-	"github.com/castorice/Castorice-WebRuleAnalyzer/backend/internal/scanner"
 )
 
 //go:embed window_linux.py
@@ -51,9 +50,6 @@ func Supervisor() error {
 	if err = syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
 		return errors.New("此软件目录已有桌面实例运行")
 	}
-	if err = scanner.CleanSessions(paths.Sessions); err != nil {
-		return err
-	}
 	service, err := app.Start(app.Options{Address: "127.0.0.1:0", DataDir: paths.Data, SaveExport: paths.SaveExport})
 	if err != nil {
 		return err
@@ -70,9 +66,13 @@ func Supervisor() error {
 	command.Stdout, command.Stderr = os.Stdout, os.Stderr
 	command.Cancel = func() error { return command.Process.Signal(syscall.SIGTERM) }
 	command.WaitDelay = 5 * time.Second
-	input, _ := json.Marshal(map[string]string{
-		"url":  service.URL,
-		"init": windowBridge(service.URL, paths, "window.webkit.messageHandlers.castoriceWindow.postMessage(action);"),
+	input, _ := json.Marshal(map[string]any{
+		"url":                 service.URL,
+		"init":                windowBridge(service.URL, paths, "window.webkit.messageHandlers.castoriceWindow.postMessage(action);"),
+		"size":                [2]int{windowWidth, windowHeight},
+		"minimum_size":        [2]int{minWindowWidth, minWindowHeight},
+		"close_transition_ms": closeTransition.Milliseconds(),
+		"closing_event":       windowClosingEvent,
 	})
 	command.Stdin = bytes.NewReader(input)
 	if err = command.Run(); err != nil && ctx.Err() == nil {

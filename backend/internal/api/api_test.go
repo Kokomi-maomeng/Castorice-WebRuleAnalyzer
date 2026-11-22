@@ -20,7 +20,7 @@ import (
 
 func testAPI(t *testing.T) (*Server, *httptest.Server) {
 	t.Helper()
-	store, err := storage.Open(filepath.Join(t.TempDir(), "api.db"))
+	store, err := storage.Open(filepath.Join(t.TempDir(), "data", "api.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,6 +115,40 @@ func TestLocalAPISecurityAndValidation(t *testing.T) {
 		t.Fatal("unknown JSON key accepted")
 	}
 }
+func TestInteractiveScanTargetPreparation(t *testing.T) {
+	s, _ := testAPI(t)
+	for _, tc := range []struct {
+		path, input, contains string
+		token                 bool
+		status                int
+	}{
+		{"/api/scans/target", "https://example.com/", "", false, 403},
+		{"/api/scans/target", "http://https://example.com/path?sample=discarded#tail", `"url":"https://example.com/"`, true, 200},
+		{"/api/scans/target", "hostname", "域名后缀", true, 400},
+		{"/api/scans/target", "example.zzzzzz", "顶级域名", true, 400},
+		{"/api/scans/target", "http://127.0.0.1/", "公网", true, 400},
+		{"/api/scans", "example。com", "英文点", true, 400},
+		{"/api/network/diagnose", "example.zzzzzz", "顶级域名", true, 400},
+	} {
+		t.Run(tc.path+"/"+tc.input, func(t *testing.T) {
+			body, err := json.Marshal(map[string]any{"url": tc.input, "root_only": true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.path == "/api/scans/target" {
+				body, _ = json.Marshal(map[string]any{"url": tc.input})
+			}
+			response := request(t, s, "POST", tc.path, string(body), tc.token)
+			defer response.Body.Close()
+			result, err := io.ReadAll(response.Body)
+			if err != nil || response.StatusCode != tc.status ||
+				!strings.Contains(string(result), tc.contains) || strings.Contains(string(result), "discarded") {
+				t.Fatalf("%d: %s (%v)", response.StatusCode, result, err)
+			}
+		})
+	}
+}
+
 func TestAPIHistoryExportAndSSE(t *testing.T) {
 	s, _ := testAPI(t)
 	task := model.ScanTask{ID: "history", TargetURL: "https://example.com/", Status: "completed", Options: model.DefaultOptions(), StartedAt: time.Now().UTC(), DomainCount: 1, RequestCount: 1, Pages: []model.PageRecord{}, Matches: []model.RuleMatch{}}

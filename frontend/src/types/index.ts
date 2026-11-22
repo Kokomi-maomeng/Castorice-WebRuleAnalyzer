@@ -40,6 +40,7 @@ export interface RuleMatch {
   category: string;
   source: string;
   version: string;
+  path?: string;
   score: number;
   confidence: string;
   reasons: string[];
@@ -56,6 +57,10 @@ export interface ScanTask {
   test_mode?: boolean;
   id: string;
   target_url: string;
+  target_scheme?: "http" | "https";
+  target_port?: string;
+  target_redacted?: boolean;
+  rule_cache_available?: boolean;
   status: string;
   options: ScanOptions;
   started_at: string;
@@ -73,6 +78,12 @@ export interface ScanTask {
   match_note?: string;
   matched_category_count?: number;
   matches_truncated?: boolean;
+}
+export interface ScanTarget {
+  host: string;
+  url: string;
+  removed_prefix: boolean;
+  removed_suffix: boolean;
 }
 export interface DomainRecord {
   hostname: string;
@@ -188,6 +199,7 @@ export interface ExportResult {
 }
 export interface RequestFilter {
   host: string;
+  exactHost?: boolean;
   method: string;
   type: string;
   status: string;
@@ -224,7 +236,8 @@ export interface NetworkDiagnosis {
   dns_provider: string;
   route: string;
   system: DNSCheck;
-  secure: DNSCheck;
+  secure?: DNSCheck;
+  secure_note?: string;
   connected: boolean;
   connection?: Diagnostic;
 }

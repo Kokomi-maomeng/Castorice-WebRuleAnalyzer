@@ -4,7 +4,7 @@ COPY frontend/package*.json frontend/
 RUN cd frontend && npm ci --no-audit --no-fund
 COPY frontend/ frontend/
 COPY scripts/clean-frontend.mjs scripts/clean-frontend.mjs
-COPY scripts/prepare-frontend.mjs scripts/sync-version.mjs scripts/
+COPY scripts/prepare-frontend.mjs scripts/sync-version.mjs scripts/compress-frontend.mjs scripts/
 COPY VERSION VERSION
 COPY backend/internal/model/version.go backend/internal/model/version.go
 COPY backend/cmd/castorice/winres/winres.json backend/cmd/castorice/winres/winres.json
@@ -20,7 +20,7 @@ RUN CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags="-s -w" -o /castor
 
 FROM debian:13-slim AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends chromium chromium-sandbox ca-certificates fonts-noto-cjk && rm -rf /var/lib/apt/lists/* \
-    && useradd --uid 10001 --create-home app && mkdir /data && chown app:app /data
+    && useradd --uid 10001 --create-home app && install -d -m 0700 -o app -g app /data
 COPY --from=backend /castorice /usr/local/bin/castorice
 ENV CHROME_DEVEL_SANDBOX=/usr/lib/chromium/chrome-sandbox
 USER app

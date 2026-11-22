@@ -1,0 +1,20 @@
+[Unit]
+Description=Castorice WebRuleAnalyzer
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=castorice
+Group=castorice
+StateDirectory=castorice
+StateDirectoryMode=0700
+UMask=0077
+ExecStart=/usr/local/bin/castorice --server --no-open --listen 127.0.0.1:19110 --data-dir /var/lib/castorice
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

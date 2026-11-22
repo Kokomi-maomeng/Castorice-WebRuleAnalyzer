@@ -21,8 +21,9 @@ import (
 )
 
 type Engine struct {
-	Policy     security.Policy
-	SessionDir string
+	Policy      security.Policy
+	SessionDir  string
+	BrowserPath string
 }
 
 const sessionMarker = ".castorice-session"
@@ -41,8 +42,22 @@ func ValidateOptions(o model.ScanOptions) error {
 	if o.Mode != "quick" && o.Mode != "explore" && o.Mode != "interactive" {
 		return errors.New("未知扫描模式")
 	}
-	if o.MaxSeconds < 1 || o.MaxSeconds > 3600 || o.MaxDepth < 0 || o.MaxDepth > 8 || o.MaxPages < 1 || o.MaxPages > 200 || o.NavigationSeconds < 1 || o.NavigationSeconds > 120 || o.QuietMillis < 100 || o.QuietMillis > 30000 || o.IntervalMillis < 0 || o.IntervalMillis > 30000 || o.ObserveSeconds < 1 || o.ObserveSeconds > 300 {
-		return errors.New("扫描参数超出允许范围")
+	fields := []struct {
+		label           string
+		value, min, max int
+	}{
+		{"总时长 / 秒", o.MaxSeconds, 1, 3600},
+		{"导航超时 / 秒", o.NavigationSeconds, 1, 120},
+		{"每页观察 / 秒", o.ObserveSeconds, 1, 300},
+		{"静默等待 / 毫秒", o.QuietMillis, 100, 30000},
+		{"最多页面", o.MaxPages, 1, 200},
+		{"探索深度", o.MaxDepth, 0, 8},
+		{"页面间隔 / 毫秒", o.IntervalMillis, 0, 30000},
+	}
+	for _, field := range fields {
+		if field.value < field.min || field.value > field.max {
+			return fmt.Errorf("%s须为 %d–%d 的整数", field.label, field.min, field.max)
+		}
 	}
 	return nil
 }
@@ -52,13 +67,14 @@ func (e Engine) policyFor(o model.ScanOptions) (security.Policy, func()) {
 	p.UpstreamProxy = o.UpstreamProxy
 	if p.Resolver == nil && o.DNSMode != "system" {
 		resolver := security.NewResolver(o.DNSMode, o.DNSProvider, o.UpstreamProxy)
+		resolver.AllowsAddress = p.AllowsAddress
 		p.Resolver = resolver
 		return p, resolver.Close
 	}
 	return p, func() {}
 }
 
-func (e Engine) run(ctx context.Context, r *runtimeTask, target string) (string, error) {
+func (e Engine) run(ctx context.Context, r *runtimeTask, target, browserPath string) (string, error) {
 	o := r.snapshot().Options
 	policy, closeResolver := e.policyFor(o)
 	defer closeResolver()
@@ -67,11 +83,10 @@ func (e Engine) run(ctx context.Context, r *runtimeTask, target string) (string,
 			r.log("INFO", "dns", "系统 DNS 返回 Fake-IP，使用固定端点 HTTPS DNS 重新校验: "+host)
 		}
 	}
-	browserPath, err := browser.Find(o.BrowserPath)
-	if err != nil {
-		return "browser_start_failed", security.Fail("browser_start_failed", "browser", err.Error(), "请安装 Chrome、Edge 或 Chromium，或在软件设置中核对浏览器路径。", "", err)
+	if err := browser.CheckSandboxUser(); err != nil {
+		return "browser_start_failed", err
 	}
-	if err = os.MkdirAll(e.SessionDir, 0700); err != nil {
+	if err := os.MkdirAll(e.SessionDir, 0700); err != nil {
 		return "profile_error", err
 	}
 	profile, err := os.MkdirTemp(e.SessionDir, "scan-")
@@ -92,6 +107,8 @@ func (e Engine) run(ctx context.Context, r *runtimeTask, target string) (string,
 	}
 	defer proxy.Close()
 	opts := append([]chromedp.ExecAllocatorOption{}, chromedp.DefaultExecAllocatorOptions[:]...)
+	// An explicit false keeps chromedp from inserting an implicit --no-sandbox.
+	opts = append(opts, chromedp.Flag("no-sandbox", false))
 	opts = append(opts, chromedp.ExecPath(browserPath), chromedp.UserDataDir(profile), chromedp.Flag("headless", !o.Visible && o.Mode != "interactive"), chromedp.ProxyServer("http://"+proxy.Address), chromedp.Flag("proxy-bypass-list", "<-loopback>"), chromedp.Flag("disable-quic", true), chromedp.Flag("disable-extensions", true), chromedp.Flag("disable-background-networking", true), chromedp.Flag("disable-sync", true), chromedp.Flag("disable-popup-blocking", false), chromedp.Flag("force-webrtc-ip-handling-policy", "disable_non_proxied_udp"), chromedp.Flag("host-resolver-rules", "MAP * ~NOTFOUND , EXCLUDE 127.0.0.1"), chromedp.Flag("window-size", "1360,900"))
 	opts = append(opts, chromedp.Flag("crash-dumps-dir", filepath.Join(e.SessionDir, "crashes")), chromedp.Flag("disable-crash-reporter", true))
 	scopeOptions, closeScope := browserProcessScope(profile)
@@ -102,36 +119,8 @@ func (e Engine) run(ctx context.Context, r *runtimeTask, target string) (string,
 	}))
 	defer cancelTab()
 	chromedp.ListenTarget(tabCtx, r.onEvent)
-	chromedp.ListenTarget(tabCtx, func(ev any) {
-		if nav, ok := ev.(*page.EventNavigatedWithinDocument); ok {
-			r.log("DEBUG", "spa", "SPA 路由变化: "+security.RedactURL(nav.URL))
-		}
-		if nav, ok := ev.(*page.EventFrameNavigated); ok && nav.Frame.ParentID == "" && o.Mode == "interactive" {
-			u, err := url.Parse(nav.Frame.URL)
-			if err == nil && (u.Scheme == "http" || u.Scheme == "https") {
-				r.mu.Lock()
-				safe := security.RedactURL(u.String())
-				r.task.CurrentPage = safe
-				found := false
-				for _, p := range r.task.Pages {
-					if p.URL == safe {
-						found = true
-					}
-				}
-				if !found {
-					if len(r.task.Pages) >= o.MaxPages {
-						r.limit = true
-					} else {
-						r.task.Pages = append(r.task.Pages, model.PageRecord{URL: safe, Depth: 0, Status: "visited"})
-					}
-				}
-				r.revision++
-				r.mu.Unlock()
-			}
-		}
-	})
 	r.log("INFO", "browser", "启动独立浏览器；临时 Profile；逐连接地址保护；不采集 Cookie、认证头或正文")
-	if err = chromedp.Run(tabCtx, network.Enable(), chromedp.ActionFunc(func(ctx context.Context) error {
+	if err = chromedp.Run(tabCtx, network.Enable(), page.Enable(), chromedp.ActionFunc(func(ctx context.Context) error {
 		tree, err := page.GetFrameTree().Do(ctx)
 		if err == nil {
 			r.mu.Lock()
@@ -148,6 +137,9 @@ func (e Engine) run(ctx context.Context, r *runtimeTask, target string) (string,
 	r.revision++
 	r.mu.Unlock()
 	lost := chromedp.FromContext(tabCtx).Browser.LostConnection
+	if o.Mode == "interactive" {
+		return runInteractive(tabCtx, r, proxy, target, lost)
+	}
 	startURL, err := domain.NormalizeURL(target)
 	if err != nil {
 		return "invalid_url", err
@@ -256,26 +248,6 @@ func (e Engine) run(ctx context.Context, r *runtimeTask, target string) (string,
 		} else {
 			r.page(item.raw, item.depth, "visited", "")
 			r.log("INFO", "page_loaded", "页面已加载，继续监听异步请求")
-		}
-		if o.Mode == "interactive" {
-			r.log("INFO", "interactive", "辅助采集已开始；请在受控浏览器当前标签页操作，完成后点击停止。新标签页/独立 Worker 的覆盖有限。")
-			ticker := time.NewTicker(200 * time.Millisecond)
-			defer ticker.Stop()
-			for {
-				select {
-				case <-ctx.Done():
-					return "interrupted", ctx.Err()
-				case <-lost:
-					return "browser_exited", errors.New("受控浏览器已退出")
-				case <-ticker.C:
-					r.mu.Lock()
-					limited := r.limit
-					r.mu.Unlock()
-					if limited {
-						return "resource_limit", nil
-					}
-				}
-			}
 		}
 		if navErr != nil {
 			if o.Mode == "quick" {
