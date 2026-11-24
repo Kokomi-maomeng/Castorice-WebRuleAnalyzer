@@ -1,4 +1,5 @@
 import { createTheme } from "@mui/material/styles";
+import DialogMotion from "./DialogMotion";
 
 const smallFieldHeight = 40;
 
@@ -73,14 +74,53 @@ export const makeTheme = (dark: boolean, reducedMotion = false) =>
         },
       },
       MuiDialog: {
+        defaultProps: { slots: { transition: DialogMotion } },
         styleOverrides: {
+          container: {
+            "&[data-dialog-motion='enter'] > .MuiDialog-paper": {
+              animation: reducedMotion
+                ? "none"
+                : "dialog-paper-enter 240ms cubic-bezier(0.2, 0, 0, 1)",
+            },
+            "&[data-dialog-motion='exit'] > .MuiDialog-paper": {
+              animation: reducedMotion
+                ? "none"
+                : "dialog-paper-exit 180ms cubic-bezier(0.3, 0, 1, 1) both",
+            },
+          },
           paper: {
             borderRadius: 10,
-            "@media (max-width: 560px), (max-height: 560px)": {
-              margin: 8,
-              maxHeight: "calc(100% - 16px)",
-              "&.MuiDialog-paperFullWidth": { width: "calc(100% - 16px)" },
-            },
+            "@container application (max-width: 560px) or (max-height: 560px)":
+              {
+                margin: 8,
+                maxHeight: "calc(100% - 16px)",
+                "&.MuiDialog-paperFullWidth": { width: "calc(100% - 16px)" },
+              },
+          },
+        },
+      },
+      MuiMenu: {
+        defaultProps: {
+          transitionDuration: {
+            enter: reducedMotion ? 0 : 165,
+            exit: reducedMotion ? 0 : 135,
+          },
+        },
+      },
+      MuiPopover: {
+        defaultProps: {
+          transitionDuration: {
+            enter: reducedMotion ? 0 : 165,
+            exit: reducedMotion ? 0 : 135,
+          },
+        },
+      },
+      MuiSelect: {
+        styleOverrides: {
+          icon: {
+            transition: reducedMotion
+              ? "none"
+              : "transform 160ms cubic-bezier(0.2, 0, 0, 1)",
           },
         },
       },

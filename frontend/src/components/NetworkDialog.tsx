@@ -25,6 +25,7 @@ import NetworkOptions from "./NetworkOptions";
 export default function NetworkDialog(p: {
   open: boolean;
   onClose: () => void;
+  onExited?: () => void;
   url: string;
   label?: string;
   options: ScanOptions;
@@ -73,6 +74,7 @@ export default function NetworkDialog(p: {
       open={p.open}
       aria-labelledby="network-diagnostic-title"
       onClose={p.onClose}
+      slotProps={{ transition: { onExited: p.onExited } }}
       fullWidth
       maxWidth="sm"
     >

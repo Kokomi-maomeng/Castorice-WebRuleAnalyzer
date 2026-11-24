@@ -21,8 +21,26 @@ try {
   await page.reload();
   await page.getByText('等待首次发现', { exact: true }).waitFor();
   assert.equal(await page.getByRole('textbox', { name: '要分析的网站' }).inputValue(), '');
+  const systemDark = await page.evaluate(() => window.castoriceWindow.systemDark);
+  assert.equal(typeof systemDark, 'boolean', 'Native Windows app theme must be passed to WebView2');
+  await page.getByRole('button', { name: '软件设置' }).click();
+  const settings = page.getByRole('dialog', { name: '软件设置' });
+  await settings.getByRole('combobox', { name: '主题' }).click();
+  await page.getByRole('option', { name: '跟随系统' }).click();
+  await settings.getByRole('button', { name: '保存设置' }).click();
+  await settings.waitFor({ state: 'hidden' });
+  assert.equal(await page.evaluate(() => getComputedStyle(document.body).colorScheme), systemDark ? 'dark' : 'light');
+  const zoom = (percent) => page.getByRole('button', { name: `缩放 ${percent}%，恢复默认缩放` });
+  await page.getByRole('button', { name: '放大', exact: true }).click();
+  await zoom(110).waitFor();
+  await page.keyboard.press('Control+=');
+  await zoom(125).waitFor();
+  await page.keyboard.press('Control+-');
+  await zoom(110).waitFor();
+  await zoom(110).click();
+  await zoom(100).waitFor();
   await page.getByRole('button', { name: '扫描历史', exact: true }).click();
-  await page.getByRole('button', { name: '打开', exact: true }).first().click();
+  await page.getByRole('button', { name: /^打开历史 / }).first().click();
   await candidates[0].getByRole('button', { name: '预览与导出规则', exact: true }).click();
   const dialog = candidates[0].getByRole('dialog');
   const filename = dialog.getByRole('textbox', { name: '文件名称', exact: true });
@@ -49,7 +67,7 @@ try {
   await candidates[0].getByText('等待首次发现', { exact: true }).waitFor();
   assert(await candidates[0].getByRole('button', { name: '预览与导出规则', exact: true }).isDisabled());
   await candidates[0].screenshot({ path: process.env.CASTORICE_DESKTOP_SCREENSHOT });
-  console.log('Native UI export/reset/reload: PASS');
+  console.log(`Native UI theme (${systemDark ? 'dark' : 'light'}), zoom, export, reset and reload: PASS`);
  }
  await page.getByRole('button', { name: '关闭窗口', exact: true }).evaluate(button => {
   setTimeout(() => button.click(), 100);

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Box,
@@ -28,6 +28,7 @@ import { makeTheme } from "../theme";
 import { useScan } from "../hooks/useScan";
 import { useActiveScan } from "../hooks/useActiveScan";
 import { useScanAddress } from "../hooks/useScanAddress";
+import { maxZoom, minZoom, useAppZoom } from "../hooks/useAppZoom";
 import { api } from "../services/api";
 import {
   active,
@@ -70,7 +71,9 @@ export default function App() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [notice, notify] = useState("");
   const [dialog, setDialog] = useState("");
+  const pendingHistory = useRef<ScanTask>(undefined);
   const [settingsLibrary, setSettingsLibrary] = useState(false);
+  const [settingsLibraryOpen, setSettingsLibraryOpen] = useState(false);
   function openDialog(name: string) {
     setDialog(name);
     setDialogOpen(true);
@@ -79,7 +82,12 @@ export default function App() {
     setDialogOpen(false);
   }
   function dialogExited() {
-    if (!dialogOpen) setDialog("");
+    if (dialogOpen) return;
+    setDialog("");
+    if (pendingHistory.current) {
+      openTask(pendingHistory.current);
+      pendingHistory.current = undefined;
+    }
   }
   const [tab, setTab] = useState(0);
   const [mobilePanel, setMobilePanel] = useState("domains");
@@ -88,7 +96,6 @@ export default function App() {
     version?: string;
     path?: string;
   }>();
-  const [mode, setMode] = useState<"observed" | "merged">("observed");
   const [excluded, setExcluded] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState<RequestFilter>(emptyFilter);
   const {
@@ -102,6 +109,17 @@ export default function App() {
     syncingResults,
   } = useScan(id, filter);
   const systemDark = useMediaQuery("(prefers-color-scheme: dark)");
+  const [nativeDark, setNativeDark] = useState(
+    () => window.castoriceWindow?.systemDark,
+  );
+  useEffect(() => {
+    const changed = (event: Event) => {
+      setNativeDark((event as CustomEvent<boolean | undefined>).detail);
+    };
+    window.addEventListener("castorice-system-theme", changed);
+    return () => window.removeEventListener("castorice-system-theme", changed);
+  }, []);
+  const { zoom, changeZoom } = useAppZoom();
   const { activeTask: backgroundTask, rememberActive } = useActiveScan(task);
   const currentActive = active(task)
     ? task
@@ -110,7 +128,8 @@ export default function App() {
       : undefined;
   const reducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
   const dark =
-    settings?.theme === "dark" || (settings?.theme === "system" && systemDark);
+    settings?.theme === "dark" ||
+    ((settings?.theme ?? "system") === "system" && (nativeDark ?? systemDark));
   const theme = useMemo(
     () => makeTheme(dark, reducedMotion),
     [dark, reducedMotion],
@@ -164,7 +183,6 @@ export default function App() {
   function resetView() {
     setExcluded(new Set());
     setFilter(emptyFilter);
-    setMode("observed");
     setTab(0);
     setMobilePanel("domains");
   }
@@ -245,31 +263,19 @@ export default function App() {
       setBusy(false);
     }
   }
-  async function toggleTheme() {
-    if (!settings) return;
-    const theme = dark ? "light" : "dark";
-    try {
-      const value = await api<Pick<Settings, "theme">>(
-        "/settings/theme",
-        "PUT",
-        { theme },
-      );
-      setSettings((old) => old && { ...old, theme: value.theme });
-    } catch (e) {
-      notify(errorMessage(e));
-    }
-  }
   function openLibrary(id = "", version?: string, path?: string) {
     setLibraryCategory(id ? { id, version, path } : undefined);
     openDialog("rules");
   }
   return (
     <ThemeProvider theme={theme}>
-      <CssBaseline />
+      <CssBaseline enableColorScheme />
       <Box className="app-shell">
         <AppTitleBar
-          dark={dark}
-          onTheme={() => void toggleTheme()}
+          zoom={zoom}
+          minZoom={minZoom}
+          maxZoom={maxZoom}
+          onZoom={changeZoom}
           onLibrary={() => openLibrary()}
           onHistory={() => openDialog("history")}
           onSettings={() => openDialog("settings")}
@@ -371,16 +377,16 @@ export default function App() {
                   syncingResults={syncingResults}
                   domains={domains}
                   excluded={excluded}
-                  toggle={(host) =>
+                  onSelect={(hosts, selected) =>
                     setExcluded((old) => {
                       const value = new Set(old);
-                      if (value.has(host)) value.delete(host);
-                      else value.add(host);
+                      for (const host of hosts) {
+                        if (selected) value.delete(host);
+                        else value.add(host);
+                      }
                       return value;
                     })
                   }
-                  mode={mode}
-                  setMode={setMode}
                   onExport={() => openDialog("export")}
                   onRequests={(host) => {
                     setFilter({ ...filter, host, exactHost: true, page: 0 });
@@ -432,12 +438,19 @@ export default function App() {
               settings={settings}
               onSave={setSettings}
               onClose={closeDialog}
-              onLibrary={() => setSettingsLibrary(true)}
+              onLibrary={() => {
+                setSettingsLibrary(true);
+                setSettingsLibraryOpen(true);
+              }}
               notify={notify}
             >
               {settingsLibrary && (
                 <RuleLibrary
-                  onClose={() => setSettingsLibrary(false)}
+                  open={settingsLibraryOpen}
+                  onClose={() => setSettingsLibraryOpen(false)}
+                  onExited={() => {
+                    if (!settingsLibraryOpen) setSettingsLibrary(false);
+                  }}
                   notify={notify}
                   onRematch={() => void rematch()}
                 />
@@ -453,7 +466,10 @@ export default function App() {
                 if (result.ids.includes(id)) reset(true);
               }}
               onClose={closeDialog}
-              onOpen={openTask}
+              onOpen={(record) => {
+                pendingHistory.current = record;
+                closeDialog();
+              }}
             />
           )}
           {dialog === "rules" && (
@@ -474,7 +490,6 @@ export default function App() {
               onExited={dialogExited}
               task={task}
               domains={chosenDomains}
-              mode={mode}
               settings={settings}
               onClose={closeDialog}
               notify={notify}

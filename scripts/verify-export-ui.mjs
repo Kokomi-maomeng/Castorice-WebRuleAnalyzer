@@ -41,12 +41,12 @@ try {
  await page.goto(base);
  await page.getByRole('button', { name: '预览与导出规则', exact: true }).waitFor();
  await page.getByRole('button', { name: '扫描历史', exact: true }).click();
- await page.getByRole('button', { name: '打开', exact: true }).first().click();
+ await page.getByRole('button', { name: /^打开历史 / }).first().click();
  await page.waitForFunction(() => [...document.querySelectorAll('button')].some(b => b.textContent.trim() === '预览与导出规则' && !b.disabled));
  await page.getByRole('button', { name: '预览与导出规则', exact: true }).click();
  await ready();
  const dialog = page.getByRole('dialog');
- const merge = dialog.getByRole('radio', { name: '合并规则库', exact: true });
+ const merge = dialog.getByRole('radio', { name: '抓取结果+开源规则库', exact: true });
  const category = dialog.getByRole('combobox', { name: '规则分类', exact: true });
  await merge.check();
  if (process.env.CASTORICE_INIT_RULES === '1') {
@@ -83,7 +83,8 @@ try {
  }
  const filename = dialog.getByRole('textbox', { name: '文件名称', exact: true });
  assert.equal(await filename.inputValue(), 'castorice-rules');
- assert(await filename.evaluate(input => Boolean(input.closest('.export-actions'))));
+ assert(await filename.evaluate(input => input.closest('.MuiFormControl-root').nextElementSibling.textContent.trim() === '下载文件'));
+ assert.equal(await dialog.getByRole('button', { name: '关闭', exact: true }).count(), 0);
  await category.click();
  assert.equal(await page.getByRole('listbox').count(), 0, 'empty category input showed arbitrary options');
  await category.fill('Facebook');
@@ -128,9 +129,26 @@ try {
  }
  await page.evaluate(() => document.documentElement.style.fontSize = '');
  await page.getByRole('tab', { name: '文件内容', exact: true }).click();
- assert.equal(await page.locator('.preview-line').count(), 200);
+ const numbers = page.locator('.line-number');
+ const previewText = page.locator('.preview-file-text');
+ assert.equal((await numbers.textContent()).split('\n').length, 200);
  await page.getByRole('button', { name: '下一页', exact: true }).click();
- assert.equal(await page.locator('.line-number').first().innerText(), '201');
+ assert.equal((await numbers.textContent()).split('\n')[0], '201');
+ const originalFontSize = await previewText.evaluate(node => getComputedStyle(node).fontSize);
+ const lineTotal = latest.content.replace(/\n$/, '').split('\n').length;
+ assert.equal(await page.getByLabel('总行数', { exact: true }).textContent(), String(lineTotal));
+ const lineSize = dialog.getByRole('combobox', { name: '每页行数', exact: true });
+ await lineSize.click();
+ await page.getByRole('option', { name: '完整显示', exact: true }).click();
+ const allNumbers = (await numbers.textContent()).split('\n');
+ assert.equal(allNumbers.length, lineTotal);
+ assert.equal(allNumbers.at(-1), String(lineTotal));
+ assert.equal(await previewText.textContent(), latest.content.replace(/\n$/, ''));
+ assert.equal(await previewText.evaluate(node => getComputedStyle(node).fontSize), originalFontSize);
+ assert.equal(await page.getByRole('button', { name: '下一页', exact: true }).count(), 0);
+ await lineSize.click();
+ await page.getByRole('option', { name: '200', exact: true }).click();
+ report.real.fullNumberedPreview = true;
  const formatControl = dialog.getByRole('combobox', { name: '输出格式', exact: true });
  const formatWidth = (await formatControl.boundingBox()).width;
  for (const [label, format] of [['Clash / Mihomo YAML','clash'],['Mihomo Rule Provider','provider'],['sing-box Source Rule Set v3','singbox']]) {
@@ -164,7 +182,7 @@ try {
  await page.reload(); await page.getByText('等待首次发现', { exact: true }).waitFor();
  assert(await page.getByRole('button', { name: '预览与导出规则' }).isDisabled());
  await page.getByRole('button', { name: '扫描历史', exact: true }).click();
- await page.getByRole('button', { name: '打开', exact: true }).first().click();
+ await page.getByRole('button', { name: /^打开历史 / }).first().click();
  await page.getByRole('button', { name: '预览与导出规则', exact: true }).click(); await ready();
  report.real.resetAndHistory = true;
  const content = Array.from({ length: 5000 }, (_, i) => `  - DOMAIN,fixture-${i}.example.com,Proxy`).join('\n')+'\n';
@@ -181,7 +199,7 @@ try {
  await page.waitForFunction(() => { const b = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === '导出设置'); const t = getComputedStyle(b).transform; return t.startsWith('matrix(') && Number(t.slice(7).split(',')[0]) <= .971; });
  await page.mouse.up();
  await page.emulateMedia({ reducedMotion: 'reduce' });
- assert.equal(await page.locator('.export-dialog .motion-panel').evaluate(e => getComputedStyle(e).animationName), 'none');
+ assert((await page.locator('.export-dialog .preview-row').first().evaluate(e => getComputedStyle(e).transitionDuration)).split(',').every(duration => duration.trim() === '0s'));
  await page.getByRole('button', { name: '关闭导出', exact: true }).click();
  await page.getByRole('button', { name: '高级配置', exact: true }).click();
  assert.equal(await page.locator('.MuiSwitch-switchBase').first().evaluate(e => getComputedStyle(e).transitionDuration), '0s');

@@ -7,6 +7,7 @@ interface Window {
   castoriceDesktop?: CastoriceDesktop;
   castoriceWindow?: {
     maximized: boolean;
+    systemDark?: boolean;
     command: (
       action: "ready" | "move" | "minimize" | "toggle-maximize" | "close",
     ) => void;

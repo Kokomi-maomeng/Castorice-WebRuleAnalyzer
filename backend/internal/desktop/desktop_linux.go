@@ -68,7 +68,7 @@ func Supervisor() error {
 	command.WaitDelay = 5 * time.Second
 	input, _ := json.Marshal(map[string]any{
 		"url":                 service.URL,
-		"init":                windowBridge(service.URL, paths, "window.webkit.messageHandlers.castoriceWindow.postMessage(action);"),
+		"init":                windowBridge(service.URL, paths, "window.webkit.messageHandlers.castoriceWindow.postMessage(action);", "undefined"),
 		"size":                [2]int{windowWidth, windowHeight},
 		"minimum_size":        [2]int{minWindowWidth, minWindowHeight},
 		"close_transition_ms": closeTransition.Milliseconds(),

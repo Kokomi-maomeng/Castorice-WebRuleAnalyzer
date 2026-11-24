@@ -1,0 +1,177 @@
+.MuiDialog-paper.history-paper {
+  block-size: min(720px, calc(var(--app-viewport-height) - 64px));
+}
+
+.MuiDialogContent-root.history-body {
+  display: flex;
+  flex-direction: column;
+  min-block-size: 0;
+  overflow: hidden;
+  padding: 12px 0 0;
+}
+
+.history-body > .MuiAlert-root,
+.history-toolbar {
+  margin-inline: 24px;
+}
+
+.history-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 8px;
+  padding-block-end: 8px;
+}
+
+.history-toolbar > .MuiTextField-root {
+  flex: 1 1 180px;
+  min-inline-size: 0;
+}
+
+.history-list-body {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-block-size: 0;
+}
+
+.history-list-body > .history-progress {
+  position: absolute;
+  inset: 0 24px auto;
+  z-index: 2;
+  block-size: 2px;
+  pointer-events: none;
+  border-radius: 2px;
+  animation: history-progress-enter 150ms ease-out both;
+}
+
+@keyframes history-progress-enter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.history-content {
+  padding: 4px 24px 12px;
+}
+
+.history-results {
+  display: grid;
+  gap: 8px;
+}
+
+.history-record {
+  --history-action-size: 44px;
+  --history-row-inset: 6px;
+  display: grid;
+  grid-template-columns:
+    var(--history-row-inset) var(--history-action-size) minmax(0, 1fr)
+    var(--history-action-size) var(--history-row-inset);
+  align-items: center;
+  border-radius: 12px;
+  transition: background-color 160ms ease-out;
+}
+
+.history-record > .history-open {
+  grid-area: 1 / 1 / 2 / -1;
+  align-self: stretch;
+  min-inline-size: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 4px;
+  padding: 8px calc(var(--history-action-size) + var(--history-row-inset) + 4px);
+  border-radius: inherit;
+  text-align: start;
+  transition: background-color 160ms ease-out;
+}
+
+.history-open.Mui-focusVisible {
+  outline: 2px solid currentColor;
+  outline-offset: -2px;
+}
+
+.history-open > .history-host {
+  max-inline-size: 100%;
+  overflow-wrap: anywhere;
+  font-weight: 600;
+}
+
+.history-details {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  max-inline-size: 100%;
+}
+
+.history-details time {
+  white-space: nowrap;
+}
+
+.history-details .MuiChip-root {
+  max-inline-size: 100%;
+  block-size: 22px;
+}
+
+.history-record > .history-row-action {
+  z-index: 1;
+  inline-size: var(--history-action-size);
+  block-size: var(--history-action-size);
+  padding: 0;
+}
+
+.history-record > .history-row-action.Mui-disabled {
+  pointer-events: auto;
+}
+
+.history-select {
+  grid-area: 1 / 2;
+}
+
+.history-delete {
+  grid-area: 1 / 4;
+}
+
+.history-empty {
+  padding: 24px 0;
+  text-align: center;
+}
+
+@container application (max-width: 560px) or (max-height: 560px) {
+  .MuiDialog-paper.history-paper {
+    block-size: calc(var(--app-viewport-height) - 16px);
+  }
+
+  .history-title.MuiDialogTitle-root {
+    padding: 6px 12px;
+  }
+
+  .history-body > .MuiAlert-root,
+  .history-toolbar {
+    margin-inline: 12px;
+  }
+
+  .history-list-body > .history-progress {
+    inset-inline: 12px;
+  }
+
+  .history-content {
+    padding-inline: 12px;
+  }
+}
+
+@container application (max-width: 400px) {
+  .history-record {
+    --history-row-inset: 2px;
+  }
+
+  .history-toolbar > .MuiButton-root {
+    padding-inline: 8px;
+  }
+}

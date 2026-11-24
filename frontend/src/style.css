@@ -1,4 +1,8 @@
 :root {
+  --app-zoom: 1;
+  --app-viewport-width: calc(100vw / var(--app-zoom));
+  --app-viewport-height: calc(100vh / var(--app-zoom));
+  --app-viewport-height: calc(100dvh / var(--app-zoom));
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -8,6 +12,32 @@
 }
 body {
   margin: 0;
+  zoom: var(--app-zoom);
+  container: application / size;
+}
+.MuiPopover-root,
+.MuiTooltip-popper {
+  zoom: calc(1 / var(--app-zoom));
+}
+.MuiPopover-paper > *,
+.MuiTooltip-tooltip {
+  zoom: var(--app-zoom);
+}
+@keyframes dialog-paper-enter {
+  from {
+    transform: translateY(8px) scale(0.99);
+  }
+  to {
+    transform: translateY(0) scale(1);
+  }
+}
+@keyframes dialog-paper-exit {
+  from {
+    transform: translateY(0) scale(1);
+  }
+  to {
+    transform: translateY(5px) scale(0.992);
+  }
 }
 .desktop-closing body {
   pointer-events: none;
@@ -59,67 +89,6 @@ pre {
   font-size: 13px;
   overflow-wrap: anywhere;
 }
-.domain-filters {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
-  margin-block-start: 8px;
-}
-.domain-sort .MuiSelect-select {
-  box-sizing: content-box;
-  min-inline-size: 4.25em;
-  padding-inline: 14px 34px;
-}
-.domain-row {
-  --domain-action-size: 44px;
-  display: grid;
-  grid-template-columns:
-    8px var(--domain-action-size) minmax(0, 1fr) var(--domain-action-size)
-    8px;
-  align-items: center;
-}
-.domain-row .domain-request {
-  grid-area: 1 / 1 / 2 / -1;
-  align-self: stretch;
-  min-width: 0;
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: center;
-  gap: 3px;
-  padding: 8px calc(var(--domain-action-size) + 12px);
-  text-align: start;
-}
-.domain-row .domain-request.Mui-focusVisible {
-  outline: 2px solid currentColor;
-  outline-offset: -2px;
-}
-.domain-select {
-  grid-area: 1 / 2;
-  z-index: 1;
-}
-.domain-row .domain-copy {
-  grid-area: 1 / 4;
-  z-index: 1;
-}
-.domain-row .domain-row-action {
-  width: var(--domain-action-size);
-  height: var(--domain-action-size);
-  padding: 0;
-}
-.domain-row-action .MuiSvgIcon-root {
-  font-size: 20px;
-}
-.domain-footer {
-  flex-shrink: 0;
-  padding: 8px 12px;
-}
-.domain-export-controls {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 0 6px;
-}
 .export-scope {
   align-items: center;
   gap: 2px;
@@ -150,11 +119,14 @@ body,
   overflow: hidden;
 }
 .app-shell {
-  height: 100vh;
-  height: 100dvh;
+  height: var(--app-viewport-height);
   display: flex;
   flex-direction: column;
   min-height: 0;
+}
+body {
+  width: var(--app-viewport-width);
+  height: var(--app-viewport-height);
 }
 .app-titlebar.MuiToolbar-root {
   min-height: 38px;
@@ -186,6 +158,20 @@ body,
   align-self: stretch;
   margin-inline-start: 6px;
   border-inline-start: 1px solid;
+}
+.titlebar-zoom {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  margin-inline-end: 4px;
+}
+.titlebar-zoom .MuiIconButton-root {
+  padding: 4px;
+}
+.titlebar-zoom .titlebar-zoom-value {
+  min-width: 4ch;
+  padding: 4px;
+  font-variant-numeric: tabular-nums;
 }
 .window-buttons .MuiIconButton-root {
   border-radius: 0;
@@ -305,10 +291,10 @@ body,
   display: none;
 }
 .library-dialog > .MuiDialog-container > .MuiDialog-paper {
-  width: calc(100vw - 48px);
+  width: calc(var(--app-viewport-width) - 48px);
   max-width: 1440px;
-  height: calc(100dvh - 48px);
-  max-height: calc(100dvh - 48px);
+  height: calc(var(--app-viewport-height) - 48px);
+  max-height: calc(var(--app-viewport-height) - 48px);
   margin: 24px;
 }
 .library-workspace {
@@ -349,9 +335,9 @@ body,
   overflow: auto;
 }
 .export-dialog > .MuiDialog-container > .MuiDialog-paper {
-  width: calc(100vw - 32px);
-  height: min(940px, calc(100dvh - 32px));
-  max-height: calc(100dvh - 32px);
+  width: calc(var(--app-viewport-width) - 32px);
+  height: min(940px, calc(var(--app-viewport-height) - 32px));
+  max-height: calc(var(--app-viewport-height) - 32px);
   margin: 16px;
 }
 .export-dialog .export-title {
@@ -565,7 +551,7 @@ body,
   transition-duration: 180ms !important;
   transition-timing-function: cubic-bezier(0.2, 0, 0, 1) !important;
 }
-@media (max-width: 700px) {
+@container application (max-width: 700px) {
   .export-library-actions .MuiButton-root {
     padding-inline: 8px;
   }
@@ -573,9 +559,9 @@ body,
     display: none;
   }
   .export-dialog > .MuiDialog-container > .MuiDialog-paper {
-    width: calc(100vw - 12px);
-    height: calc(100dvh - 12px);
-    max-height: calc(100dvh - 12px);
+    width: calc(var(--app-viewport-width) - 12px);
+    height: calc(var(--app-viewport-height) - 12px);
+    max-height: calc(var(--app-viewport-height) - 12px);
     margin: 6px;
   }
   .export-dialog .MuiDialogContent-root {
@@ -601,21 +587,18 @@ body,
     margin-left: 0 !important;
   }
 }
-@media (max-width: 480px) {
+@container application (max-width: 480px) {
   .export-actions .export-filename {
     width: 100%;
   }
 }
-@media (max-height: 640px) {
+@container application (max-height: 640px) {
   .app-main {
     padding: 8px 12px;
     gap: 6px;
   }
-  .domain-panel > .MuiBox-root:first-child {
-    padding: 10px;
-  }
 }
-@media (max-width: 850px) {
+@container application (max-width: 850px) {
   .app-main {
     padding: 10px;
     gap: 8px;
@@ -663,29 +646,18 @@ body,
     display: inline;
   }
 }
-@media (max-width: 560px) {
+@container application (max-width: 560px) {
   .history-content.MuiDialogContent-root {
     padding: 10px 12px;
   }
   .history-footer {
     padding-inline: 12px 4px;
   }
-  .history-record.MuiStack-root {
-    padding: 6px;
-    gap: 4px;
-  }
-  .history-record .MuiCheckbox-root,
-  .history-record .MuiIconButton-root {
-    padding: 5px;
-  }
-  .history-record .MuiButton-startIcon {
-    display: none;
-  }
   .library-dialog > .MuiDialog-container > .MuiDialog-paper {
     margin: 6px;
-    width: calc(100vw - 12px);
-    height: calc(100dvh - 12px);
-    max-height: calc(100dvh - 12px);
+    width: calc(var(--app-viewport-width) - 12px);
+    height: calc(var(--app-viewport-height) - 12px);
+    max-height: calc(var(--app-viewport-height) - 12px);
     border-radius: 10px;
   }
   .library-workspace {
@@ -732,7 +704,7 @@ body,
     grid-template-columns: minmax(0, 1fr);
   }
 }
-@media (max-width: 359px) {
+@container application (max-width: 359px) {
   .scan-form {
     grid-template-columns: minmax(0, 1fr) auto;
   }
@@ -741,7 +713,29 @@ body,
     justify-content: flex-end;
   }
 }
-@media (max-height: 500px) and (min-width: 561px) {
+@container application (max-width: 310px) {
+  .app-titlebar.MuiToolbar-root {
+    padding-inline-start: 2px;
+    gap: 1px;
+  }
+  .titlebar-brand {
+    overflow: hidden;
+  }
+  .titlebar-brand > svg {
+    display: none;
+  }
+  .app-titlebar > .MuiIconButton-root,
+  .titlebar-zoom .MuiIconButton-root,
+  .window-buttons .MuiIconButton-root {
+    width: 24px;
+    padding-inline: 0;
+  }
+  .window-buttons,
+  .titlebar-zoom {
+    margin-inline: 2px;
+  }
+}
+@container application (max-height: 500px) and (min-width: 561px) {
   .scan-controls {
     padding: 8px !important;
   }
@@ -765,11 +759,8 @@ body,
   .advanced-button > .MuiButton-startIcon {
     margin: 0;
   }
-  .domain-panel > .MuiBox-root:first-child > .MuiStack-root:first-child {
-    display: none;
-  }
 }
-@media (max-height: 450px) {
+@container application (max-height: 450px) {
   .workspace {
     min-height: 420px;
   }

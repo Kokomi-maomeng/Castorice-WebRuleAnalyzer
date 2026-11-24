@@ -1,0 +1,198 @@
+.domain-panel {
+  --domain-action-size: 44px;
+  --domain-motion: 180ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+.domain-heading {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 4px 8px 4px 12px;
+}
+
+.domain-heading > .MuiTypography-root {
+  flex-shrink: 0;
+}
+
+.domain-search {
+  display: grid;
+  flex: 1;
+  grid-template-columns: 0fr var(--domain-action-size);
+  justify-content: end;
+  align-items: center;
+  min-width: 0;
+  transition: grid-template-columns var(--domain-motion);
+}
+
+.domain-search[data-open="true"] {
+  grid-template-columns: 1fr var(--domain-action-size);
+}
+
+.domain-search-field {
+  min-width: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity var(--domain-motion);
+}
+
+.domain-search[data-open="true"] .domain-search-field {
+  opacity: 1;
+}
+
+.domain-search-field .MuiOutlinedInput-root {
+  min-height: 36px;
+}
+
+.domain-search-field .MuiOutlinedInput-input {
+  padding-block: 7px;
+}
+
+.domain-search > .MuiIconButton-root,
+.domain-toolbar .domain-direction {
+  display: grid;
+  place-items: center;
+  width: var(--domain-action-size);
+  height: var(--domain-action-size);
+}
+
+.domain-search > .MuiIconButton-root > .MuiSvgIcon-root,
+.domain-direction > .MuiSvgIcon-root {
+  grid-area: 1 / 1;
+  transition:
+    transform var(--domain-motion),
+    opacity var(--domain-motion);
+}
+
+.domain-search > .MuiIconButton-root > .domain-search-close {
+  opacity: 0;
+  transform: rotate(-30deg) scale(0.8);
+}
+
+.domain-search[data-open="true"] .domain-search-icon {
+  opacity: 0;
+  transform: rotate(30deg) scale(0.8);
+}
+
+.domain-search[data-open="true"] > .MuiIconButton-root > .domain-search-close {
+  opacity: 1;
+  transform: rotate(0) scale(1);
+}
+
+.domain-toolbar,
+.domain-row {
+  display: grid;
+  grid-template-columns:
+    8px var(--domain-action-size) minmax(0, 1fr) var(--domain-action-size)
+    8px;
+  align-items: center;
+}
+
+.domain-toolbar {
+  flex-shrink: 0;
+}
+
+.domain-toolbar .domain-toolbar-select {
+  grid-area: 1 / 2;
+}
+
+.domain-toolbar-controls {
+  display: flex;
+  grid-area: 1 / 3 / 2 / 5;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.domain-toolbar .domain-sort {
+  min-width: 0;
+}
+
+.domain-toolbar .domain-sort .MuiOutlinedInput-root {
+  min-height: 34px;
+}
+
+.domain-toolbar .domain-sort .MuiSelect-select {
+  box-sizing: content-box;
+  padding: 6px 29px 6px 9px;
+}
+
+.domain-toolbar .domain-sort .MuiSelect-icon {
+  right: 5px;
+  transition: transform var(--domain-motion);
+}
+
+.domain-toolbar .domain-direction {
+  flex-shrink: 0;
+}
+
+.domain-direction-arrow,
+.domain-direction:not([data-direction="default"]) .domain-direction-default {
+  opacity: 0;
+}
+
+.domain-direction:not([data-direction="default"]) .domain-direction-arrow {
+  opacity: 1;
+}
+
+.domain-direction[data-direction="descending"] .domain-direction-arrow {
+  transform: rotate(180deg);
+}
+
+.domain-toolbar .domain-count {
+  overflow: hidden;
+  margin-inline: auto 6px;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.domain-results {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.domain-row .domain-request {
+  grid-area: 1 / 1 / 2 / -1;
+  align-self: stretch;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 3px;
+  padding: 8px calc(var(--domain-action-size) + 12px);
+  text-align: start;
+  user-select: none;
+}
+
+.domain-row .domain-request.Mui-focusVisible {
+  outline: 2px solid currentColor;
+  outline-offset: -2px;
+}
+
+.domain-select {
+  grid-area: 1 / 2;
+  z-index: 1;
+}
+
+.domain-row .domain-copy {
+  grid-area: 1 / 4;
+  z-index: 1;
+}
+
+.domain-panel .domain-row-action {
+  width: var(--domain-action-size);
+  height: var(--domain-action-size);
+  padding: 0;
+}
+
+.domain-row-action .MuiSvgIcon-root {
+  font-size: 20px;
+}
+
+.domain-footer {
+  flex-shrink: 0;
+  padding: 8px 12px;
+}

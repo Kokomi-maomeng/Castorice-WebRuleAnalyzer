@@ -21,14 +21,22 @@ import {
 } from "@mui/material";
 import {
   CloseRounded,
+  DarkModeRounded,
   DeleteOutlineRounded,
+  DevicesRounded,
   LibraryBooksRounded,
+  LightModeRounded,
   SaveRounded,
 } from "@mui/icons-material";
 import type { ScanOptions, Settings } from "../types";
 import { api } from "../services/api";
 import { errorMessage, modeNames } from "../utils/format";
 import ContextHelp from "./ContextHelp";
+const themeChoices = {
+  light: { label: "浅色", Icon: LightModeRounded },
+  dark: { label: "深色", Icon: DarkModeRounded },
+  system: { label: "跟随系统", Icon: DevicesRounded },
+} as const;
 interface Props {
   open?: boolean;
   onExited?: () => void;
@@ -123,9 +131,14 @@ export default function SettingsDialog(p: Props) {
             {error}
           </Alert>
         )}
-        <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 650 }}>
-          默认扫描参数
-        </Typography>
+        <Stack direction="row" sx={{ mb: 2, alignItems: "center", gap: 0.5 }}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 650 }}>
+            默认扫描参数
+          </Typography>
+          <ContextHelp label="默认扫描参数应用范围">
+            保存后应用于尚未编辑的工作区，或清空工作区后的下一次扫描。
+          </ContextHelp>
+        </Stack>
         <Box className="advanced-grid">
           <TextField
             select
@@ -148,9 +161,6 @@ export default function SettingsDialog(p: Props) {
           </TextField>
           <ScanNumberFields options={draft.scan} change={setScanOptions} />
         </Box>
-        <Typography variant="caption" color="text.secondary">
-          保存后应用于尚未编辑的工作区，或清空工作区后的下一次扫描。
-        </Typography>
         <Divider sx={{ my: 3 }} />
         <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 650 }}>
           浏览器与会话
@@ -215,11 +225,19 @@ export default function SettingsDialog(p: Props) {
                 theme: e.target.value as Settings["theme"],
               }))
             }
-            sx={{ width: 140 }}
+            sx={{ width: 150 }}
           >
-            <MenuItem value="light">浅色</MenuItem>
-            <MenuItem value="dark">深色</MenuItem>
-            <MenuItem value="system">跟随系统</MenuItem>
+            {Object.entries(themeChoices).map(([value, { label, Icon }]) => (
+              <MenuItem key={value} value={value}>
+                <Box
+                  component="span"
+                  sx={{ display: "flex", alignItems: "center", gap: 0.75 }}
+                >
+                  <Icon fontSize="small" />
+                  {label}
+                </Box>
+              </MenuItem>
+            ))}
           </TextField>
           <TextField
             select

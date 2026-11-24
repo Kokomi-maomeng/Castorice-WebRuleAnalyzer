@@ -44,14 +44,14 @@ async function geometry() {
 try {
   await page.goto(base);
   await page.getByRole('button', { name: '扫描历史', exact: true }).click();
-  await page.getByRole('button', { name: '打开', exact: true }).first().click();
+  await page.getByRole('button', { name: /^打开历史 / }).first().click();
   await page.getByRole('button', { name: '预览与导出规则', exact: true }).click();
   await ready();
   const dialog = page.getByRole('dialog');
   for (const text of ['结果来源：', '需与客户端已有策略组名称一致', '个本地分类 ·', '导出包含 rules 段，合并到现有客户端配置']) {
     assert(!(await dialog.innerText()).includes(text), `unwanted helper remains: ${text}`);
   }
-  await dialog.getByRole('radio', { name: '合并规则库' }).check();
+  await dialog.getByRole('radio', { name: '抓取结果+开源规则库', exact: true }).check();
   const centerOffset = await category.evaluate(input => {
     const wrapper = input.closest('.MuiFormControl-root');
     const field = wrapper.querySelector('.MuiOutlinedInput-root').getBoundingClientRect();
@@ -156,7 +156,7 @@ try {
   assert.equal(multiple.categoryHeight, after.categoryHeight);
   assert(multiple.inputWidth >= 100, JSON.stringify(multiple));
   report.multipleCategories = { count: 4, inputWidth: multiple.inputWidth, height: multiple.categoryHeight };
-  await dialog.getByRole('radio', { name: '仅抓取结果' }).check();
+  await dialog.getByRole('radio', { name: '抓取结果', exact: true }).check();
   await ready();
   await page.getByRole('combobox', { name: '显示条目', exact: true }).click();
   assert.equal(await page.getByRole('option', { name: '规则库补充', exact: true }).count(), 0);

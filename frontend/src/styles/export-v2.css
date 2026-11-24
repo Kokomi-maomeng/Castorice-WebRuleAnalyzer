@@ -1,0 +1,152 @@
+.export-dialog > .MuiDialog-container > .MuiDialog-paper {
+  width: calc(var(--app-viewport-width, 100vw) - 32px);
+  height: min(940px, calc(var(--app-viewport-height, 100dvh) - 32px));
+  max-height: calc(var(--app-viewport-height, 100dvh) - 32px);
+}
+
+.export-dialog .export-settings-collapse {
+  flex: none;
+}
+
+.export-dialog .export-scope {
+  min-height: 40px;
+  padding: 3px 6px;
+  border-style: solid;
+  border-width: 1px;
+  border-radius: 12px;
+}
+
+.export-dialog .export-scope-icon {
+  margin-inline: 2px 4px;
+  opacity: 0.75;
+}
+
+.export-dialog .export-preview-header {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: end;
+  justify-content: space-between;
+  column-gap: 8px;
+  border-bottom-style: solid;
+  border-bottom-width: 1px;
+}
+
+.export-dialog .export-preview-header .export-summary {
+  justify-content: flex-end;
+  align-self: center;
+  margin: 3px 0 3px auto;
+}
+
+.export-dialog .preview-pager {
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-block: 6px;
+}
+
+.export-dialog .preview-page-options {
+  align-items: center;
+  gap: 8px;
+  margin-inline-start: auto;
+}
+
+.preview-page-options .MuiFormControl-root {
+  min-width: 104px;
+}
+
+.preview-total {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.preview-row[data-selectable="true"] {
+  cursor: pointer;
+}
+
+.preview-row:focus-within {
+  outline: 1px solid currentColor;
+  outline-offset: -1px;
+}
+
+.export-dialog .content-preview {
+  margin-top: 6px;
+}
+
+.content-preview .preview-text-grid {
+  display: flex;
+  align-items: start;
+  width: max-content;
+  min-width: 100%;
+  gap: 2ch;
+  padding: 12px;
+  font:
+    12px/1.7 Consolas,
+    "Cascadia Code",
+    monospace;
+}
+
+.content-preview .preview-text-grid .line-number {
+  min-width: 5ch;
+  width: auto;
+  margin: 0;
+}
+
+.export-actions .export-save-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-inline-start: auto;
+  max-width: 100%;
+}
+
+.export-actions .export-save-controls .export-filename {
+  width: min(210px, 100%);
+  min-width: 0;
+  margin: 0;
+}
+
+.export-save-controls .MuiButton-root {
+  flex: none;
+}
+
+@container application (max-width: 700px) {
+  .export-dialog > .MuiDialog-container > .MuiDialog-paper {
+    width: calc(var(--app-viewport-width, 100vw) - 12px);
+    height: calc(var(--app-viewport-height, 100dvh) - 12px);
+    max-height: calc(var(--app-viewport-height, 100dvh) - 12px);
+  }
+}
+
+@container application (max-width: 520px) {
+  .export-dialog .export-preview-header {
+    column-gap: 2px;
+  }
+
+  .export-preview-header .MuiTab-root {
+    min-width: 0;
+    padding-inline: 6px;
+    font-size: 12px;
+  }
+
+  .export-dialog .export-preview-header .export-summary {
+    gap: 2px;
+  }
+
+  .export-summary .MuiChip-root {
+    font-size: 10px;
+  }
+
+  .export-summary .MuiChip-label {
+    padding-inline: 4px;
+  }
+
+  .export-actions .export-save-controls {
+    width: 100%;
+  }
+
+  .export-actions .export-save-controls .export-filename {
+    flex: 1;
+  }
+}

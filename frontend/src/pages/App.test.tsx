@@ -93,7 +93,9 @@ afterEach(() => {
 describe("清空工作区", () => {
   async function openHistory() {
     fireEvent.click(screen.getByRole("button", { name: "扫描历史" }));
-    fireEvent.click(await screen.findByRole("button", { name: "打开" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "打开历史 example.com" }),
+    );
     return screen.findByRole("button", { name: "example.com" });
   }
 
@@ -188,7 +190,9 @@ describe("清空工作区", () => {
       "",
     );
     fireEvent.click(screen.getByRole("button", { name: "扫描历史" }));
-    const buttons = await screen.findAllByRole("button", { name: "打开" });
+    const buttons = await screen.findAllByRole("button", {
+      name: "打开历史 example.com",
+    });
     fireEvent.click(buttons[1]);
     await screen.findByRole("button", { name: "返回正在采集" });
     expect(screen.getByRole("button", { name: "清空工作区" })).toBeDisabled();
@@ -200,6 +204,7 @@ describe("清空工作区", () => {
   it("清空结果、计数与筛选，忽略旧事件，刷新后仍为空且可打开保留的历史", async () => {
     const view = render(<App />);
     await openHistory();
+    fireEvent.click(screen.getByRole("button", { name: "搜索域名" }));
     fireEvent.change(screen.getByRole("textbox", { name: "搜索域名" }), {
       target: { value: "missing" },
     });
@@ -209,6 +214,8 @@ describe("清空工作区", () => {
     expect(screen.getByRole("textbox", { name: "要分析的网站" })).toHaveValue(
       "",
     );
+    expect(screen.queryByRole("textbox", { name: "搜索域名" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "搜索域名" }));
     expect(screen.getByRole("textbox", { name: "搜索域名" })).toHaveValue("");
     expect(screen.getByRole("tab", { name: "网络请求" })).toBeInTheDocument();
     expect(old.close).toHaveBeenCalledOnce();
@@ -223,7 +230,9 @@ describe("清空工作区", () => {
     );
     expect(screen.getByText("等待首次发现")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "扫描历史" }));
-    fireEvent.click(await screen.findByRole("button", { name: "打开" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "打开历史 example.com" }),
+    );
     await screen.findByRole("button", { name: "example.com" });
     expect(
       mockAPI.mock.calls.every(([, method]) => !method || method === "GET"),
@@ -256,10 +265,13 @@ describe("清空工作区", () => {
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "清空工作区" })).toBeEnabled(),
     );
+    fireEvent.click(screen.getByRole("button", { name: "搜索域名" }));
     fireEvent.change(screen.getByRole("textbox", { name: "搜索域名" }), {
       target: { value: "temporary" },
     });
     fireEvent.click(screen.getByRole("button", { name: "清空工作区" }));
+    expect(screen.queryByRole("textbox", { name: "搜索域名" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "搜索域名" }));
     expect(screen.getByRole("textbox", { name: "搜索域名" })).toHaveValue("");
     expect(screen.getByText("等待首次发现")).toBeInTheDocument();
   });

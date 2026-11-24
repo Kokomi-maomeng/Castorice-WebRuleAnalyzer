@@ -3,6 +3,7 @@ param(
     [switch]$SkipTests,
     [switch]$BrowserTests,
     [switch]$SkipInstall,
+    [switch]$SkipFrontend,
     [ValidatePattern('^[a-zA-Z0-9](?:[a-zA-Z0-9._-]*[a-zA-Z0-9_-])?$')][string]$OutputSubdirectory
 )
 $ErrorActionPreference = 'Stop'
@@ -22,7 +23,7 @@ Push-Location (Join-Path $projectRoot 'frontend')
 try {
     if (-not $SkipInstall) { Invoke-Checked $npmCommand @('ci', '--no-audit', '--no-fund') }
     if (-not $SkipTests) { Invoke-Checked $npmCommand @('test') }
-    Invoke-Checked $npmCommand @('run', 'build')
+    if (-not $SkipFrontend) { Invoke-Checked $npmCommand @('run', 'build') }
 } finally { Pop-Location }
 $oldCGO = $env:CGO_ENABLED; $oldGOOS = $env:GOOS; $oldGOARCH = $env:GOARCH; $oldBrowserTest = $env:CASTORICE_BROWSER_TEST
 Push-Location (Join-Path $projectRoot 'backend')
