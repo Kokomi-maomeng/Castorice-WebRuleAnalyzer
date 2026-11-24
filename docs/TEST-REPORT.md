@@ -14,4 +14,6 @@
 | macOS | 从同一源码交叉编译 Apple 芯片和 Intel 附件。无 macOS 实机，本版未在 macOS 上运行。 |
 | 代码检查 | 前端 42 项测试通过。Go 全包测试、真实 Chromium、上游规则源、DNS 验证和 Go vet 通过。 |
 
+发布前更新 Chromium 调试连接使用的 gobwas/ws，以及测试站使用的 Gorilla WebSocket。 [Go 公告 6940](https://pkg.go.dev/vuln/GO-2026-6940) · [Go 公告 6278](https://pkg.go.dev/vuln/GO-2026-6278)
+
 历史测试见 [v1.7 测试报告](https://github.com/Kokomi-maomeng/Castorice-WebRuleAnalyzer/blob/v1.7/docs/TEST-REPORT.md)。
