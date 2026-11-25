@@ -12,11 +12,14 @@ import (
 	"github.com/castorice/Castorice-WebRuleAnalyzer/backend/internal/portable"
 	"github.com/jchv/go-webview2"
 	"golang.org/x/sys/windows"
+	"golang.org/x/sys/windows/registry"
 )
 
 const (
 	wmClose         = 0x0010
 	wmSize          = 0x0005
+	wmSettingChange = 0x001A
+	wmThemeChanged  = 0x031A
 	wmNCDestroy     = 0x0082
 	wmNCCalcSize    = 0x0083
 	wmNCHitTest     = 0x0084
@@ -91,6 +94,7 @@ type windowsFrame struct {
 	closing, maximized bool
 	closeTimer         *time.Timer
 	closeStarted       time.Time
+	systemTheme        string
 }
 
 // The pinned WebView2 wrapper creates and shows its HWND in one call. Attach
@@ -140,7 +144,8 @@ func (f *windowsFrame) installBridge(origin string, paths portable.Paths) error 
 	}); err != nil {
 		return err
 	}
-	f.view.Init(windowBridge(origin, paths, "void window.__castoriceWindowCommand("+strconv.Quote(key)+", action);"))
+	f.systemTheme = windowsSystemTheme()
+	f.view.Init(windowBridge(origin, paths, "void window.__castoriceWindowCommand("+strconv.Quote(key)+", action);", f.systemTheme))
 	return nil
 }
 
@@ -159,6 +164,8 @@ func (f *windowsFrame) command(action string) {
 		}
 	case "close":
 		postMessage.Call(f.hwnd, wmClose, 0, 0)
+	case "ready":
+		f.refreshSystemTheme()
 	case "move":
 		var point windowPoint
 		if ok, _, _ := getCursorPos.Call(uintptr(unsafe.Pointer(&point))); ok != 0 {
@@ -217,6 +224,8 @@ func (f *windowsFrame) windowProc(hwnd, message, wp, lp, id, data uintptr) uintp
 			}
 		}
 		return result
+	case wmSettingChange, wmThemeChanged:
+		f.refreshSystemTheme()
 	case wmClose:
 		if f.closing {
 			return 0
@@ -263,6 +272,30 @@ func (f *windowsFrame) windowProc(hwnd, message, wp, lp, id, data uintptr) uintp
 		removeSubclass.Call(hwnd, f.subclass, id)
 	}
 	return next()
+}
+
+func windowsSystemTheme() string {
+	key, err := registry.OpenKey(registry.CURRENT_USER, `Software\Microsoft\Windows\CurrentVersion\Themes\Personalize`, registry.QUERY_VALUE)
+	if err != nil {
+		return "undefined"
+	}
+	defer key.Close()
+	value, _, err := key.GetIntegerValue("AppsUseLightTheme")
+	if err != nil || value > 1 {
+		return "undefined"
+	}
+	return strconv.FormatBool(value == 0)
+}
+
+func (f *windowsFrame) refreshSystemTheme() {
+	if f.view == nil || f.closing {
+		return
+	}
+	theme := windowsSystemTheme()
+	if theme != f.systemTheme {
+		f.systemTheme = theme
+		f.view.Eval("if (window.castoriceWindow) window.dispatchEvent(new CustomEvent('castorice-system-theme', {detail: " + theme + "}));")
+	}
 }
 
 func (f *windowsFrame) scheduleCloseFrame(hwnd uintptr, delay time.Duration) {

@@ -73,12 +73,16 @@ async function waitFor(fn, message, timeout = 20000) {
 async function verifyHistoryLayout(page, baseTask) {
   const route = /\/api\/scans\/history\?/;
   const rows = Array.from({ length: 67 }, (_, i) => ({
-    ...baseTask, id: 'history-fixture-' + i, target_url: `entry-${i}.example.com`,
+    ...baseTask, id: 'history-fixture-' + i, target_url: `entry-${i}.example.com`, status: 'completed',
   }));
-  await page.route(route, (request) => {
-    const start = Number(new URL(request.request().url()).searchParams.get('offset'));
+  await page.route(route, async (request) => {
+    const params = new URL(request.request().url()).searchParams;
+    const start = Number(params.get('offset'));
+    const query = params.get('q') ?? '';
+    const matches = rows.filter(row => row.target_url.includes(query));
+    if (query) await new Promise(resolve => setTimeout(resolve, 270));
     return request.fulfill({ json: { data: {
-      items: rows.slice(start, start + 30), total: rows.length, finished_count: rows.length,
+      items: matches.slice(start, start + 30), total: matches.length, finished_count: rows.length,
     } } });
   });
   try {
@@ -95,11 +99,35 @@ async function verifyHistoryLayout(page, baseTask) {
       const label = wrapper.querySelector('label').getBoundingClientRect();
       return Math.abs((field.top + field.height / 2) - (label.top + label.height / 2)) <= 1.5;
     }), 'History text field label is vertically centered');
+    const first = dialog.getByRole('button', { name: '打开历史 entry-0.example.com' });
+    await first.click({ modifiers: ['Control'] });
+    await dialog.getByRole('button', { name: '打开历史 entry-4.example.com' }).click({ modifiers: ['Shift'] });
+    assert.equal(await dialog.locator('.history-content input:checked').count(), 5, 'Shift includes every visible record in the range');
+    assert(await first.evaluate(row => {
+      const badge = row.querySelector('.MuiChip-root');
+      const badgeRect = badge.getBoundingClientRect();
+      const time = row.querySelector('time').getBoundingClientRect();
+      return badge.classList.contains('MuiChip-colorPrimary') && badge.classList.contains('MuiChip-filled') && badgeRect.right <= time.left && badgeRect.top <= time.top;
+    }), 'Completed history badge is filled and sits before the timestamp');
+    const normalBounds = await dialog.boundingBox();
+    const queryRequest = page.waitForRequest(req => new URL(req.url()).searchParams.get('q') === 'entry-66');
+    await search.fill('entry-66');
+    await queryRequest;
+    assert(await first.isVisible(), 'Search retains displayed rows while waiting for results');
+    await dialog.getByRole('button', { name: '打开历史 entry-66.example.com' }).waitFor();
+    assert.deepEqual(await dialog.boundingBox(), normalBounds, 'Filtering leaves dialog geometry unchanged');
+    assert(await search.evaluate(input => document.activeElement === input), 'Filtering preserves search focus');
+    await search.clear();
+    await first.waitFor();
     for (const [width, height] of [[1220, 800], [640, 360], [320, 256]]) {
       await page.setViewportSize({ width, height });
       await list.evaluate(node => { node.scrollTop = 0; });
       const before = await footer.boundingBox();
       assert(before && before.y >= 0 && before.y + before.height <= height, 'History footer fits viewport');
+      assert(await dialog.getByRole('button', { name: '删除历史 entry-0.example.com' }).evaluate(node => {
+        const rect = node.getBoundingClientRect();
+        return rect.width >= 43 && rect.height >= 43;
+      }), 'History delete retains its hit area at narrow widths');
       assert(await next.evaluate(node => {
         const rect = node.getBoundingClientRect();
         return node.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
@@ -154,10 +182,61 @@ async function verify(name, fixturePort) {
     await page.getByRole('button', { name: '高级配置' }).click();
     await page.getByRole('spinbutton', { name: '每页观察 / 秒' }).fill('1');
     await page.getByRole('button', { name: '完成' }).click();
-    await page.getByRole('button', { name: '切换主题' }).click();
+    await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'no-preference' });
+    await page.getByRole('button', { name: '软件设置' }).click();
+    const settings = page.getByRole('dialog', { name: '软件设置' });
+    const theme = settings.getByRole('combobox', { name: '主题' });
+    await theme.click();
+    await page.getByRole('option', { name: '跟随系统' }).click();
+    assert.equal(await theme.locator('svg').count(), 1, 'Theme value has an icon');
+    await settings.getByRole('button', { name: '默认扫描参数应用范围' }).click();
+    await page.getByRole('tooltip').filter({ hasText: '保存后应用于尚未编辑的工作区' }).waitFor();
+    await settings.getByRole('button', { name: '保存设置' }).click();
+    await waitFor(() => page.locator('body').evaluate(node => getComputedStyle(node).colorScheme === 'dark'), 'Follow system theme');
+    await settings.waitFor({ state: 'hidden' });
+    assert.equal(await page.getByRole('button', { name: '切换主题' }).count(), 0);
+
+    const zoom = (percent) => page.getByRole('button', { name: `缩放 ${percent}%，恢复默认缩放` });
+    await zoom(100).click();
+    const originalWidth = (await page.getByRole('button', { name: '放大', exact: true }).boundingBox()).width;
+    await page.getByRole('button', { name: '放大', exact: true }).click();
+    await zoom(110).waitFor();
+    assert((await page.getByRole('button', { name: '放大', exact: true }).boundingBox()).width > originalWidth);
+    await page.keyboard.press('Control+=');
+    await zoom(125).waitFor();
+    await page.getByRole('button', { name: '软件设置' }).click();
+    await theme.waitFor();
+    await theme.scrollIntoViewIfNeeded();
+    const themeHandle = await theme.elementHandle();
+    await theme.click();
+    const systemOption = page.getByRole('option', { name: '跟随系统' });
+    await systemOption.waitFor();
+    await delay(180);
+    const anchor = await themeHandle.evaluate(node => node.parentElement.getBoundingClientRect().toJSON());
+    const menu = await systemOption.evaluate(node => node.closest('.MuiPopover-paper').getBoundingClientRect().toJSON());
+    assert(
+      Math.abs(anchor.left + anchor.width / 2 - menu.left - menu.width / 2) < 5 &&
+      Math.abs(anchor.bottom - menu.top) < 5,
+      `Theme menu remains anchored at 125% zoom: ${JSON.stringify({ anchor, menu })}`,
+    );
+    await page.keyboard.press('Escape');
+    await settings.getByRole('button', { name: '关闭设置' }).click();
+    await settings.waitFor({ state: 'hidden' });
+    await page.keyboard.press('Control+-');
+    await zoom(110).waitFor();
+    await zoom(110).click();
+    await zoom(100).waitFor();
+
     await page.getByRole('button', { name: '高级配置' }).click();
     assert.equal(await page.getByRole('spinbutton', { name: '每页观察 / 秒' }).inputValue(), '1');
+    await page.getByRole('button', { name: '网络诊断' }).click();
+    const network = page.getByRole('dialog', { name: '网络诊断与本次网络设置' });
+    await network.waitFor();
+    await network.getByRole('button', { name: '关闭网络诊断' }).click();
+    await page.locator('[data-dialog-motion="exit"]').filter({ has: page.getByText('网络诊断与本次网络设置', { exact: true }) }).waitFor();
+    await network.waitFor({ state: 'hidden' });
     await page.getByRole('button', { name: '完成' }).click();
+    await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'reduce' });
     let domainReads = 0;
     const releaseDomains = Promise.withResolvers();
     await page.route(/\/api\/scans\/[^/]+\/domains$/, async (route) => {
@@ -257,7 +336,8 @@ async function verify(name, fixturePort) {
     await page.getByRole('button', { name: '关闭导出', exact: true }).click();
     await verifyHistoryLayout(page, await request(`/scans/${id}`));
     await page.getByRole('button', { name: '扫描历史' }).click();
-    await page.getByRole('button', { name: '打开', exact: true }).first().click();
+    await page.getByRole('button', { name: /^打开历史 / }).first().press('Enter');
+    await page.getByRole('dialog', { name: '扫描历史' }).waitFor({ state: 'hidden' });
     assert.equal(await target.inputValue(), 'scan.test');
     assert(await page.getByRole('button', { name: '开始采集' }).isEnabled());
     await page.getByRole('button', { name: '清空工作区' }).click();

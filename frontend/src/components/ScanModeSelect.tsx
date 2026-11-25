@@ -38,6 +38,13 @@ export default function ScanModeSelect({
         onClick={(e) => setAnchor(e.currentTarget)}
         endIcon={<ArrowDropDownRounded />}
         sx={{
+          "& .MuiButton-endIcon": {
+            transform: anchor ? "rotate(180deg)" : "rotate(0deg)",
+            transition: (theme) =>
+              theme.transitions.create("transform", {
+                duration: theme.transitions.duration.shorter,
+              }),
+          },
           justifyContent: "space-between",
           minHeight: 40,
           borderColor: "divider",

@@ -55,6 +55,7 @@ interface Props {
 export default function ScanControls(p: Props) {
   const [advanced, setAdvanced] = useState(false);
   const [diagnosing, setDiagnosing] = useState(false);
+  const [diagnosticMounted, setDiagnosticMounted] = useState(false);
   const { mode } = p.options;
   const set = <K extends keyof ScanOptions>(key: K, value: ScanOptions[K]) =>
     p.setOptions({ ...p.options, [key]: value });
@@ -274,15 +275,24 @@ export default function ScanControls(p: Props) {
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDiagnosing(true)} sx={{ mr: "auto" }}>
+          <Button
+            onClick={() => {
+              setDiagnosticMounted(true);
+              setDiagnosing(true);
+            }}
+            sx={{ mr: "auto" }}
+          >
             网络诊断
           </Button>
           <Button onClick={() => setAdvanced(false)}>完成</Button>
         </DialogActions>
-        {diagnosing && (
+        {diagnosticMounted && (
           <NetworkDialog
-            open
+            open={diagnosing}
             onClose={() => setDiagnosing(false)}
+            onExited={() => {
+              if (!diagnosing) setDiagnosticMounted(false);
+            }}
             url={p.target?.url || p.url}
             label={p.target?.host}
             options={p.options}

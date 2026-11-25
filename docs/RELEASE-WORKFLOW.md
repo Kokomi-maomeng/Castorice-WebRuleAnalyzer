@@ -1,6 +1,6 @@
 # 发布流程模板
 
-适用于后续 Windows 便携版、Linux 和 Docker 网页版发布。每次重新验证当前代码与环境；旧报告只用于选择流程，不等于本次验收。
+适用于 Windows 便携版、Linux、macOS 和 Docker 网页版发布。每次重新验证当前代码与环境，并在当前测试报告中记录各平台的实际覆盖。
 
 ## 1. 定范围与基线
 
@@ -26,7 +26,9 @@
 ./scripts/test.ps1 -Browser -LiveRules -LiveDNS
 node scripts/verify-local.mjs chrome msedge firefox webkit
 ./scripts/build.ps1 -BrowserTests
-./scripts/build-linux.ps1 -SkipFrontend
+./scripts/build-linux.ps1 -SkipFrontend -DockerPackage
+./scripts/build-linux.ps1 -SkipFrontend -Platform darwin -Architecture amd64
+./scripts/build-linux.ps1 -SkipFrontend -Platform darwin -Architecture arm64
 ```
 
 检查所有外部程序的退出码。不要把编译成功、健康接口或旧测试截图写成实际功能已经通过。
@@ -35,12 +37,13 @@ node scripts/verify-local.mjs chrome msedge firefox webkit
 
 更新版本号只修改项目根 version 与锁文件 packages[""].version，禁止全局替换锁文件的版本字符串。保留第三方依赖的版本、下载地址与 integrity；用空 npm 缓存或干净 CI 验证公开安装，避免本机缓存掩盖不存在的下载地址。
 
-## 4. 三端实测
+## 4. 平台验收
 
 - Windows：使用发布 EXE 的测试副本，测试中文/空格路径、实际浏览器扫描、三种导出、设置/历史/规则持久化和重复实例。
 - 主窗口正常关闭、扫描中关闭、强制退出后恢复：检查所属进程归零、监听关闭、临时 Profile 清理，用户浏览器保持独立。
 - 自动关闭测试可用 `verify-desktop.ps1 -AutoClose`；显式测试环境才启用 WebView2 调试与本窗口 WM_CLOSE 钩子，普通启动没有这些测试接口。
 - Linux：在用户指定 Debian 的真实 GUI 会话测试采集、取消、超时、私网重定向与清理；SSH 无 GUI 测试不能代替可见交互。
+- macOS：交叉编译 darwin/amd64 和 darwin/arm64，检查 Mach-O 架构、包内权限及校验值。有设备时验证启动和采集。
 - Docker：非 root Chromium、自身沙箱、持久卷、精确 Host/Origin、真实公网扫描与导出。记录实际网络模式；默认 Compose 端口映射另外验证。
 - 空缓存、实际完整缓存、真实扫描结果之外，再单独使用明确标注的密集/缺失数据测试夹具检查布局；不要将夹具当真实采集证据。
 
@@ -73,7 +76,7 @@ python scripts/audit-release.py --zip ($package + '.zip')
 1. 更新版本、变更记录、用户说明、架构、安全边界和测试报告。
 2. 使用公开贡献者 Git 身份提交；检查推送目标和可见性，不能夹带其他项目资料。
 3. 推送分支后等待 CI；需要修复则重新验证，不能以绿色健康接口替代失败检查。
-4. 从固定标签和受控构建环境生成成品，保留 `BUILD-INFO.json`，验收后上传同一份 Windows ZIP、Linux tar.gz 和包级 SHA-256。版本来源为根 VERSION。发布前核对仓库的分支规则、必需 CI、依赖提醒、签名来源与不可变 Release 设置。
+4. 从固定提交和受控构建环境生成成品，保留 `BUILD-INFO.json`，验收后上传 Windows ZIP、Linux、macOS 双架构和 Docker tar.gz 及包级 SHA-256。版本来源为根 VERSION。发布前核对仓库的分支规则、必需 CI、依赖提醒、签名来源与不可变 Release 设置。
 5. 从 GitHub 下载附件，比较 SHA256，再次解压启动真实成品。确认 Release 标签与附件对应相同源码版本。
 6. 保存脱敏报告。关闭本次临时服务与测试浏览器；验证虚拟机原有服务未被改动。不要停止用户日常浏览器、代理或无关容器。
 

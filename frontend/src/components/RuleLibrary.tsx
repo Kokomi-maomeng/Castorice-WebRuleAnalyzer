@@ -64,6 +64,11 @@ export default function RuleLibrary(p: Props) {
   const [error, setError] = useState("");
   const [settings, setSettings] = useState(false);
   const [details, setDetails] = useState("");
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  function showDetails(kind: "license" | "warnings") {
+    setDetails(kind);
+    setDetailsOpen(true);
+  }
   const [limit, setLimit] = useState(100);
   const editor = useRef<HTMLTextAreaElement>(null);
   const selectedVersion = sources.find(
@@ -531,11 +536,14 @@ export default function RuleLibrary(p: Props) {
                   >
                     上游原文件
                   </Link>
-                  <Button size="small" onClick={() => setDetails("license")}>
+                  <Button size="small" onClick={() => showDetails("license")}>
                     许可证
                   </Button>
                   {!!content.warnings?.length && (
-                    <Button size="small" onClick={() => setDetails("warnings")}>
+                    <Button
+                      size="small"
+                      onClick={() => showDetails("warnings")}
+                    >
                       {content.warnings.length} 项转换提示
                     </Button>
                   )}
@@ -697,8 +705,11 @@ export default function RuleLibrary(p: Props) {
         </DialogActions>
       </Dialog>
       <Dialog
-        open={!!details}
-        onClose={() => setDetails("")}
+        open={detailsOpen}
+        onClose={() => setDetailsOpen(false)}
+        slotProps={{
+          transition: { onExited: () => !detailsOpen && setDetails("") },
+        }}
         fullWidth
         maxWidth="md"
       >
@@ -714,7 +725,7 @@ export default function RuleLibrary(p: Props) {
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDetails("")}>关闭</Button>
+          <Button onClick={() => setDetailsOpen(false)}>关闭</Button>
         </DialogActions>
       </Dialog>
     </Dialog>

@@ -1,4 +1,5 @@
 import { FormControlLabel, Radio, RadioGroup } from "@mui/material";
+import { LayersOutlined } from "@mui/icons-material";
 import type { ExportJob } from "../types";
 
 export default function ExportScope({
@@ -17,11 +18,13 @@ export default function ExportScope({
       className="export-scope"
       value={value}
       onChange={(_, mode) => onChange(mode as ExportJob["mode"])}
+      sx={{ borderColor: "divider" }}
     >
+      <LayersOutlined className="export-scope-icon" fontSize="small" />
       <FormControlLabel
         value="observed"
         control={<Radio size="small" />}
-        label="仅抓取结果"
+        label="抓取结果"
       />
       <FormControlLabel
         value="merged"
@@ -34,7 +37,7 @@ export default function ExportScope({
         control={
           <Radio size="small" color={missingLibrary ? "error" : "primary"} />
         }
-        label="合并规则库"
+        label="抓取结果+开源规则库"
       />
     </RadioGroup>
   );

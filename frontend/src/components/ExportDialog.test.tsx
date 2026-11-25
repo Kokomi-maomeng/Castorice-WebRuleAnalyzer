@@ -105,17 +105,21 @@ describe("导出预览", () => {
     warnings: [],
   };
   function show(mode: "observed" | "merged" = "merged", current = task) {
-    return render(
+    const view = render(
       <ExportDialog
         task={current}
         domains={domains}
-        mode={mode}
         settings={defaultSettings}
         onClose={vi.fn()}
         notify={vi.fn()}
         onRematch={vi.fn()}
       />,
     );
+    if (mode === "merged") chooseMerged();
+    return view;
+  }
+  function chooseMerged() {
+    fireEvent.click(screen.getByRole("radio", { name: "抓取结果+开源规则库" }));
   }
   it("缺库时标记合并选项与分类，在两套来源下载期间保持进度，失败后可继续下载", async () => {
     vi.useFakeTimers();
@@ -154,7 +158,7 @@ describe("导出预览", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(200);
     });
-    const merge = screen.getByRole("radio", { name: "合并规则库" });
+    const merge = screen.getByRole("radio", { name: "抓取结果+开源规则库" });
     fireEvent.click(merge);
     const input = screen.getByRole("combobox", { name: "规则分类" });
     expect(merge.closest("label")).toHaveAttribute("data-missing-library");
@@ -182,6 +186,11 @@ describe("导出预览", () => {
     expect(progress).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "导出设置" }));
     expect(progress).toBeInTheDocument();
+    expect(merge.closest("#export-settings")).toHaveAttribute("inert");
+    expect(
+      screen.getByLabelText("输出格式").closest("#export-settings"),
+    ).toHaveAttribute("inert");
+    fireEvent.click(screen.getByRole("button", { name: "导出设置" }));
     await act(async () => {
       transfers.get("v2fly")!.fail(new Error("服务响应超时"));
     });
@@ -199,12 +208,14 @@ describe("导出预览", () => {
     expect(merge.closest("label")).not.toHaveAttribute("data-missing-library");
   });
   it("文件名称移到操作区，清空后禁用软件目录保存并保留默认文件名", async () => {
-    vi.stubGlobal("castoriceDesktop", { version: "v1.7" });
+    vi.stubGlobal("castoriceDesktop", { version: "test" });
     show("observed");
     const name = screen.getByRole("textbox", { name: "文件名称" });
     expect(name.closest(".export-actions")).not.toBeNull();
     expect(name).toHaveValue("castorice-rules");
     const save = screen.getByRole("button", { name: "保存到软件目录" });
+    expect(save.previousElementSibling).toContainElement(name);
+    expect(screen.queryByRole("button", { name: /^关闭$/ })).toBeNull();
     await waitFor(() => expect(save).toBeEnabled());
     fireEvent.change(name, { target: { value: "  " } });
     expect(save).toBeDisabled();
@@ -365,7 +376,7 @@ describe("导出预览", () => {
     expect(
       screen.getByRole("checkbox", { name: "导出 DOMAIN,covered.example.com" }),
     ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("radio", { name: "仅抓取结果" }));
+    fireEvent.click(screen.getByRole("radio", { name: "抓取结果" }));
     fireEvent.mouseDown(filter);
     expect(
       screen.queryByRole("option", { name: "规则库补充" }),
@@ -492,13 +503,13 @@ describe("导出预览", () => {
           ],
         }}
         domains={domains}
-        mode="merged"
         settings={defaultSettings}
         onClose={vi.fn()}
         notify={vi.fn()}
         onRematch={vi.fn()}
       />,
     );
+    chooseMerged();
     const button = screen.getByRole("button", { name: "下载文件" });
     await waitFor(() => expect(button).toBeEnabled());
     version = "two";
@@ -540,7 +551,6 @@ describe("导出预览", () => {
       <ExportDialog
         task={task}
         domains={domains}
-        mode="observed"
         settings={defaultSettings}
         onClose={vi.fn()}
         notify={vi.fn()}
@@ -568,13 +578,13 @@ describe("导出预览", () => {
       <ExportDialog
         task={task}
         domains={domains}
-        mode="merged"
         settings={defaultSettings}
         onClose={vi.fn()}
         notify={vi.fn()}
         onRematch={vi.fn()}
       />,
     );
+    chooseMerged();
     expect(screen.getByRole("combobox", { name: /规则分类/ })).toBeRequired();
     expect(
       await screen.findByRole("checkbox", { name: "导出 DOMAIN,example.com" }),
@@ -631,13 +641,13 @@ describe("导出预览", () => {
       <ExportDialog
         task={task}
         domains={domains}
-        mode="merged"
         settings={defaultSettings}
         onClose={vi.fn()}
         notify={vi.fn()}
         onRematch={vi.fn()}
       />,
     );
+    chooseMerged();
     fireEvent.click(await screen.findByRole("button", { name: "下载规则库" }));
     await waitFor(() => expect(syncCalls).toHaveLength(2));
     await waitFor(() =>
@@ -665,7 +675,7 @@ describe("导出预览", () => {
       expect(screen.getByRole("button", { name: "下载文件" })).toBeEnabled(),
     );
   });
-  it("分页只渲染30条，本页取消跨页保留，搜索分类可定位全部条目", async () => {
+  it("分页只渲染30条，点击和 Shift 跨页选择，筛选保留完整计数", async () => {
     const entries = Array.from({ length: 95 }, (_, i) => ({
       ...output.entries[0],
       rule_value: `d${String(i).padStart(3, "0")}.example.com`,
@@ -688,7 +698,6 @@ describe("导出预览", () => {
       <ExportDialog
         task={task}
         domains={domains}
-        mode="observed"
         settings={defaultSettings}
         onClose={vi.fn()}
         notify={vi.fn()}
@@ -701,12 +710,29 @@ describe("导出预览", () => {
     expect(
       screen.getAllByRole("checkbox", { name: /^导出 DOMAIN,/ }),
     ).toHaveLength(30);
+    const count = screen.getByLabelText("选中条目数 / 总条目数");
+    expect(count).toHaveTextContent("95 / 95");
     fireEvent.click(screen.getByRole("checkbox", { name: "选择本页" }));
+    expect(count).toHaveTextContent("65 / 95");
     fireEvent.click(screen.getByRole("button", { name: "下一页" }));
-    expect(
-      screen.getByRole("checkbox", { name: "导出 DOMAIN,d030.example.com" }),
-    ).toBeChecked();
+    const checkedRow = screen.getByRole("checkbox", {
+      name: "导出 DOMAIN,d030.example.com",
+    });
+    expect(checkedRow).toBeChecked();
+    fireEvent.click(screen.getByText("DOMAIN,d030.example.com"), {
+      ctrlKey: true,
+    });
+    expect(checkedRow).not.toBeChecked();
     fireEvent.click(screen.getByRole("button", { name: "上一页" }));
+    fireEvent.click(screen.getByText("DOMAIN,d028.example.com"), {
+      shiftKey: true,
+    });
+    expect(
+      screen.getByRole("checkbox", { name: "导出 DOMAIN,d028.example.com" }),
+    ).toBeChecked();
+    expect(
+      screen.getByRole("checkbox", { name: "导出 DOMAIN,d029.example.com" }),
+    ).toBeChecked();
     expect(
       screen.getByRole("checkbox", { name: "导出 DOMAIN,d000.example.com" }),
     ).not.toBeChecked();
@@ -716,6 +742,7 @@ describe("导出预览", () => {
     expect(
       screen.getAllByRole("checkbox", { name: /^导出 DOMAIN,/ }),
     ).toHaveLength(1);
+    expect(count).toHaveTextContent("67 / 95");
     fireEvent.change(screen.getByRole("textbox", { name: "搜索预览条目" }), {
       target: { value: "example-app" },
     });
@@ -726,7 +753,7 @@ describe("导出预览", () => {
       expect(
         mockAPI.mock.calls.filter(([path]) => path === "/export").at(-1)?.[2]
           .excluded,
-      ).toHaveLength(30),
+      ).toHaveLength(28),
     );
   });
   it("文件按行分页，复制下载完整文件，最后一行不丢失", async () => {
@@ -743,7 +770,6 @@ describe("导出预览", () => {
       <ExportDialog
         task={task}
         domains={domains}
-        mode="observed"
         settings={defaultSettings}
         onClose={vi.fn()}
         notify={vi.fn()}
@@ -752,10 +778,23 @@ describe("导出预览", () => {
     );
     await screen.findByRole("checkbox", { name: "导出 DOMAIN,example.com" });
     fireEvent.click(screen.getByRole("tab", { name: "文件内容" }));
-    expect(screen.getByText("line-200")).toBeInTheDocument();
-    expect(screen.queryByText("line-201")).not.toBeInTheDocument();
+    const preview = screen.getByRole("region", { name: "规则文件预览" });
+    const numbers = preview.querySelector(".line-number")!;
+    expect(preview).toHaveTextContent("line-200");
+    expect(preview).not.toHaveTextContent("line-201");
+    expect(screen.getByLabelText("总行数")).toHaveTextContent("451");
     fireEvent.click(screen.getByRole("button", { name: "第 3 页" }));
-    expect(screen.getByText("line-451")).toBeInTheDocument();
+    expect(preview).toHaveTextContent("line-451");
+    expect(numbers.textContent?.split("\n")[0]).toBe("401");
+    expect(screen.getByLabelText("总行数")).toHaveTextContent("451");
+    fireEvent.mouseDown(screen.getByRole("combobox", { name: "每页行数" }));
+    fireEvent.click(screen.getByRole("option", { name: "完整显示" }));
+    expect(preview).toHaveTextContent("line-1");
+    expect(preview).toHaveTextContent("line-451");
+    expect(numbers.textContent?.split("\n")).toHaveLength(451);
+    expect(numbers.textContent?.split("\n").at(-1)).toBe("451");
+    expect(screen.queryByRole("button", { name: "下一页" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "选择完整文本" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "复制内容" }));
     fireEvent.click(screen.getByRole("button", { name: "下载文件" }));
     expect(mockCopy).toHaveBeenCalledWith(content);
@@ -783,7 +822,6 @@ describe("导出预览", () => {
       <ExportDialog
         task={task}
         domains={domains}
-        mode="observed"
         settings={defaultSettings}
         onClose={vi.fn()}
         notify={vi.fn()}

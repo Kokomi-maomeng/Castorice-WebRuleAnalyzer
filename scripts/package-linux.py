@@ -1,4 +1,4 @@
-"""Archive a clean Linux package with portable executable permissions."""
+"""Archive a clean Unix or Docker package with portable executable permissions."""
 import argparse
 from pathlib import Path
 import tarfile
@@ -8,7 +8,7 @@ parser.add_argument('directory', type=Path)
 args = parser.parse_args()
 package = args.directory.resolve()
 if not (package / 'castorice').is_file():
-    raise SystemExit('Missing Linux executable')
+    raise SystemExit('Missing release executable')
 for p in package.rglob('*'):
     if p.name in {'data', 'exports', '.runtime', '.git'} or p.is_symlink():
         raise SystemExit('Refusing runtime data or symlink in package')

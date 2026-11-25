@@ -15,18 +15,21 @@ const (
 	windowClosingEvent              = "window.dispatchEvent(new Event('castorice-window-closing'));"
 )
 
-func windowBridge(origin string, paths portable.Paths, command string) string {
+func windowBridge(origin string, paths portable.Paths, command, initialSystemTheme string) string {
 	base, _ := json.Marshal(origin)
 	metadata, _ := json.Marshal(map[string]string{"dataDir": paths.Data, "exportDir": paths.Exports, "version": model.Version})
 	return `if (window === window.top && location.origin === ` + string(base) + `) {
 		Object.defineProperty(window, 'castoriceDesktop', {value: Object.freeze(` + string(metadata) + `)});
 		let maximized = false;
+		let systemDark = ` + initialSystemTheme + `;
 		window.addEventListener('castorice-window-state', event => { maximized = event.detail; });
+		window.addEventListener('castorice-system-theme', event => { systemDark = event.detail; });
 		window.addEventListener('castorice-window-closing', () => {
 			document.documentElement.classList.add('desktop-closing');
 		}, {once: true});
 		Object.defineProperty(window, 'castoriceWindow', {value: Object.freeze({
 			get maximized() { return maximized; },
+			get systemDark() { return systemDark; },
 			command: action => { ` + command + ` }
 		})});
 	}`

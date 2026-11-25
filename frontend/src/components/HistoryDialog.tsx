@@ -1,27 +1,28 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   Alert,
   Box,
   Button,
+  ButtonBase,
   Checkbox,
   Chip,
-  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
   IconButton,
-  Stack,
+  LinearProgress,
   TablePagination,
   TextField,
   Typography,
 } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import {
   CloseRounded,
   DeleteOutlineRounded,
-  OpenInNewRounded,
   RefreshRounded,
 } from "@mui/icons-material";
+import useRangeSelection from "../hooks/useRangeSelection";
 import type { HistoryDeletion, HistoryPage, ScanTask } from "../types";
 import { api } from "../services/api";
 import {
@@ -32,8 +33,11 @@ import {
   statusNames,
 } from "../utils/format";
 import { scanTargetLabel } from "../utils/scanAddress";
+import "../styles/history-v2.css";
 
 const pageSize = 30;
+const emptyHistory: HistoryPage = { items: [], total: 0, finished_count: 0 };
+type DeletionRequest = { all_finished: true } | { ids: string[] };
 
 interface Props {
   open?: boolean;
@@ -44,83 +48,135 @@ interface Props {
   notify?: (s: string) => void;
 }
 export default function HistoryDialog(p: Props) {
-  const [history, setHistory] = useState<HistoryPage>({
-    items: [],
-    total: 0,
-    finished_count: 0,
-  });
-  const [query, setQuery] = useState("");
+  const [result, setResult] = useState<{
+    history: HistoryPage;
+    page: number;
+    query: string;
+  }>();
+  const history = result?.history ?? emptyHistory;
+  const [search, setSearch] = useState("");
+  const query = search.trim();
   const [page, setPage] = useState(0);
+  const [refresh, setRefresh] = useState(0);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [confirm, setConfirm] = useState<"selected" | "all" | string>("");
+  const [showProgress, setShowProgress] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [deletion, setDeletion] = useState<{
+    request: DeletionRequest;
+    count: number;
+  }>();
+  const [deletionError, setDeletionError] = useState("");
   const list = useRef<HTMLDivElement>(null);
-  const generation = useRef(0);
+  const results = useRef<HTMLDivElement>(null);
+  const requestedQuery = useRef("");
   const mounted = useRef(true);
+  const { transitions } = useTheme();
+  const select = useRangeSelection({
+    keys: history.items.filter((task) => !active(task)).map((task) => task.id),
+    scope: `${result?.page ?? 0}:${result?.query ?? ""}`,
+    isSelected: (key) => selected.has(key),
+    onSelect: (keys, checked) => {
+      setSelected((old) => {
+        const updated = new Set(old);
+        for (const key of keys) {
+          if (checked) updated.add(key);
+          else updated.delete(key);
+        }
+        return updated;
+      });
+    },
+  });
+
   useEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
-      generation.current++;
     };
   }, []);
-  const reload = useCallback(async () => {
-    const g = ++generation.current;
-    setLoading(true);
-    try {
-      const result = await api<HistoryPage>(
-        `/scans/history?limit=${pageSize}&offset=${page * pageSize}&q=${encodeURIComponent(query)}`,
-      );
-      if (g === generation.current) {
-        setHistory(result);
-        setError("");
-        if (page > 0 && page * pageSize >= result.total)
-          setPage(Math.max(0, Math.ceil(result.total / pageSize) - 1));
-      }
-    } catch (e) {
-      if (g === generation.current) setError(errorMessage(e));
-    } finally {
-      if (g === generation.current) setLoading(false);
-    }
-  }, [page, query]);
   useEffect(() => {
     if (p.open === false) return;
-    const timer = setTimeout(() => void reload(), 180);
+    const controller = new AbortController();
+    const { signal } = controller;
+    setLoading(true);
+
+    async function fetchHistory() {
+      requestedQuery.current = query;
+      try {
+        const history = await api<HistoryPage>(
+          `/scans/history?limit=${pageSize}&offset=${page * pageSize}&q=${encodeURIComponent(query)}`,
+          "GET",
+          undefined,
+          { signal },
+        );
+        if (signal.aborted) return;
+        const lastPage = Math.max(0, Math.ceil(history.total / pageSize) - 1);
+        if (page > lastPage) setPage(lastPage);
+        else setResult({ history, query, page });
+        setError("");
+      } catch (e) {
+        if (!signal.aborted) setError(errorMessage(e));
+      } finally {
+        if (!signal.aborted) setLoading(false);
+      }
+    }
+
+    const timer = setTimeout(
+      () => void fetchHistory(),
+      query === requestedQuery.current ? 0 : 140,
+    );
     return () => {
       clearTimeout(timer);
-      generation.current++;
+      controller.abort();
     };
-  }, [reload, p.open]);
+  }, [page, query, refresh, p.open]);
   useEffect(() => {
+    if (p.open === false) return;
+    setShowProgress(false);
+    if (!loading) return;
+    const timer = setTimeout(() => setShowProgress(true), 280);
+    return () => clearTimeout(timer);
+  }, [loading, p.open]);
+  useLayoutEffect(() => {
     if (list.current) list.current.scrollTop = 0;
-  }, [page, query]);
-  const selectedCount =
-    confirm === "all"
-      ? history.finished_count
-      : confirm === "selected"
-        ? selected.size
-        : 1;
+    if (result?.page === undefined || transitions.duration.short === 0) return;
+    const animation = results.current?.animate?.(
+      [
+        { opacity: 0.78, transform: "translateY(3px)" },
+        { opacity: 1, transform: "translateY(0)" },
+      ],
+      {
+        duration: transitions.duration.short,
+        easing: transitions.easing.easeOut,
+      },
+    );
+    return () => animation?.cancel();
+  }, [result?.page, result?.query, transitions]);
+  function confirmRemoval(request: DeletionRequest, count: number) {
+    setDeletion({ request, count });
+    setDeletionError("");
+    setConfirmOpen(true);
+  }
   async function remove() {
+    if (!deletion) return;
     setBusy(true);
-    setError("");
+    setDeletionError("");
     try {
       const result = await api<HistoryDeletion>(
         "/scans",
         "DELETE",
-        confirm === "all"
-          ? { all_finished: true }
-          : { ids: confirm === "selected" ? [...selected] : [confirm] },
+        deletion.request,
       );
       if (!mounted.current) return;
-      setConfirm("");
+      setConfirmOpen(false);
       setSelected(new Set());
       p.onDeleted?.(result);
       p.notify?.(`已删除 ${result.deleted} 条历史`);
-      await reload();
+      setRefresh((count) => count + 1);
     } catch (e) {
-      if (mounted.current) setError(errorMessage(e));
+      if (mounted.current) setDeletionError(errorMessage(e));
     } finally {
       if (mounted.current) setBusy(false);
     }
@@ -133,13 +189,16 @@ export default function HistoryDialog(p: Props) {
         fullWidth
         maxWidth="md"
         onClose={busy ? undefined : p.onClose}
-        slotProps={{ transition: { onExited: p.onExited } }}
+        slotProps={{
+          paper: { className: "history-paper" },
+          transition: { onExited: p.onExited },
+        }}
       >
-        <DialogTitle id="history-title">
+        <DialogTitle id="history-title" className="history-title">
           扫描历史
           <IconButton
             aria-label="刷新历史"
-            onClick={() => void reload()}
+            onClick={() => setRefresh((count) => count + 1)}
             disabled={loading || busy}
             sx={{ ml: 1 }}
           >
@@ -154,138 +213,150 @@ export default function HistoryDialog(p: Props) {
             <CloseRounded />
           </IconButton>
         </DialogTitle>
-        <DialogContent
-          dividers
-          ref={list}
-          className="history-content scroll-region"
-          tabIndex={0}
-          aria-label="历史列表"
-        >
+        <DialogContent dividers className="history-body">
           {error && (
             <Alert severity="error" sx={{ mb: 1 }}>
               {error}
             </Alert>
           )}
-          <Stack
-            direction="row"
-            sx={{ gap: 1, alignItems: "center", flexWrap: "wrap", mb: 1.5 }}
-          >
+          <div className="history-toolbar">
             <TextField
               label="搜索历史地址"
-              value={query}
+              value={search}
               onChange={(e) => {
-                setQuery(e.target.value);
-                setPage(0);
+                const value = e.target.value;
+                setSearch(value);
+                if (value.trim() !== query) setPage(0);
               }}
-              sx={{ flex: "1 1 180px", minWidth: 0 }}
             />
             <Button
               startIcon={<DeleteOutlineRounded />}
               disabled={!selected.size || busy}
-              onClick={() => setConfirm("selected")}
+              onClick={() =>
+                confirmRemoval({ ids: [...selected] }, selected.size)
+              }
             >
               删除所选 ({selected.size})
             </Button>
             <Button
               color="error"
               disabled={!history.finished_count || busy}
-              onClick={() => setConfirm("all")}
+              onClick={() =>
+                confirmRemoval({ all_finished: true }, history.finished_count)
+              }
             >
               清空已结束历史
             </Button>
-          </Stack>
-          {loading && <CircularProgress size={18} sx={{ ml: 1 }} />}
-          <Stack sx={{ gap: 1.25 }}>
-            {history.items.map((t) => {
-              const host = scanTargetLabel(t.target_url);
-              return (
-                <Stack
-                  className="motion-row history-record"
-                  direction="row"
-                  key={t.id}
-                  sx={{
-                    p: 1.5,
-                    border: 1,
-                    borderColor: "divider",
-                    borderRadius: 3,
-                    alignItems: "center",
-                    gap: 1,
-                  }}
-                >
-                  <Checkbox
-                    disabled={active(t) || busy}
-                    checked={selected.has(t.id)}
-                    slotProps={{
-                      input: { "aria-label": `选择历史 ${host}` },
-                    }}
-                    onChange={() =>
-                      setSelected((old) => {
-                        const value = new Set(old);
-                        if (value.has(t.id)) value.delete(t.id);
-                        else value.add(t.id);
-                        return value;
-                      })
-                    }
-                  />
-                  <Box sx={{ flex: 1, minWidth: 0 }}>
-                    <Typography
-                      sx={{ overflowWrap: "anywhere", fontWeight: 600 }}
-                    >
-                      {host}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      {date(t.started_at)} · {modeNames[t.options.mode]} ·{" "}
-                      {t.domain_count} 个域名 · {t.request_count} 条请求
-                    </Typography>
-                    <Stack
-                      direction="row"
-                      sx={{ gap: 0.75, mt: 0.75, flexWrap: "wrap" }}
-                    >
-                      <Chip
-                        label={statusNames[t.status] || t.status}
-                        variant="outlined"
-                      />
-                      {t.recommended_category && (
-                        <Chip
-                          label={t.recommended_category}
-                          color="secondary"
-                          variant="outlined"
-                        />
-                      )}
-                    </Stack>
-                  </Box>
-                  <Stack sx={{ gap: 0.5 }}>
-                    <Button
-                      size="small"
-                      startIcon={<OpenInNewRounded />}
-                      disabled={busy}
-                      onClick={() => {
-                        p.onOpen(t);
-                        p.onClose();
+          </div>
+          <div className="history-list-body">
+            {showProgress && (
+              <LinearProgress className="history-progress" aria-hidden />
+            )}
+            <div
+              ref={list}
+              className="history-content scroll-region"
+              role="region"
+              tabIndex={0}
+              aria-label="历史列表"
+              aria-busy={loading}
+            >
+              <div ref={results} className="history-results">
+                {history.items.map((t) => {
+                  const host = scanTargetLabel(t.target_url);
+                  const completed = t.status === "completed";
+                  const selectable = !active(t) && !busy;
+                  return (
+                    <Box
+                      className="history-record"
+                      key={t.id}
+                      sx={{
+                        border: 1,
+                        borderColor: "divider",
+                        backgroundColor: selected.has(t.id)
+                          ? "action.selected"
+                          : "transparent",
                       }}
                     >
-                      打开
-                    </Button>
-                    <IconButton
-                      aria-label={`删除历史 ${host}`}
-                      disabled={active(t) || busy}
-                      onClick={() => setConfirm(t.id)}
-                    >
-                      <DeleteOutlineRounded />
-                    </IconButton>
-                  </Stack>
-                </Stack>
-              );
-            })}
-            {!loading && !history.items.length && (
-              <Typography
-                color="text.secondary"
-                sx={{ p: 5, textAlign: "center" }}
-              >
-                {query ? "没有匹配的历史" : "还没有扫描历史"}
-              </Typography>
-            )}
-          </Stack>
+                      <Checkbox
+                        className="history-select history-row-action"
+                        disabled={!selectable}
+                        checked={selected.has(t.id)}
+                        slotProps={{
+                          input: { "aria-label": `选择历史 ${host}` },
+                        }}
+                        onClick={(event) => {
+                          if (selectable) select(t.id, event.shiftKey);
+                        }}
+                      />
+                      <ButtonBase
+                        className="history-open"
+                        aria-label={`打开历史 ${host}`}
+                        aria-describedby={`history-details-${t.id}`}
+                        disabled={busy || p.open === false}
+                        sx={{ "&:hover": { backgroundColor: "action.hover" } }}
+                        onClick={(event) => {
+                          if (
+                            event.ctrlKey ||
+                            event.metaKey ||
+                            event.shiftKey
+                          ) {
+                            if (selectable) select(t.id, event.shiftKey);
+                          } else p.onOpen(t);
+                        }}
+                      >
+                        <Typography component="span" className="history-host">
+                          {host}
+                        </Typography>
+                        <span
+                          id={`history-details-${t.id}`}
+                          className="history-details"
+                        >
+                          <Chip
+                            component="span"
+                            label={statusNames[t.status] || t.status}
+                            color={completed ? "primary" : "default"}
+                            variant={completed ? "filled" : "outlined"}
+                          />
+                          <Typography
+                            component="time"
+                            dateTime={t.started_at}
+                            variant="caption"
+                            color="text.secondary"
+                          >
+                            {date(t.started_at)}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {`${modeNames[t.options.mode]} · ${t.domain_count} 个域名 · ${t.request_count} 条请求`}
+                          </Typography>
+                          {t.recommended_category && (
+                            <Chip
+                              component="span"
+                              label={t.recommended_category}
+                              color="secondary"
+                              variant="outlined"
+                            />
+                          )}
+                        </span>
+                      </ButtonBase>
+                      <IconButton
+                        className="history-delete history-row-action"
+                        aria-label={`删除历史 ${host}`}
+                        disabled={!selectable}
+                        onClick={() => confirmRemoval({ ids: [t.id] }, 1)}
+                      >
+                        <DeleteOutlineRounded />
+                      </IconButton>
+                    </Box>
+                  );
+                })}
+                {result && !history.items.length && (
+                  <Typography color="text.secondary" className="history-empty">
+                    {result.query ? "没有匹配的历史" : "还没有扫描历史"}
+                  </Typography>
+                )}
+              </div>
+            </div>
+          </div>
         </DialogContent>
         <Box className="history-footer">
           <Typography
@@ -307,13 +378,13 @@ export default function HistoryDialog(p: Props) {
                     : "末页历史"
             }
             count={history.total}
-            page={Math.min(
-              page,
-              Math.max(0, Math.ceil(history.total / pageSize) - 1),
-            )}
+            page={result?.page ?? 0}
             rowsPerPage={pageSize}
             rowsPerPageOptions={[pageSize]}
-            onPageChange={(_, value) => setPage(value)}
+            onPageChange={(_, value) => {
+              if (value !== page) setPage(value);
+              else if (!loading) setRefresh((count) => count + 1);
+            }}
             labelDisplayedRows={({ from, to, count }) =>
               `${from}–${to} / ${count}`
             }
@@ -321,28 +392,31 @@ export default function HistoryDialog(p: Props) {
         </Box>
       </Dialog>
       <Dialog
-        open={!!confirm}
-        onClose={busy ? undefined : () => setConfirm("")}
+        open={confirmOpen}
+        onClose={busy ? undefined : () => setConfirmOpen(false)}
         maxWidth="xs"
         fullWidth
       >
         <DialogTitle>确认删除历史</DialogTitle>
         <DialogContent>
           <Typography>
-            将永久删除{confirm === "all" ? "全部已结束的 " : "所选的 "}
-            {selectedCount} 条扫描记录及关联请求、域名和日志。
+            将永久删除
+            {deletion && "all_finished" in deletion.request
+              ? "全部已结束的 "
+              : "所选的 "}
+            {deletion?.count} 条扫描记录及关联请求、域名和日志。
           </Typography>
           <Typography color="text.secondary" sx={{ mt: 1 }}>
             正在运行的任务、规则缓存、设置及已导出文件保留。
           </Typography>
-          {error && (
+          {deletionError && (
             <Alert severity="error" sx={{ mt: 1 }}>
-              {error}
+              {deletionError}
             </Alert>
           )}
         </DialogContent>
         <DialogActions>
-          <Button disabled={busy} onClick={() => setConfirm("")}>
+          <Button disabled={busy} onClick={() => setConfirmOpen(false)}>
             取消
           </Button>
           <Button

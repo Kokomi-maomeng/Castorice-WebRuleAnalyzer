@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type PointerEvent } from "react";
 import {
   AppBar,
   Box,
+  Button,
   IconButton,
   Toolbar,
   Tooltip,
@@ -10,26 +11,30 @@ import {
 import {
   CloseRounded,
   CropSquareRounded,
-  DarkModeRounded,
+  AddRounded,
   HistoryRounded,
   HubRounded,
-  LightModeRounded,
   MenuBookRounded,
   MinimizeRounded,
+  RemoveRounded,
   SettingsRounded,
   FilterNoneRounded,
 } from "@mui/icons-material";
 import { APP_VERSION } from "../version";
 
 export default function AppTitleBar({
-  dark,
-  onTheme,
+  zoom,
+  minZoom,
+  maxZoom,
+  onZoom,
   onLibrary,
   onHistory,
   onSettings,
 }: {
-  dark: boolean;
-  onTheme: () => void;
+  zoom: number;
+  minZoom: number;
+  maxZoom: number;
+  onZoom: (action: "in" | "out" | "reset") => void;
   onLibrary: () => void;
   onHistory: () => void;
   onSettings: () => void;
@@ -110,6 +115,33 @@ export default function AppTitleBar({
             </Typography>
           </Typography>
         </Box>
+        <Box className="titlebar-zoom" role="group" aria-label="界面缩放">
+          <IconButton
+            size="small"
+            aria-label="缩小"
+            disabled={zoom === minZoom}
+            onClick={() => onZoom("out")}
+          >
+            <RemoveRounded fontSize="small" />
+          </IconButton>
+          <Button
+            className="titlebar-zoom-value"
+            size="small"
+            color="inherit"
+            aria-label={`缩放 ${zoom}%，恢复默认缩放`}
+            onClick={() => onZoom("reset")}
+          >
+            {zoom}%
+          </Button>
+          <IconButton
+            size="small"
+            aria-label="放大"
+            disabled={zoom === maxZoom}
+            onClick={() => onZoom("in")}
+          >
+            <AddRounded fontSize="small" />
+          </IconButton>
+        </Box>
         <Tooltip title="开源规则库">
           <IconButton size="small" aria-label="开源规则库" onClick={onLibrary}>
             <MenuBookRounded fontSize="small" />
@@ -118,15 +150,6 @@ export default function AppTitleBar({
         <Tooltip title="扫描历史">
           <IconButton size="small" aria-label="扫描历史" onClick={onHistory}>
             <HistoryRounded fontSize="small" />
-          </IconButton>
-        </Tooltip>
-        <Tooltip title="切换主题">
-          <IconButton size="small" aria-label="切换主题" onClick={onTheme}>
-            {dark ? (
-              <LightModeRounded fontSize="small" />
-            ) : (
-              <DarkModeRounded fontSize="small" />
-            )}
           </IconButton>
         </Tooltip>
         <Tooltip title="软件设置">

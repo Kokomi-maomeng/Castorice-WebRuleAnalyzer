@@ -72,6 +72,11 @@ interface Props {
 const levels: Record<string, number> = { DEBUG: 0, INFO: 1, WARN: 2, ERROR: 3 };
 export default function AnalysisPanel(p: Props) {
   const [detail, setDetail] = useState<NetworkRequest>();
+  const [detailOpen, setDetailOpen] = useState(false);
+  function openDetail(request: NetworkRequest) {
+    setDetail(request);
+    setDetailOpen(true);
+  }
   const [logFilter, setLogFilter] = useState("");
   const [cleared, setCleared] = useState(0);
   const [pageLimit, setPageLimit] = useState(20);
@@ -517,10 +522,13 @@ export default function AnalysisPanel(p: Props) {
                     className="motion-row"
                     hover
                     key={req.id}
-                    onClick={() => setDetail(req)}
+                    onClick={() => openDetail(req)}
                     tabIndex={0}
                     onKeyDown={(e) => {
-                      if (e.key === "Enter") setDetail(req);
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        openDetail(req);
+                      }
                     }}
                   >
                     <TableCell sx={{ whiteSpace: "nowrap" }}>
@@ -705,8 +713,11 @@ export default function AnalysisPanel(p: Props) {
         <Box className="analysis-body motion-panel">{p.matchContent}</Box>
       )}
       <Dialog
-        open={!!detail}
-        onClose={() => setDetail(undefined)}
+        open={detailOpen}
+        onClose={() => setDetailOpen(false)}
+        slotProps={{
+          transition: { onExited: () => !detailOpen && setDetail(undefined) },
+        }}
         fullWidth
         maxWidth="md"
       >
@@ -714,7 +725,7 @@ export default function AnalysisPanel(p: Props) {
           请求详情
           <IconButton
             aria-label="关闭请求详情"
-            onClick={() => setDetail(undefined)}
+            onClick={() => setDetailOpen(false)}
             sx={{ float: "right" }}
           >
             <CloseRounded />

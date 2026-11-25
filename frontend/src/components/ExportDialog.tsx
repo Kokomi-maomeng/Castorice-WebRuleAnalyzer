@@ -6,7 +6,6 @@ import {
   Button,
   Checkbox,
   Chip,
-  ClickAwayListener,
   CircularProgress,
   Collapse,
   Dialog,
@@ -28,16 +27,13 @@ import {
   TableRow,
   Tabs,
   TextField,
-  Tooltip,
   Typography,
-  useMediaQuery,
 } from "@mui/material";
 import {
   CloseRounded,
   ContentCopyRounded,
   DownloadRounded,
   ExpandMoreRounded,
-  InfoOutlined,
   RefreshRounded,
   TuneRounded,
 } from "@mui/icons-material";
@@ -52,16 +48,17 @@ import type {
   Settings,
 } from "../types";
 import { api, copy, download } from "../services/api";
+import useRangeSelection from "../hooks/useRangeSelection";
 import { errorMessage, ruleCatalogKey } from "../utils/format";
 import ContextHelp from "./ContextHelp";
 import ExportScope from "./ExportScope";
+import "../styles/export-v2.css";
 
 interface Props {
   open?: boolean;
   onExited?: () => void;
   task: ScanTask;
   domains: DomainRecord[];
-  mode: "observed" | "merged";
   settings: Settings;
   onClose: () => void;
   notify: (s: string) => void;
@@ -79,100 +76,81 @@ const formats: { value: ExportFormat; label: string }[] = [
 ];
 const ruleSourcesPath = "/rules/sources?compact=true";
 
-function Hint(p: { label: string; text: string; warning?: boolean }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <ClickAwayListener onClickAway={() => setOpen(false)}>
-      <Tooltip
-        title={p.text}
-        arrow
-        placement="bottom"
-        open={open}
-        slotProps={{
-          tooltip: { sx: { whiteSpace: "pre-line", maxWidth: 360 } },
-        }}
-        onOpen={() => setOpen(true)}
-        onClose={() => setOpen(false)}
-      >
-        <IconButton
-          size="small"
-          className="export-hint"
-          color={p.warning ? "warning" : "default"}
-          aria-label={p.label}
-          onClick={() => setOpen(true)}
-          onKeyDown={(e) => {
-            if (e.key === "Escape") {
-              setOpen(false);
-              e.stopPropagation();
-            }
-          }}
-        >
-          <InfoOutlined fontSize="small" />
-        </IconButton>
-      </Tooltip>
-    </ClickAwayListener>
-  );
+function entryKey(entry: ExportResult["entries"][number]) {
+  return `${entry.rule_type},${entry.rule_value}`;
 }
+
+type PageSize = number | "all";
+const entryPageSizes = [30, 60, 100];
+const contentPageSizes: PageSize[] = [100, 200, 500, "all"];
+
 function Pager(p: {
   count: number;
+  filteredCount?: number;
   page: number;
-  size: number;
-  unit: string;
+  size: PageSize;
+  selected?: number;
   onPage: (page: number) => void;
-  onSize: (size: number) => void;
+  onSize: (size: PageSize) => void;
 }) {
+  const isContent = p.selected === undefined;
+  const label = isContent ? "每页行数" : "每页条目";
+  const pages =
+    p.size === "all" ? 0 : Math.ceil((p.filteredCount ?? p.count) / p.size);
   return (
-    <Stack
-      direction="row"
-      className="preview-pager"
-      sx={{ gap: 1, alignItems: "center", flexWrap: "wrap", py: 0.75 }}
-    >
-      <Typography variant="caption" color="text.secondary" sx={{ mr: "auto" }}>
-        {p.count ? p.page * p.size + 1 : 0}–
-        {Math.min((p.page + 1) * p.size, p.count)} / {p.count} {p.unit}
-      </Typography>
-      <TextField
-        select
-        label={`每页${p.unit === "行" ? "行数" : "条目"}`}
-        value={p.size}
-        onChange={(e) => p.onSize(Number(e.target.value))}
-        sx={{ width: 100 }}
-      >
-        {(p.unit === "行" ? [100, 200, 500] : [30, 60, 100]).map((n) => (
-          <MenuItem key={n} value={n}>
-            {n}
-          </MenuItem>
-        ))}
-      </TextField>
-      <Pagination
-        count={Math.max(1, Math.ceil(p.count / p.size))}
-        page={p.page + 1}
-        onChange={(_, value) => p.onPage(value - 1)}
-        size="small"
-        siblingCount={0}
-        boundaryCount={1}
-        getItemAriaLabel={(type, page) =>
-          type === "page"
-            ? `第 ${page} 页`
-            : type === "next"
-              ? "下一页"
-              : type === "previous"
-                ? "上一页"
-                : type === "first"
-                  ? "第一页"
-                  : "最后一页"
-        }
-      />
+    <Stack direction="row" className="preview-pager">
+      {pages > 1 && (
+        // MUI Pagination reports page numbers starting at one.
+        <Pagination
+          count={pages}
+          page={p.page + 1}
+          onChange={(_, value) => p.onPage(value - 1)}
+          size="small"
+          siblingCount={0}
+          boundaryCount={1}
+          getItemAriaLabel={(type, page) =>
+            type === "page"
+              ? `第 ${page} 页`
+              : type === "next"
+                ? "下一页"
+                : type === "previous"
+                  ? "上一页"
+                  : type === "first"
+                    ? "第一页"
+                    : "最后一页"
+          }
+        />
+      )}
+      <Stack direction="row" className="preview-page-options">
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          className="preview-total"
+          aria-label={isContent ? "总行数" : "选中条目数 / 总条目数"}
+        >
+          {isContent ? p.count : `${p.selected} / ${p.count}`}
+        </Typography>
+        <TextField
+          select
+          label={label}
+          value={p.size}
+          onChange={(e) =>
+            p.onSize(e.target.value === "all" ? "all" : Number(e.target.value))
+          }
+        >
+          {(isContent ? contentPageSizes : entryPageSizes).map((size) => (
+            <MenuItem key={size} value={size}>
+              {size === "all" ? "完整显示" : size}
+            </MenuItem>
+          ))}
+        </TextField>
+      </Stack>
     </Stack>
   );
 }
 export default function ExportDialog(p: Props) {
-  const compact = useMediaQuery("(max-width:700px), (max-height:600px)");
-  const [settingsOpen, setSettingsOpen] = useState(!compact);
-  useEffect(() => {
-    setSettingsOpen(!compact);
-  }, [compact]);
-  const [mode, setMode] = useState(p.mode);
+  const [settingsOpen, setSettingsOpen] = useState(true);
+  const [mode, setMode] = useState<ExportJob["mode"]>("observed");
   const [format, setFormat] = useState<ExportFormat>(p.settings.export_format);
   const [policy, setPolicy] = useState(p.settings.policy);
   const [filename, setFilename] = useState(defaultFilename);
@@ -213,7 +191,7 @@ export default function ExportDialog(p: Props) {
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(30);
   const [contentPage, setContentPage] = useState(0);
-  const [lineSize, setLineSize] = useState(200);
+  const [lineSize, setLineSize] = useState<PageSize>(200);
   const [query, setQuery] = useState("");
   const [stateFilter, setStateFilter] = useState("all");
   const [categoryQuery, setCategoryQuery] = useState("");
@@ -497,15 +475,69 @@ export default function ExportDialog(p: Props) {
     (actualPage + 1) * pageSize,
   );
   const pageSelected = pageEntries.filter(
-    (e) => !excluded.has(`${e.rule_type},${e.rule_value}`),
+    (e) => !excluded.has(entryKey(e)),
   ).length;
+  const totalEntries = result?.entries.length ?? 0;
+  const totalSelected = useMemo(() => {
+    if (!excluded.size) return totalEntries;
+    return (
+      result?.entries.reduce(
+        (count, entry) => count + Number(!excluded.has(entryKey(entry))),
+        0,
+      ) ?? 0
+    );
+  }, [result?.entries, totalEntries, excluded]);
+  const entryKeys = useMemo(() => entries.map(entryKey), [entries]);
+  const setEntriesSelected = useCallback(
+    (keys: readonly string[], selected: boolean) => {
+      setExcluded((previous) => {
+        const next = new Set(previous);
+        for (const key of keys) {
+          if (selected) next.delete(key);
+          else next.add(key);
+        }
+        return next;
+      });
+    },
+    [],
+  );
+  const selectEntry = useRangeSelection({
+    keys: entryKeys,
+    scope,
+    isSelected: (key) => !excluded.has(key),
+    onSelect: setEntriesSelected,
+  });
   const lines = useMemo(
-    () => result?.content.replace(/\n$/, "").split("\n") || [],
+    () =>
+      result?.content ? result.content.replace(/\n$/, "").split("\n") : [],
     [result?.content],
   );
-  const actualContentPage = Math.min(
-    contentPage,
-    Math.max(0, Math.ceil(lines.length / lineSize) - 1),
+  const actualContentPage =
+    lineSize === "all"
+      ? 0
+      : Math.min(
+          contentPage,
+          Math.max(0, Math.ceil(lines.length / lineSize) - 1),
+        );
+  const contentStart = lineSize === "all" ? 0 : actualContentPage * lineSize;
+  const contentEnd =
+    lineSize === "all"
+      ? lines.length
+      : Math.min(contentStart + lineSize, lines.length);
+  const contentPageText = useMemo(
+    () => (tab === 1 ? lines.slice(contentStart, contentEnd).join("\n") : ""),
+    [tab, lines, contentStart, contentEnd],
+  );
+  // Two text nodes keep even a complete export scrollable and searchable.
+  const contentLineNumbers = useMemo(
+    () =>
+      tab === 1
+        ? Array.from(
+            { length: contentEnd - contentStart },
+            (_, index) => contentStart + index + 1,
+          ).join("\n")
+        : "",
+    [tab, contentStart, contentEnd],
   );
   useEffect(() => {
     if (page !== actualPage) setPage(actualPage);
@@ -598,11 +630,13 @@ export default function ExportDialog(p: Props) {
       <DialogTitle className="export-title">
         <Box component="span">预览与导出规则</Box>
         {scopeWarnings.length > 0 && (
-          <Hint
+          <ContextHelp
             label="查看抓取与范围提示"
-            text={scopeWarnings.join("\n\n")}
+            className="export-hint"
             warning
-          />
+          >
+            {scopeWarnings.join("\n\n")}
+          </ContextHelp>
         )}
         <Button
           size="small"
@@ -611,14 +645,20 @@ export default function ExportDialog(p: Props) {
             <ExpandMoreRounded
               sx={{
                 transform: settingsOpen ? "rotate(180deg)" : "none",
-                transition: "transform 180ms",
+                transition: (theme) =>
+                  theme.transitions.create("transform", {
+                    duration: theme.transitions.duration.short,
+                  }),
               }}
             />
           }
           aria-expanded={settingsOpen}
           aria-controls="export-settings"
           sx={{ ml: "auto", flexShrink: 0 }}
-          onClick={() => setSettingsOpen((v) => !v)}
+          onClick={() => {
+            if (settingsOpen) setCategoryOpen(false);
+            setSettingsOpen(!settingsOpen);
+          }}
         >
           导出设置
         </Button>
@@ -630,7 +670,14 @@ export default function ExportDialog(p: Props) {
         dividers
         sx={{ display: "flex", flexDirection: "column", minHeight: 0 }}
       >
-        <Box className="export-settings">
+        <Collapse
+          in={settingsOpen}
+          className="export-settings-collapse"
+          slotProps={{
+            root: { id: "export-settings", inert: !settingsOpen },
+            wrapperInner: { className: "export-settings" },
+          }}
+        >
           <Box className="export-primary-controls">
             <ExportScope
               value={mode}
@@ -667,25 +714,23 @@ export default function ExportDialog(p: Props) {
                 ))}
               </TextField>
             </Box>
-            {settingsOpen && (
-              <TextField
-                className="export-policy"
-                label="策略组名称"
-                value={policy}
-                onChange={(e) => setPolicy(e.target.value)}
-                disabled={format !== "clash"}
-                slotProps={{
-                  input: {
-                    endAdornment: format === "clash" && (
-                      <Hint
-                        label="查看策略组说明"
-                        text="在 Clash 或 Mihomo 客户端配置的 proxy-groups 中找到已有的名称，再将它填入这里。"
-                      />
-                    ),
-                  },
-                }}
-              />
-            )}
+            <TextField
+              className="export-policy"
+              label="策略组名称"
+              value={policy}
+              onChange={(e) => setPolicy(e.target.value)}
+              disabled={format !== "clash"}
+              slotProps={{
+                input: {
+                  endAdornment: format === "clash" && (
+                    <ContextHelp label="查看策略组说明" className="export-hint">
+                      在 Clash 或 Mihomo 客户端配置的 proxy-groups
+                      中找到已有的名称，再将它填入这里。
+                    </ContextHelp>
+                  ),
+                },
+              }}
+            />
           </Box>
           {(mode === "merged" || syncing) && (
             <Box className="export-library">
@@ -853,55 +898,51 @@ export default function ExportDialog(p: Props) {
               )}
             </Box>
           )}
-          <Collapse in={settingsOpen}>
-            <Stack
-              id="export-settings"
-              direction="row"
-              className="export-toggles"
-            >
-              <Stack direction="row" sx={{ alignItems: "center" }}>
-                <FormControlLabel
-                  control={
-                    <Checkbox
-                      size="small"
-                      checked={suffix}
-                      onChange={(_, checked) => {
-                        setSuffix(checked);
-                        setExcluded(new Set());
-                        setPage(0);
-                      }}
-                    />
-                  }
-                  label={
-                    <Typography variant="body2">
-                      观察域名使用 DOMAIN-SUFFIX
-                    </Typography>
-                  }
-                />
-                <Hint
-                  label="查看 DOMAIN-SUFFIX 提示"
-                  text={suffix ? `${suffixWarning} ${suffixHelp}` : suffixHelp}
-                  warning={suffix}
-                />
-              </Stack>
+          <Stack direction="row" className="export-toggles">
+            <Stack direction="row" sx={{ alignItems: "center" }}>
               <FormControlLabel
                 control={
                   <Checkbox
                     size="small"
-                    checked={listOnly}
-                    disabled={format !== "clash"}
-                    onChange={(_, checked) => setListOnly(checked)}
+                    checked={suffix}
+                    onChange={(_, checked) => {
+                      setSuffix(checked);
+                      setExcluded(new Set());
+                      setPage(0);
+                    }}
                   />
                 }
                 label={
                   <Typography variant="body2">
-                    只输出规则列表（不含 rules:）
+                    观察域名使用 DOMAIN-SUFFIX
                   </Typography>
                 }
               />
+              <ContextHelp
+                label="查看 DOMAIN-SUFFIX 提示"
+                className="export-hint"
+                warning={suffix}
+              >
+                {suffix ? `${suffixWarning} ${suffixHelp}` : suffixHelp}
+              </ContextHelp>
             </Stack>
-          </Collapse>
-        </Box>
+            <FormControlLabel
+              control={
+                <Checkbox
+                  size="small"
+                  checked={listOnly}
+                  disabled={format !== "clash"}
+                  onChange={(_, checked) => setListOnly(checked)}
+                />
+              }
+              label={
+                <Typography variant="body2">
+                  只输出规则列表（不含 rules:）
+                </Typography>
+              }
+            />
+          </Stack>
+        </Collapse>
         {error && (
           <Alert
             severity="error"
@@ -913,32 +954,36 @@ export default function ExportDialog(p: Props) {
             {error}
           </Alert>
         )}
-        {result && !error && (
-          <Stack direction="row" className="export-summary">
-            <Chip label={`抓取 ${result.observed_domains} 个域名`} />
-            {mode === "merged" && (
-              <Chip label={`规则库补充 ${result.added_rules} 条`} />
-            )}
-            <Chip label={`重复或覆盖 ${result.duplicate_or_covered} 条`} />
-            <Chip label={`最终导出 ${result.final_rules} 条`} color="primary" />
-          </Stack>
-        )}
-        <Tabs
-          value={tab}
-          onChange={(_, value) => setTab(value)}
-          sx={{ borderBottom: 1, borderColor: "divider", flexShrink: 0 }}
-        >
-          <Tab
-            label="条目与来源"
-            id="export-entries-tab"
-            aria-controls="export-entries"
-          />
-          <Tab
-            label="文件内容"
-            id="export-content-tab"
-            aria-controls="export-content"
-          />
-        </Tabs>
+        <Box className="export-preview-header" sx={{ borderColor: "divider" }}>
+          <Tabs
+            value={tab}
+            onChange={(_, value) => {
+              setTab(value);
+              setManualCopy(false);
+            }}
+          >
+            <Tab
+              label="条目与来源"
+              id="export-entries-tab"
+              aria-controls="export-entries"
+            />
+            <Tab
+              label="文件内容"
+              id="export-content-tab"
+              aria-controls="export-content"
+            />
+          </Tabs>
+          {result && !error && (
+            <Stack direction="row" className="export-summary">
+              <Chip label={`抓取 ${result.observed_domains} 个域名`} />
+              <Chip label={`重复或覆盖 ${result.duplicate_or_covered} 条`} />
+              <Chip
+                label={`最终导出 ${result.final_rules} 条`}
+                color="primary"
+              />
+            </Stack>
+          )}
+        </Box>
         <Box sx={{ height: 3, flexShrink: 0 }}>
           {loading && <LinearProgress aria-label="正在计算预览" />}
         </Box>
@@ -1020,15 +1065,7 @@ export default function ExportDialog(p: Props) {
                         size="small"
                         slotProps={{ input: { "aria-label": "选择本页" } }}
                         onChange={(_, checked) =>
-                          setExcluded((old) => {
-                            const next = new Set(old);
-                            for (const e of pageEntries) {
-                              const key = `${e.rule_type},${e.rule_value}`;
-                              if (checked) next.delete(key);
-                              else next.add(key);
-                            }
-                            return next;
-                          })
+                          setEntriesSelected(pageEntries.map(entryKey), checked)
                         }
                       />
                     </TableCell>
@@ -1036,18 +1073,22 @@ export default function ExportDialog(p: Props) {
                     <TableCell>来源与覆盖关系</TableCell>
                   </TableRow>
                 </TableHead>
-                <TableBody
-                  key={`${actualPage}:${pageSize}`}
-                  className="motion-panel"
-                >
+                <TableBody>
                   {pageEntries.map((entry) => {
-                    const key = `${entry.rule_type},${entry.rule_value}`;
+                    const key = entryKey(entry);
                     return (
                       <TableRow
                         key={key}
-                        hover
+                        hover={currentScope}
                         className="preview-row"
+                        data-selectable={currentScope}
                         data-selected={!excluded.has(key)}
+                        onMouseDown={(event) => {
+                          if (event.shiftKey) event.preventDefault();
+                        }}
+                        onClick={(event) => {
+                          if (currentScope) selectEntry(key, event.shiftKey);
+                        }}
                       >
                         <TableCell padding="checkbox">
                           <Checkbox
@@ -1057,14 +1098,6 @@ export default function ExportDialog(p: Props) {
                             slotProps={{
                               input: { "aria-label": `导出 ${key}` },
                             }}
-                            onChange={(_, checked) =>
-                              setExcluded((old) => {
-                                const next = new Set(old);
-                                if (checked) next.delete(key);
-                                else next.add(key);
-                                return next;
-                              })
-                            }
                           />
                         </TableCell>
                         <TableCell sx={{ overflowWrap: "anywhere" }}>
@@ -1127,12 +1160,14 @@ export default function ExportDialog(p: Props) {
               </Table>
             </TableContainer>
             <Pager
-              count={entries.length}
+              count={totalEntries}
+              filteredCount={entries.length}
               page={actualPage}
               size={pageSize}
-              unit="条"
+              selected={totalSelected}
               onPage={setPage}
               onSize={(size) => {
+                if (size === "all") return;
                 setPageSize(size);
                 setPage(0);
               }}
@@ -1146,23 +1181,26 @@ export default function ExportDialog(p: Props) {
             aria-labelledby="export-content-tab"
             className="preview-panel"
           >
-            <Typography variant="caption" color="text.secondary" sx={{ py: 1 }}>
-              按行分页预览；复制与下载始终包含完整文件。
-            </Typography>
             {manualCopy ? (
-              <Box
-                component="textarea"
-                readOnly
-                value={fresh ? (verifiedCopy ?? result.content) : ""}
-                onFocus={(event) => event.currentTarget.select()}
-                aria-label="可手动复制的完整规则"
-                className="rule-editor"
-                sx={{
-                  color: "text.primary",
-                  bgcolor: "action.hover",
-                  minHeight: 130,
-                }}
-              />
+              <>
+                <Box
+                  component="textarea"
+                  autoFocus
+                  readOnly
+                  value={fresh ? (verifiedCopy ?? result.content) : ""}
+                  onFocus={(event) => event.currentTarget.select()}
+                  aria-label="可手动复制的完整规则"
+                  className="rule-editor"
+                  sx={{
+                    color: "text.primary",
+                    bgcolor: "action.hover",
+                    minHeight: 130,
+                  }}
+                />
+                <Button size="small" onClick={() => setManualCopy(false)}>
+                  返回文件预览
+                </Button>
+              </>
             ) : (
               <>
                 <Box
@@ -1173,37 +1211,17 @@ export default function ExportDialog(p: Props) {
                   aria-label="规则文件预览"
                   sx={{ bgcolor: "action.hover", borderRadius: 1 }}
                 >
-                  <Box
-                    component="pre"
-                    className="motion-panel"
-                    key={`${actualContentPage}:${lineSize}`}
-                    sx={{ p: 1.5, fontSize: 12 }}
-                  >
-                    {lines
-                      .slice(
-                        actualContentPage * lineSize,
-                        (actualContentPage + 1) * lineSize,
-                      )
-                      .map((line, i) => (
-                        <Box component="span" className="preview-line" key={i}>
-                          <Box
-                            component="span"
-                            className="line-number"
-                            aria-hidden="true"
-                          >
-                            {actualContentPage * lineSize + i + 1}
-                          </Box>
-                          <span>{line || "\u00a0"}</span>
-                          {"\n"}
-                        </Box>
-                      ))}
+                  <Box className="preview-text-grid">
+                    <pre className="line-number" aria-hidden="true">
+                      {contentLineNumbers}
+                    </pre>
+                    <pre className="preview-file-text">{contentPageText}</pre>
                   </Box>
                 </Box>
                 <Pager
                   count={lines.length}
                   page={actualContentPage}
                   size={lineSize}
-                  unit="行"
                   onPage={setContentPage}
                   onSize={(size) => {
                     setLineSize(size);
@@ -1212,12 +1230,6 @@ export default function ExportDialog(p: Props) {
                 />
               </>
             )}
-            <Button
-              size="small"
-              onClick={() => setManualCopy((current) => !current)}
-            >
-              {manualCopy ? "返回分页预览" : "选择完整文本"}
-            </Button>
           </Box>
         )}
       </DialogContent>
@@ -1226,14 +1238,6 @@ export default function ExportDialog(p: Props) {
         disableSpacing
         sx={{ px: 2, py: 1.25, flexWrap: "wrap", gap: 0.5 }}
       >
-        <TextField
-          className="export-filename"
-          label="文件名称"
-          placeholder={defaultFilename}
-          value={filename}
-          onChange={(e) => setFilename(e.target.value)}
-        />
-        <Button onClick={p.onClose}>关闭</Button>
         {result?.attribution && (
           <Button
             disabled={!canSaveFile}
@@ -1261,23 +1265,32 @@ export default function ExportDialog(p: Props) {
             ? "校验并准备复制"
             : "复制内容"}
         </Button>
-        <Button
-          variant="contained"
-          startIcon={<DownloadRounded />}
-          disabled={!canSaveFile}
-          onClick={() =>
-            useFreshResult((current) =>
-              download(current.content, current.filename, current.mime).then(
-                (path) =>
-                  p.notify(
-                    path ? `已保存至 ${path}` : `已生成 ${current.filename}`,
-                  ),
-              ),
-            )
-          }
-        >
-          {window.castoriceDesktop ? "保存到软件目录" : "下载文件"}
-        </Button>
+        <Box className="export-save-controls">
+          <TextField
+            className="export-filename"
+            label="文件名称"
+            placeholder={defaultFilename}
+            value={filename}
+            onChange={(e) => setFilename(e.target.value)}
+          />
+          <Button
+            variant="contained"
+            startIcon={<DownloadRounded />}
+            disabled={!canSaveFile}
+            onClick={() =>
+              useFreshResult((current) =>
+                download(current.content, current.filename, current.mime).then(
+                  (path) =>
+                    p.notify(
+                      path ? `已保存至 ${path}` : `已生成 ${current.filename}`,
+                    ),
+                ),
+              )
+            }
+          >
+            {window.castoriceDesktop ? "保存到软件目录" : "下载文件"}
+          </Button>
+        </Box>
       </DialogActions>
     </Dialog>
   );

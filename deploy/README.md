@@ -4,6 +4,8 @@
 
 在限制非特权用户命名空间的 AppArmor 宿主机上，可加载同目录的 `castorice-browser.apparmor`。此文件保留 Docker 容器策略的挂载、进程和内核路径保护，并只为这套容器许可创建用户命名空间。仓库根目录和已解压的 Linux 包使用同样的命令。
 
+如果应用可以打开，但启动 Chromium 时出现 `Permission denied`，并且内核审计日志显示 `docker-default` 下的 `userns_create` 被拒绝，请使用下列配置。
+
 ```sh
 sudo apparmor_parser -r deploy/castorice-browser.apparmor
 docker compose -f compose.yaml -f compose.apparmor.yaml up -d --build
