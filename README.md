@@ -4,19 +4,18 @@ Web 分流规则分析器。输入网址，用独立 Chrome / Edge / Chromium �
 
 ## 下载与运行
 
-Windows 版使用便携 ZIP。**解压到可写目录后双击 `Castorice-WebRuleAnalyzer.exe`**，需要 Edge WebView2 Runtime 和 Chrome、Edge 或 Chromium。版本页提供各平台发行包、SHA-256 校验值和测试记录。 [GitHub Releases](https://github.com/Kokomi-maomeng/Castorice-WebRuleAnalyzer/releases/latest)
+Windows 版使用便携 ZIP。**解压到可写目录后双击 `Castorice-WebRuleAnalyzer.exe`**，需要 Edge WebView2 Runtime 和 Chrome、Edge 或 Chromium。版本页列出当前正式版、Windows、Linux、macOS 和 Docker 发行包、SHA-256 校验值和验收范围。 [最新正式版与下载](https://github.com/Kokomi-maomeng/Castorice-WebRuleAnalyzer/releases/latest)
 
 软件数据存于 EXE 旁的 `data/`，导出文件存于 `exports/`。先关闭旧版再备份并迁移这两个目录。跨电脑迁移前请确认新电脑也具备系统组件和目录权限。 [用户运行说明](docs/用户运行说明.md) · [导出接入说明](docs/EXPORT-INTEGRATION.md)
 
-## v2.0 的改动
+## 工作区功能
 
 - 扫描历史支持直接打开、快速检索、范围选择和单条删除。完成状态与时间在同一行，弹窗退出后打开选中的记录。
 - 观察域名集中提供全选、排序方式、正倒序和选中计数。搜索从标题右侧展开，按住 Ctrl 可改变单条选择，按住 Shift 可选择连续范围。
 - 导出面板集中提供抓取范围和输出格式、行号、分页及完整显示。条目可整行勾选，选中条目数和文件总行数与分页独立。
 - 统一弹窗进出、下拉箭头和提示图标。界面主题在软件设置中选择，Windows 桌面支持跟随系统。标题栏提供缩放和恢复 100%。
-- 发行附件提供 Windows x64、Linux x64、macOS Apple 芯片和 Intel，以及可直接构建镜像的 Docker x64 包。
 
-[历次更新](CHANGELOG.md)
+[历次更新](CHANGELOG.md) · [历版验收记录](https://github.com/Kokomi-maomeng/Castorice-WebRuleAnalyzer/tree/main/docs)
 
 ## 操作
 

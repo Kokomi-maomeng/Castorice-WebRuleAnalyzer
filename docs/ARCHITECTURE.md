@@ -54,7 +54,7 @@ URL 查询参数值统一替换为 REDACTED，去掉凭据和片段，路径长�
 
 匹配先建立观察精确域名与各层标签后缀索引，再关联分类，避免“分类 × 域名 × 全部规则”的乘法遍历。关键词单独做子串匹配。每个分类/域名保留最强的具体规则，并记录是否为目标主机。共享第三方命中只用于依赖核对，不生成应用身份。
 
-v1.2 按真实下载规则匹配每个观察主机，精确规则和更窄的标签边界后缀优先；关键词不能用来识别应用。结果区分 target、dependency、keyword，并保留具体 hostname/type/value 证据。目标实际命中且名称或已核对别名一致才可推荐专属分类；多个不同应用同时符合则撤销推荐。通用分类按名称语义识别，单个应用不会仅因规则多而被标为通用。GUI 不展示内部排序分数。
+匹配每个观察主机时，精确规则和范围更窄的标签边界后缀优先。关键词只提供命中证据。结果区分 target、dependency、keyword，并保留具体 hostname/type/value 证据。目标实际命中且名称或已核对别名一致才可推荐专属分类；多个不同应用同时符合则撤销推荐。通用分类按名称语义识别，单个应用不会仅因规则多而被标为通用。GUI 不展示内部排序分数。
 
 关键词、上游覆盖范围和共享认证域名均不能证明某个域名是应用必需项。GUI 允许用户在观察/合并范围及逐条预览中决定导出内容。
 
@@ -76,7 +76,10 @@ SQLite WAL、busy_timeout、单连接事务；任务、请求、域名、事件�
 | GET /api/session | 当前服务写操作令牌 |
 | GET /api/browsers | 已安装浏览器检测 |
 | POST /api/scans | `{url, options?}` 创建任务 |
-| GET /api/scans | 最近 100 条历史，覆盖当前运行状态 |
+| GET /api/scans | 最近 100 条任务，包含当前运行状态 |
+| GET /api/scans/history | 按 `q` 搜索历史，使用 `limit` 和 `offset` 分页 |
+| GET /api/scans/active | 当前活动任务，空闲时返回 `null` |
+| DELETE /api/scans | 传入 `ids` 删除指定历史，或用 `all_finished` 清空已结束历史 |
 | GET /api/scans/{id} | 任务、参数、统计、页面、匹配 |
 | POST /api/scans/{id}/stop | Context 取消并释放资源 |
 | GET /api/scans/{id}/domains | 观察域名和关联请求 ID |
@@ -93,6 +96,8 @@ SQLite WAL、busy_timeout、单连接事务；任务、请求、域名、事件�
 | POST /api/export | ExportJob，返回内容、逐条来源、统计、来源说明 |
 | GET / PUT /api/settings | 读取/校验/保存设置 |
 | PUT /api/settings/theme | 单独更新主题 |
+
+界面通过活动任务接口定位正在运行的扫描，因此查看历史时仍可停止该任务。
 
 ## Linux 与 Docker
 
@@ -133,7 +138,6 @@ Windows WebView2、Linux GTK 3/WebKitGTK 和网页共用 `frontend/src/component
 ## 一致性与资源边界
 
 `VERSION` 经 `scripts/sync-version.mjs` 同步前端、Go、package/lock 根版本与 Win32 资源；CI 用 `--check` 阻止漂移。
-`GET /api/scans/active` 独立返回活动任务或 null，查看历史不再影响停止入口。
 合并导出接受可选的 `category_versions` 映射（`version:content_hash`），不匹配返回 409 `rules_changed`。GUI 在预览、复制、下载三个阶段传入此快照；历史和旧 API 客户端保持兼容。
 规则原文编辑保留脏草稿，仅依赖所选来源版本刷新。清缓存事务保留 AutoUpdate，自动更新仍按用户开关工作。
 DLC 解析限制每分类 100,000 规则、10,000 提示、1,000,000 工作单元、24 层 include；每次解析有上下文取消与子树记忆化，并校验缓存子树深度。

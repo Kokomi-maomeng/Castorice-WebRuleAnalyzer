@@ -35,7 +35,7 @@ node scripts/verify-local.mjs chrome msedge firefox webkit
 
 首次运行网页验收前，执行 `npm --prefix frontend ci`、`npm --prefix frontend run build`，并用 `node frontend/node_modules/playwright-core/cli.js install firefox webkit` 安装所需浏览器。验收脚本自动使用随机回环端口、保留域测试站和临时数据目录，结果写入 `.runtime/local-acceptance-*/acceptance.json`。如 CI 已构建前端，可直接调用验收脚本。便携窗口验收使用同一打包二进制。
 
-更新版本号只修改项目根 version 与锁文件 packages[""].version，禁止全局替换锁文件的版本字符串。保留第三方依赖的版本、下载地址与 integrity；用空 npm 缓存或干净 CI 验证公开安装，避免本机缓存掩盖不存在的下载地址。
+更新根目录 `VERSION` 后，执行 `node scripts/sync-version.mjs` 同步 Go、前端、npm 根版本和 Windows 资源，再用 `node scripts/sync-version.mjs --check` 核对。锁文件只同步项目自身的根版本，第三方依赖仍以各自锁定的版本、下载地址与完整性摘要为准。用空 npm 缓存或干净 CI 验证公开安装。
 
 ## 4. 平台验收
 
@@ -58,7 +58,7 @@ $package = "./dist/Castorice-WebRuleAnalyzer-$tag-windows-amd64"
 ./scripts/verify-desktop.ps1 -PackageDirectory $package -Scenario force-crash
 ```
 
-替换示例版本号。测试数据只放 `.runtime/` 或外部临时目录；不在正式发布目录启动 EXE，避免个人历史进入 ZIP。
+测试数据只放 `.runtime/` 或外部临时目录；不在正式发布目录启动 EXE，避免个人历史进入 ZIP。
 
 ## 5. 隐私与包检查
 
@@ -80,11 +80,9 @@ python scripts/audit-release.py --zip ($package + '.zip')
 5. 从 GitHub 下载附件，比较 SHA256，再次解压启动真实成品。确认 Release 标签与附件对应相同源码版本。
 6. 保存脱敏报告。关闭本次临时服务与测试浏览器；验证虚拟机原有服务未被改动。不要停止用户日常浏览器、代理或无关容器。
 
-v1.4 起，隐私检查同时接受 `--zip` 和 `--tar`；Linux 打包脚本设置可执行权限并排除运行目录。构建后运行源码与成品 govulncheck、生产依赖审计和完整开发依赖审计；下载 GitHub 附件后再次比对完整哈希并执行。
+隐私检查接受 `--zip` 和 `--tar`。Linux 打包脚本设置可执行权限并排除运行目录。构建后运行源码与成品 govulncheck。CI 分别审计生产依赖和完整依赖，阻止高危及严重告警。下载 GitHub 附件后再次比对 SHA-256 并试运行。
 
-开发环境的 picomatch 4.0.7 有一条上游尚无修复的公告。生产依赖使用独立审计门槛，开发检查仅对该锁定版本和公告保留例外。项目维护人须在 2027-01-15 前复核，发现上游修复后更新依赖并移除例外。 [GHSA-fc5q-39xc-vjpf](https://github.com/advisories/GHSA-fc5q-39xc-vjpf)
-
-## v1.3 之后复用的针对性检查
+## 针对性回归检查
 
 - 复现先检查实际使用的数据目录和来源状态；开发测试缓存正常不代表用户便携目录已有规则。
 - 规则源更新共享互斥写入器，多个来源应依次执行；不能用并发初始化测试掩盖只成功一套的情况。
