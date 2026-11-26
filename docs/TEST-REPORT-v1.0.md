@@ -46,7 +46,7 @@
 - 通过真实 GUI 生成并下载中文文件名 `示例网站-实际观察.yaml`，已在下载目录确认文件存在并读取，其规则为 `DOMAIN,example.com,dibao`。
 - **使用打包后的 EXE，无任何测试白名单**，在回环端口 19112、独立 `.runtime/production-smoke` 数据目录重复完成 example.com 扫描；界面无测试白名单标签。
 - `scripts/smoke.ps1 -BaseURL http://127.0.0.1:19112` 通过：正式模式标志为 false、真实主文档 200、历史可查，Clash / Rule Provider / sing-box 三格式生成，Provider 无策略组、sing-box version 3。
-- 最终重新构建后，再使用 `.runtime/final-smoke` 独立数据目录、相同正式端口重复上述验收并通过；实际 1 个域名、2 条 HTTP/2 请求均为 200。结果保存在 `.runtime/final-smoke-results/`，可解析的三格式示例复制至 `docs/examples/`。主界面截图已更新为最终 EXE 的这次结果。
+- 最终重新构建后，再使用 `.runtime/final-smoke` 独立数据目录、相同正式端口重复上述验收并通过；实际 1 个域名、2 条 HTTP/2 请求均为 200。结果保存在 `.runtime/final-smoke-results/`，三格式示例见 [v1.0 导出样本](https://github.com/Kokomi-maomeng/Castorice-WebRuleAnalyzer/tree/9a11f125a4062a4540ef34c6125f09ab0e4de685/docs/examples)。主界面截图已更新为最终 EXE 的这次结果。
 
 实际界面截图：
 

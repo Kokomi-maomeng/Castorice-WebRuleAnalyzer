@@ -33,7 +33,7 @@ jobs:
         working-directory: frontend
       - run: npm run version:check && npm run format:check && npm audit --omit=dev --audit-level=high
         working-directory: frontend
-      - run: npm audit --json | node ../scripts/check-dev-audit.mjs
+      - run: npm audit --audit-level=high
         working-directory: frontend
       - run: npm run build
         working-directory: frontend
