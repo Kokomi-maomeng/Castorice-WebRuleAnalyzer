@@ -256,7 +256,7 @@ async function verify(name, fixturePort) {
     assert.equal(scan.target_url, 'scan.test');
     assert.equal(scan.target_scheme, 'http');
     assert.equal(scan.target_port, fixturePort);
-    assert.equal(await target.inputValue(), 'scan.test');
+    await waitFor(async () => (await target.inputValue()) === 'scan.test', 'Normalized host appeared in the address field');
     try {
       await page.getByText('已自动清除前缀、路径或参数').waitFor();
       await page.getByText('正在补取最终采集结果…').waitFor({ timeout: 25000 });
