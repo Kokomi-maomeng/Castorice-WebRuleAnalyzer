@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import ContextHelp from "./ContextHelp";
+import NumberedTextEditor, { SelectAllTextButton } from "./NumberedTextEditor";
 import {
   Alert,
   Box,
@@ -17,19 +17,17 @@ import {
   Stack,
   Switch,
   TextField,
-  Tooltip,
   Typography,
 } from "@mui/material";
 import {
   CloseRounded,
   ContentCopyRounded,
-  DownloadRounded,
   RefreshRounded,
   SettingsRounded,
 } from "@mui/icons-material";
 import type { RuleCategory, RuleSource } from "../types";
-import { api, copy, download } from "../services/api";
-import { date, errorMessage, ruleCatalogKey } from "../utils/format";
+import { api, copy } from "../services/api";
+import { date, errorMessage, ruleCatalogKey, tipText } from "../utils/format";
 interface Props {
   open?: boolean;
   onExited?: () => void;
@@ -244,26 +242,6 @@ export default function RuleLibrary(p: Props) {
           <Typography variant="h6" id="rule-library-title" sx={{ flex: 1 }}>
             开源规则库
           </Typography>
-          <ContextHelp label="规则库术语说明">
-            <Box
-              component="dl"
-              sx={{
-                m: 0,
-                "& dd": { ml: 0, mb: 0.5 },
-                "& dt": { fontWeight: 700 },
-              }}
-            >
-              <dt>来源 · 版本</dt>
-              <dd>上游规则项目与本地内容对应的提交编号。</dd>
-              <dt>规则原文</dt>
-              <dd>
-                所选分类的上游文件。include:分类名
-                表示引用另一分类，可搜索该名称查看规则。
-              </dd>
-              <dt>域名 · 后缀 · 关键词</dt>
-              <dd>分别匹配完整主机名、指定域名及其子域名、主机名中的文字。</dd>
-            </Box>
-          </ContextHelp>
           <Button
             size="small"
             startIcon={<SettingsRounded />}
@@ -321,7 +299,7 @@ export default function RuleLibrary(p: Props) {
             onClose={() => setError("")}
             sx={{ mx: 2, mb: 1 }}
           >
-            {error}
+            {tipText(error)}
           </Alert>
         )}
         <Box className="library-workspace">
@@ -376,7 +354,7 @@ export default function RuleLibrary(p: Props) {
               <Box sx={{ p: 2 }}>
                 <Typography color="text.secondary">
                   {sources.some((s) => s.status === "syncing")
-                    ? "规则库正在下载，完成后即可搜索。"
+                    ? "规则库正在下载，完成后即可搜索"
                     : sources.some((s) => s.category_count)
                       ? "没有匹配分类或域名"
                       : "尚未下载规则库"}
@@ -396,8 +374,8 @@ export default function RuleLibrary(p: Props) {
                 <Alert severity="warning">
                   历史匹配版本 {expectedVersion.slice(0, 8)}。
                   {content
-                    ? `下方为当前缓存 ${content.version.slice(0, 8)}。`
-                    : "该版本的分类原文在本地不可用。"}
+                    ? `下方为当前缓存 ${content.version.slice(0, 8)}`
+                    : "该版本的分类原文在本地不可用"}
                   {expectedURL && (
                     <>
                       {" "}
@@ -423,7 +401,7 @@ export default function RuleLibrary(p: Props) {
                   </Button>
                 }
               >
-                规则已更新，临时编辑已保留。可先复制编辑内容。
+                规则已更新，临时编辑已保留。可先复制编辑内容
               </Alert>
             )}
             {loading ? (
@@ -460,17 +438,7 @@ export default function RuleLibrary(p: Props) {
                       {content.source} · {content.version.slice(0, 8)}
                     </Typography>
                   </Box>
-                  <Tooltip title="全选文本">
-                    <Button
-                      size="small"
-                      onClick={() => {
-                        editor.current?.focus();
-                        editor.current?.select();
-                      }}
-                    >
-                      全选
-                    </Button>
-                  </Tooltip>
+                  <SelectAllTextButton editorRef={editor} />
                   <Button
                     size="small"
                     startIcon={<ContentCopyRounded />}
@@ -482,39 +450,19 @@ export default function RuleLibrary(p: Props) {
                   >
                     复制
                   </Button>
-                  <Button
-                    size="small"
-                    startIcon={<DownloadRounded />}
-                    onClick={() =>
-                      void download(
-                        draft,
-                        content.name.replace(/[<>:"/\\|?*]/g, "_") +
-                          (content.format === "yaml" ? ".yaml" : ".txt"),
-                        "text/plain;charset=utf-8",
-                      )
-                        .then(() => p.notify("规则文本已导出"))
-                        .catch((e) => p.notify(errorMessage(e)))
-                    }
-                  >
-                    下载
-                  </Button>
                 </Stack>
-                <Box
-                  component="textarea"
-                  ref={editor}
-                  className="rule-editor"
-                  aria-label="规则原文编辑区"
-                  spellCheck={false}
+                <NumberedTextEditor
+                  editorRef={editor}
+                  label="规则原文编辑区"
                   value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
-                  sx={{ color: "text.primary", bgcolor: "background.default" }}
+                  onChange={setDraft}
                 />
                 <Typography
                   variant="caption"
                   color="text.secondary"
                   sx={{ px: 1.5 }}
                 >
-                  临时编辑仅用于复制 / 下载，不改变匹配缓存
+                  编辑后的文本可复制。规则匹配使用规则库原文
                 </Typography>
                 <Stack
                   direction="row"
@@ -582,7 +530,7 @@ export default function RuleLibrary(p: Props) {
                   color="text.secondary"
                   sx={{ mt: 1 }}
                 >
-                  YAML 中的 IP、进程等规则也会原样保留。
+                  YAML 中的 IP、进程等规则也会原样保留
                 </Typography>
               </Stack>
             )}
@@ -601,7 +549,7 @@ export default function RuleLibrary(p: Props) {
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
             开启后立即下载，运行期间每天检查更新。更新失败时保留旧缓存。
             下载通过服务进程的系统网络和代理环境连接 GitHub，独立于扫描的 DNS
-            和本机代理。
+            和本机代理
           </Typography>
           {sources.map((s) => (
             <Box
@@ -658,7 +606,7 @@ export default function RuleLibrary(p: Props) {
               </Typography>
               {s.error && (
                 <Alert severity="warning" sx={{ my: 1 }}>
-                  {s.error}
+                  {tipText(s.error)}
                 </Alert>
               )}
               <Stack direction="row" sx={{ gap: 0.5, mt: 1 }}>
@@ -719,9 +667,9 @@ export default function RuleLibrary(p: Props) {
         <DialogContent dividers>
           <Box component="pre" sx={{ fontSize: 12 }}>
             {details === "license"
-              ? source?.license_text || "请更新来源以获取许可证。"
-              : "以下条目不参与域名匹配或转换，原文件中仍完整保留。\n\n" +
-                content?.warnings.join("\n")}
+              ? source?.license_text || "请更新来源以获取许可证"
+              : "以下条目不参与域名匹配或转换，原文件中仍完整保留\n\n" +
+                (content?.warnings.map(tipText).join("\n") || "")}
           </Box>
         </DialogContent>
         <DialogActions>

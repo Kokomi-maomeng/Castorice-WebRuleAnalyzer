@@ -149,7 +149,7 @@ export function useScan(id: string, filter: RequestFilter) {
     });
     stream.onerror = () => {
       if (!signal.aborted && !terminal)
-        setConnection("实时连接中断，正在自动重连；每 3 秒补取任务状态。");
+        setConnection("实时连接中断，正在自动重连并补取任务状态");
     };
     void loadStatus();
     filterChanged.current = () => {

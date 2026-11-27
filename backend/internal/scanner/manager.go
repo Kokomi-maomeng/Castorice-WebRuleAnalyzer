@@ -25,6 +25,7 @@ import (
 )
 
 var ErrBusy = errors.New("已有扫描正在运行，请先停止或等待完成")
+var ErrRecordingInactive = errors.New("只能在自行交互期间暂停或继续记录")
 
 type Manager struct {
 	mu     sync.Mutex
@@ -98,7 +99,7 @@ func (m *Manager) start(ctx context.Context, raw string, options model.ScanOptio
 		return model.ScanTask{}, security.Fail("invalid_options", "input", err.Error(), "请检查本次扫描参数及网络设置。", "", err)
 	}
 	if (options.Visible || options.Mode == "interactive") && !browser.VisibleSupported() {
-		return model.ScanTask{}, errors.New("当前服务没有图形会话，请使用快速扫描或自动探索并关闭可见浏览器")
+		return model.ScanTask{}, errors.New("当前服务没有图形会话，请选择快速或深度模式并关闭可见浏览器")
 	}
 	if rootOnly {
 		target, err := m.PrepareTarget(raw)
@@ -207,17 +208,24 @@ func (m *Manager) execute(ctx context.Context, r *runtimeTask, target, host, bro
 		}
 	}()
 	reason, err := m.engine.run(ctx, r, target, browserPath)
+	scanErr := ctx.Err()
 	close(stopCheckpoint)
 	<-checkpointDone
+	r.log("INFO", "extract", "完成域名规范化与去重，开始匹配本地规则缓存")
+	// Downloads never extend a stopped task. Automatic matching only uses the
+	// existing cache; explicit source updates/load actions live in the rules UI.
+	categories := m.rules.Categories(true)
+	matches, recommended, note, total := matcher.Match(host, r.domainList(), categories)
+	now := time.Now().UTC()
 	r.mu.Lock()
-	stopped := r.task.Status == "stopping"
-	r.mu.Unlock()
 	status := "completed"
-	if stopped {
+	if r.task.Status == "stopping" {
 		status = "cancelled"
 		reason = "user_stopped"
 		err = nil
-	} else if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+	} else if reason == browserClosed {
+		status = "cancelled"
+	} else if errors.Is(scanErr, context.DeadlineExceeded) {
 		status = "timed_out"
 		reason = "time_limit"
 		err = nil
@@ -228,24 +236,16 @@ func (m *Manager) execute(ctx context.Context, r *runtimeTask, target, host, bro
 	} else if err != nil {
 		status = "failed"
 	}
-	r.mu.Lock()
 	if r.flushError != nil {
 		status = "failed"
 		reason = "database_error"
 		err = fmt.Errorf("结果写入数据库失败: %w", r.flushError)
 	}
-	r.mu.Unlock()
-	r.log("INFO", "extract", "完成域名规范化与去重，开始匹配本地规则缓存")
-	// Downloads never extend a stopped task. Automatic matching only uses the
-	// existing cache; explicit source updates/load actions live in the rules UI.
-	categories := m.rules.Categories(true)
-	matches, recommended, note, total := matcher.Match(host, r.domainList(), categories)
-	now := time.Now().UTC()
-	r.mu.Lock()
 	r.finishInteractiveDocument(nil, true)
 	r.task.Status = status
+	r.task.RecordingPaused = false
 	if status == "timed_out" {
-		r.task.Diagnostic = security.Explain(security.Fail("time_limit", "scan", "达到最大扫描时间，结果尚不完整", "可增加扫描时间或使用辅助交互继续观察。", host, nil))
+		r.task.Diagnostic = security.Explain(security.Fail("time_limit", "scan", "达到最大扫描时间，结果尚不完整", "可增加扫描时间或切换到自行交互继续观察。", host, nil))
 	}
 	if status == "cancelled" {
 		r.task.Diagnostic = nil
@@ -425,13 +425,41 @@ func (m *Manager) Stop(id string) error {
 		return nil
 	}
 	r.mu.Lock()
+	if !r.task.Active() || r.task.Status == "stopping" {
+		r.mu.Unlock()
+		return nil
+	}
 	r.task.Status = "stopping"
-	r.revision++
+	r.logLocked("INFO", "stopping", "用户请求停止，正在取消导航并释放浏览器")
 	r.mu.Unlock()
-	r.log("INFO", "stopping", "用户请求停止，正在取消导航并释放浏览器")
 	r.cancel()
 	return nil
 }
+
+func (m *Manager) SetRecordingPaused(id string, paused bool) error {
+	r := m.activeTask(id)
+	if r == nil {
+		if _, err := m.store.Task(id); err != nil {
+			return err
+		}
+		return ErrRecordingInactive
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.task.Options.Mode != "interactive" || r.task.Status != "running" || r.recordingFinished {
+		return ErrRecordingInactive
+	}
+	if r.task.RecordingPaused != paused {
+		r.task.RecordingPaused = paused
+		if paused {
+			r.logLocked("INFO", "recording_paused", "已暂停记录，受控浏览器与登录状态保留，总时长继续计时")
+		} else {
+			r.logLocked("INFO", "recording_resumed", "已在同一浏览器会话继续记录")
+		}
+	}
+	return nil
+}
+
 func (m *Manager) Revision(id string) int64 {
 	if r := m.activeTask(id); r != nil {
 		r.mu.Lock()

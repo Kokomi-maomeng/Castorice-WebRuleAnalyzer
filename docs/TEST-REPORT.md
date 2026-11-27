@@ -1,19 +1,28 @@
-# v2.0 测试报告
+# v2.1 测试报告
 
-发行包来自同一套前端和 Go 服务。Windows 使用 WebView2，Linux 桌面使用 GTK/WebKitGTK，Docker 和 macOS 通过系统浏览器打开界面。Windows、Linux、macOS 和 Docker 附件的 BUILD-INFO.json 记录源码树、编译目标及二进制 SHA-256。
+发行包共用前端和 Go 服务。Windows 使用 WebView2，Linux 桌面使用 GTK/WebKitGTK，Docker 与 macOS 使用浏览器界面。各平台包的 `BUILD-INFO.json` 记录源码提交、源码树、编译架构和程序 SHA-256。
 
 ## 工作区与应用验证
 
 | 平台或模块 | 验证 |
 | --- | --- |
-| Windows 11 x64 | 实际 WebView2 窗口读取深色应用设置，验证标题栏缩放、键盘缩放、默认重置、历史重新打开、文件保存、三种格式导出和重新启动。检查正常关闭、采集中关闭、强制退出时的进程及端口。 |
-| Chrome、Edge、Firefox、WebKit | 使用隔离测试站和本地服务验证实际采集、精确主机请求、弱网补取、历史检索与分页、组合键、嵌套弹窗退场、主题与缩放以及三种格式下载。包含 320×256 视口。 |
-| 导出与密集预览 | 从空缓存下载两套规则库，验证真实分类合并、约 8,600 条规则的大分类、完整预览和三格式下载。九种视口检查工具栏；200% 设备缩放检查预览密度、分类搜索稳定性，并用 5,000 行样本复核行号、字号和选中计数。 |
-| Debian 13 x64 | 使用 Linux 发行包在 VMware 虚拟机运行独立服务和 X11 GTK/WebKitGTK 桌面应用。正常采集公网保留示例站点，得到 1 个域名、2 条请求，验证三种导出及服务正常退出。桌面验证了缩放、域名检索与排序、历史检索与打开、文件预览、本地保存及正常关闭。 |
-| Docker x64 | 在 Debian 虚拟机部署独立 Compose 项目。验证回环监听、访问认证、普通用户、Chromium 独立 PID 命名空间、seccomp、历史持久化与三种导出。该虚拟机的默认 AppArmor 拒绝 Chromium 创建用户命名空间，使用随包提供的 AppArmor 配置后通过。Chrome 实际访问容器并验证历史、域名检索和完整文件预览。 |
-| macOS | 从同一源码交叉编译 Apple 芯片和 Intel 附件。无 macOS 实机，本版未在 macOS 上运行。 |
-| 代码检查 | 前端 42 项测试通过。Go 全包测试、真实 Chromium、上游规则源、DNS 验证和 Go vet 通过。 |
+| Windows x64 | 从 ZIP 解压并启动原生窗口，实测公网采集、三格式导出、单来源规则库合并、单选控件、标题栏边缘点击和请求详情。验证正常关闭、采集中关闭、强制退出与重启恢复，确认测试程序的进程和监听端口清理。 |
+| Chrome 与 Edge 采集 | 两个实际浏览器分别完成快速、深度和自行交互。用隔离站点验证会话保留、暂停时排除新请求、继续后恢复记录，以及停止和超时清理。 |
+| Chrome、Edge、Firefox、WebKit | 用隔离站点实测采集、精确主机请求、弱网补取、主题、缩放、历史和三格式下载。用测试数据复核 67 条历史的选取与分页，包括 320×256 视口。 |
+| Debian 13 x64 | 将 Linux 包部署到 VMware Debian。无头服务实测公网采集与三格式生成。在隔离 X11 显示上运行原生 GTK/WebKitGTK 窗口，验证模式、缩放、域名检索、历史、三种格式保存、设置提示、正常关闭及采集中关闭。通过生产 SQLite 副本验证设置、历史和规则缓存兼容性。 |
+| Docker x64 | 将发布包部署为独立 Compose 项目，使用随包的 AppArmor 和 seccomp 配置。验证认证、非 root Chromium、渲染进程沙箱、采集和三格式生成。通过浏览器实测深度采集、单来源下载与合并导出，确认自行交互置灰。 |
+| macOS Intel 和 Apple 芯片 | 交叉编译并核对两套包的 Mach-O 架构、启动脚本、文件权限与校验值。运行测试范围为 Windows、Debian 与 Docker。 |
+| 代码与依赖 | 干净 npm 安装通过，前端 44 项测试通过。Go 全包测试、真实 Chromium、上游规则源、DNS 和 Go vet 通过。npm 依赖审计与 Go 源码及各平台二进制的漏洞扫描通过。 |
 
-发布前更新 Chromium 调试连接使用的 gobwas/ws，以及测试站使用的 Gorilla WebSocket。 [Go 公告 6940](https://pkg.go.dev/vuln/GO-2026-6940) · [Go 公告 6278](https://pkg.go.dev/vuln/GO-2026-6278)
+## 本版回归重点
 
-历史测试见 [v1.7 测试报告](https://github.com/Kokomi-maomeng/Castorice-WebRuleAnalyzer/blob/v1.7/docs/TEST-REPORT.md)。
+- 保存 200 秒后检查下次摘要和实际启动参数，旧任务仍保留其 180 秒快照。清空工作区保留当前配置。
+- 复现旧版在单来源缓存下显示下载提示。新版直接列出可用分类，实际合并后保存的规则与预览一致。
+- 检查状态、响应与失败计数、探索深度、无箭头说明、请求详情、规则原文行号及导出编辑切换。
+- 验证独立 HTTP/3 诊断和地址校验。隔离夹具通过握手检查，Windows 在公开 HTTP/3 示例站取得 `h3` 和 HTTP 200。探测结果取决于站点、代理和 UDP 路径。
+
+## 发行检查
+
+五套发行包核对了压缩包和程序 SHA-256、目标架构及源码树。源码、Git 历史与附件经过敏感信息检查。发布包包含程序、运行说明、许可证和校验元数据。
+
+历史验证见 [v2.0 测试报告](https://github.com/Kokomi-maomeng/Castorice-WebRuleAnalyzer/blob/v2.0/docs/TEST-REPORT.md)。

@@ -2,6 +2,8 @@
 
 默认 Compose 使用独立非 root 账户、丢弃容器 capabilities、启用 no-new-privileges，并保留 Docker 的 AppArmor 默认行为。Seccomp 保留 Moby 默认规则，只增加 Chromium 用户命名空间及其内部文件系统隔离所需的调用。Linux 内核仍检查命名空间范围及有效权限。
 
+Docker 附件内含与 Linux x64 包一致的核心程序。网页沿用 Windows 的扫描选项、软件设置、规则库与导出界面。默认没有图形会话，自行交互置灰，快速和深度模式可用。
+
 在限制非特权用户命名空间的 AppArmor 宿主机上，可加载同目录的 `castorice-browser.apparmor`。此文件保留 Docker 容器策略的挂载、进程和内核路径保护，并只为这套容器许可创建用户命名空间。仓库根目录和已解压的 Linux 包使用同样的命令。
 
 如果应用可以打开，但启动 Chromium 时出现 `Permission denied`，并且内核审计日志显示 `docker-default` 下的 `userns_create` 被拒绝，请使用下列配置。

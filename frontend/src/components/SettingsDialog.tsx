@@ -1,7 +1,7 @@
 import NetworkOptions from "./NetworkOptions";
 import ScanNumberFields, { invalidScanField } from "./ScanNumberFields";
 import { APP_VERSION } from "../version";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 import {
   Alert,
   Box,
@@ -16,6 +16,8 @@ import {
   MenuItem,
   Stack,
   Switch,
+  Tab,
+  Tabs,
   TextField,
   Typography,
 } from "@mui/material";
@@ -30,8 +32,9 @@ import {
 } from "@mui/icons-material";
 import type { ScanOptions, Settings } from "../types";
 import { api } from "../services/api";
-import { errorMessage, modeNames } from "../utils/format";
+import { errorMessage, modeNames, tipText } from "../utils/format";
 import ContextHelp from "./ContextHelp";
+import { controlledBrowserHelp, scanModeDescriptions } from "./ScanModeSelect";
 const themeChoices = {
   light: { label: "浅色", Icon: LightModeRounded },
   dark: { label: "深色", Icon: DarkModeRounded },
@@ -43,6 +46,7 @@ interface Props {
   canShowBrowser: boolean;
   browserManaged: boolean;
   settings: Settings;
+  selectedMode: ScanOptions["mode"];
   onSave: (v: Settings) => void;
   onClose: () => void;
   onLibrary: () => void;
@@ -50,7 +54,11 @@ interface Props {
   children?: ReactNode;
 }
 export default function SettingsDialog(p: Props) {
-  const [draft, setDraft] = useState(p.settings);
+  const modeID = useId();
+  const [draft, setDraft] = useState(() => ({
+    ...p.settings,
+    scan: { ...p.settings.scan, mode: p.selectedMode },
+  }));
   const [browsers, setBrowsers] = useState<
     {
       name: string;
@@ -78,7 +86,7 @@ export default function SettingsDialog(p: Props) {
   async function save() {
     const invalid = invalidScanField(draft.scan);
     if (invalid) {
-      setError(`请修正「${invalid}」。`);
+      setError(`请修正「${invalid}」`);
       return;
     }
     setBusy(true);
@@ -115,8 +123,10 @@ export default function SettingsDialog(p: Props) {
       onClose={p.onClose}
       slotProps={{ transition: { onExited: p.onExited } }}
     >
-      <DialogTitle id="software-settings-title">
-        软件设置
+      <DialogTitle id="software-settings-heading">
+        <Box component="span" id="software-settings-title">
+          软件设置
+        </Box>
         <IconButton
           aria-label="关闭设置"
           onClick={p.onClose}
@@ -128,38 +138,84 @@ export default function SettingsDialog(p: Props) {
       <DialogContent dividers>
         {error && (
           <Alert severity="error" sx={{ mb: 2 }}>
-            {error}
+            {tipText(error)}
           </Alert>
         )}
-        <Stack direction="row" sx={{ mb: 2, alignItems: "center", gap: 0.5 }}>
+        <Stack direction="row" sx={{ mb: 1, alignItems: "center", gap: 0.5 }}>
           <Typography variant="subtitle1" sx={{ fontWeight: 650 }}>
-            默认扫描参数
+            扫描参数
           </Typography>
-          <ContextHelp label="默认扫描参数应用范围">
-            保存后应用于尚未编辑的工作区，或清空工作区后的下一次扫描。
+          <ContextHelp label="查看扫描参数生效范围">
+            保存后的参数用于之后启动的扫描
           </ContextHelp>
         </Stack>
-        <Box className="advanced-grid">
-          <TextField
-            select
-            label="默认模式"
-            value={draft.scan.mode}
-            onChange={(e) =>
-              setScan("mode", e.target.value as ScanOptions["mode"])
-            }
-            fullWidth
-          >
-            {Object.entries(modeNames).map(([key, name]) => (
-              <MenuItem
-                key={key}
-                value={key}
-                disabled={key === "interactive" && !p.canShowBrowser}
-              >
-                {name}
-              </MenuItem>
-            ))}
-          </TextField>
-          <ScanNumberFields options={draft.scan} change={setScanOptions} />
+        <Tabs
+          aria-label="设置扫描模式"
+          value={draft.scan.mode}
+          variant="fullWidth"
+          onChange={(_, value: ScanOptions["mode"]) => setScan("mode", value)}
+          sx={{
+            borderBottom: 1,
+            borderColor: "divider",
+            "& .MuiTab-root": { minWidth: 0, px: 0.75 },
+          }}
+        >
+          {(Object.keys(scanModeDescriptions) as ScanOptions["mode"][]).map(
+            (mode) => (
+              <Tab
+                key={mode}
+                id={`${modeID}-${mode}`}
+                aria-controls={`${modeID}-panel`}
+                label={modeNames[mode]}
+                value={mode}
+                disabled={mode === "interactive" && !p.canShowBrowser}
+              />
+            ),
+          )}
+        </Tabs>
+        <Box
+          role="tabpanel"
+          id={`${modeID}-panel`}
+          aria-labelledby={`${modeID}-${draft.scan.mode}`}
+        >
+          <Typography variant="body2" color="text.secondary" sx={{ my: 1.5 }}>
+            {scanModeDescriptions[draft.scan.mode]}
+          </Typography>
+          {!p.canShowBrowser && (
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+              自行交互需要服务端图形会话
+            </Typography>
+          )}
+          <Box className="advanced-grid">
+            <ScanNumberFields options={draft.scan} change={setScanOptions} />
+          </Box>
+          <Box sx={{ mt: 2 }}>
+            <NetworkOptions options={draft.scan} onChange={setScanOptions} />
+          </Box>
+          {draft.scan.mode === "interactive" &&
+            p.canShowBrowser &&
+            !window.castoriceDesktop && (
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                受控浏览器在运行采集服务的电脑上打开。远程访问此网页时，请在服务端图形会话操作
+              </Typography>
+            )}
+          {p.canShowBrowser && draft.scan.mode !== "interactive" && (
+            <Stack direction="row" sx={{ alignItems: "center", mt: 1 }}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={draft.scan.visible}
+                    onChange={(_, checked) => setScan("visible", checked)}
+                  />
+                }
+                label="显示受控浏览器"
+                sx={{ mr: 0 }}
+              />
+              <ContextHelp label="查看显示受控浏览器说明">
+                {controlledBrowserHelp}
+              </ContextHelp>
+            </Stack>
+          )}
         </Box>
         <Divider sx={{ my: 3 }} />
         <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 650 }}>
@@ -178,10 +234,10 @@ export default function SettingsDialog(p: Props) {
           disabled={p.browserManaged}
           helperText={
             p.browserManaged
-              ? "采集浏览器由服务管理员指定。"
+              ? "采集浏览器由服务管理员指定"
               : browsers.length
-                ? "从运行采集服务的电脑选择。"
-                : "未检测到浏览器，请安装 Chrome、Edge 或 Chromium。"
+                ? "从运行采集服务的电脑选择"
+                : "未检测到浏览器，请安装 Chrome、Edge 或 Chromium"
           }
         >
           <MenuItem value="">自动检测（Chrome / Edge / Chromium）</MenuItem>
@@ -191,25 +247,6 @@ export default function SettingsDialog(p: Props) {
             </MenuItem>
           ))}
         </TextField>
-        <Box sx={{ mt: 2 }}>
-          <NetworkOptions options={draft.scan} onChange={setScanOptions} />
-        </Box>
-        <Stack direction="row" sx={{ alignItems: "center", mt: 1 }}>
-          <FormControlLabel
-            control={
-              <Switch
-                disabled={!p.canShowBrowser}
-                checked={draft.scan.visible}
-                onChange={(_, checked) => setScan("visible", checked)}
-              />
-            }
-            label="默认显示受控浏览器"
-            sx={{ mr: 0 }}
-          />
-          <ContextHelp label="默认显示受控浏览器说明">
-            快速扫描和自动探索时，开启会显示独立的采集窗口，关闭则在无头模式运行。辅助交互始终显示窗口。采集使用临时浏览器资料，正常结束后自动清理。
-          </ContextHelp>
-        </Stack>
         <Divider sx={{ my: 3 }} />
         <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 650 }}>
           外观、日志与导出

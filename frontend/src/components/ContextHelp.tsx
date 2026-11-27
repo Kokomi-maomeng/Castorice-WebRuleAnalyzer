@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { IconButton, Tooltip } from "@mui/material";
 import { InfoOutlined } from "@mui/icons-material";
+import { tipText } from "../utils/format";
 
 export default function ContextHelp({
   label,
@@ -8,12 +9,14 @@ export default function ContextHelp({
   error = false,
   warning = false,
   className,
+  alignEnd = error,
 }: {
   label: string;
   children: ReactNode;
   error?: boolean;
   warning?: boolean;
   className?: string;
+  alignEnd?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [pinned, setPinned] = useState(false);
@@ -23,14 +26,13 @@ export default function ContextHelp({
   }
   return (
     <Tooltip
-      title={children}
+      title={typeof children === "string" ? tipText(children) : children}
       describeChild
       disableInteractive
       open={open || pinned}
       onOpen={() => setOpen(true)}
       onClose={() => setOpen(false)}
-      placement={error ? "bottom-end" : "bottom-start"}
-      arrow
+      placement={alignEnd ? "bottom-end" : "bottom-start"}
       slotProps={{
         tooltip: {
           sx: { fontSize: 12, maxWidth: 340, whiteSpace: "pre-line" },

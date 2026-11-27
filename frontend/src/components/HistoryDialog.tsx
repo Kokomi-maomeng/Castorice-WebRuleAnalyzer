@@ -31,6 +31,7 @@ import {
   errorMessage,
   modeNames,
   statusNames,
+  tipText,
 } from "../utils/format";
 import { scanTargetLabel } from "../utils/scanAddress";
 import "../styles/history-v2.css";
@@ -216,7 +217,7 @@ export default function HistoryDialog(p: Props) {
         <DialogContent dividers className="history-body">
           {error && (
             <Alert severity="error" sx={{ mb: 1 }}>
-              {error}
+              {tipText(error)}
             </Alert>
           )}
           <div className="history-toolbar">
@@ -404,14 +405,14 @@ export default function HistoryDialog(p: Props) {
             {deletion && "all_finished" in deletion.request
               ? "全部已结束的 "
               : "所选的 "}
-            {deletion?.count} 条扫描记录及关联请求、域名和日志。
+            {deletion?.count} 条扫描记录及关联请求、域名和日志
           </Typography>
           <Typography color="text.secondary" sx={{ mt: 1 }}>
-            正在运行的任务、规则缓存、设置及已导出文件保留。
+            正在运行的任务、规则缓存、设置及已导出文件保留
           </Typography>
           {deletionError && (
             <Alert severity="error" sx={{ mt: 1 }}>
-              {deletionError}
+              {tipText(deletionError)}
             </Alert>
           )}
         </DialogContent>

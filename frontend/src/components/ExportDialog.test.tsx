@@ -121,9 +121,14 @@ describe("导出预览", () => {
   function chooseMerged() {
     fireEvent.click(screen.getByRole("radio", { name: "抓取结果+开源规则库" }));
   }
-  it("缺库时标记合并选项与分类，在两套来源下载期间保持进度，失败后可继续下载", async () => {
+  it("暂无可用分类时提供下载，任一来源下载成功后即可使用", async () => {
     vi.useFakeTimers();
     let sources = emptySources;
+    const cached = {
+      ...category,
+      id: "blackmatrix7:example",
+      source: "blackmatrix7",
+    };
     const transfers = new Map<
       string,
       { complete: () => void; fail: (error: Error) => void }
@@ -133,7 +138,7 @@ describe("导出预览", () => {
         if (path.startsWith("/rules/sources")) return sources;
         if (path === "/rules/categories")
           return sources.some(({ category_count }) => category_count)
-            ? [category]
+            ? [cached]
             : [];
         if (path === "/rules/sync" && body?.source) {
           return new Promise<void>((resolve, reject) => {
@@ -161,11 +166,11 @@ describe("导出预览", () => {
     const merge = screen.getByRole("radio", { name: "抓取结果+开源规则库" });
     fireEvent.click(merge);
     const input = screen.getByRole("combobox", { name: "规则分类" });
-    expect(merge.closest("label")).toHaveAttribute("data-missing-library");
+    expect(merge).toBeChecked();
     expect(input).toHaveAttribute("aria-invalid", "true");
     fireEvent.click(screen.getByRole("button", { name: "查看规则库下载提示" }));
     expect(screen.getByRole("tooltip")).toHaveTextContent(
-      "两套开源规则库尚未下载，下载后可搜索分类并合并",
+      "本地暂无可用的规则分类，下载后可搜索并合并",
     );
     const button = screen.getByRole("button", {
       name: /^下载规则库$/,
@@ -197,15 +202,14 @@ describe("导出预览", () => {
     expect(
       screen.queryByRole("progressbar", { name: "正在下载规则库" }),
     ).toBeNull();
-    expect(screen.getByText(/服务响应超时/)).toBeInTheDocument();
-    expect(input).toHaveAttribute("aria-invalid", "true");
-    fireEvent.click(button);
-    await act(async () => {
-      transfers.get("v2fly")!.complete();
-    });
+    expect(screen.queryByText(/服务响应超时/)).toBeNull();
     expect(screen.queryByRole("button", { name: /^下载规则库$/ })).toBeNull();
     expect(input).toHaveAttribute("aria-invalid", "false");
-    expect(merge.closest("label")).not.toHaveAttribute("data-missing-library");
+    fireEvent.change(input, { target: { value: category.name } });
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    expect(
+      screen.getByRole("option", { name: new RegExp(category.name) }),
+    ).toBeInTheDocument();
   });
   it("文件名称移到操作区，清空后禁用软件目录保存并保留默认文件名", async () => {
     vi.stubGlobal("castoriceDesktop", { version: "test" });
@@ -800,6 +804,49 @@ describe("导出预览", () => {
     expect(mockCopy).toHaveBeenCalledWith(content);
     expect(mockDownload).toHaveBeenCalledWith(
       content,
+      output.filename,
+      output.mime,
+    );
+  });
+  it("文件内容的编辑按钮可以切换，复制和下载都使用草稿", async () => {
+    show("observed");
+    await screen.findByRole("checkbox", { name: "导出 DOMAIN,example.com" });
+    expect(screen.queryByRole("button", { name: "编辑文件内容" })).toBeNull();
+    const fileTab = screen.getByRole("tab", { name: "文件内容" });
+    fireEvent.click(fileTab);
+    const pencil = screen.getByRole("button", { name: "编辑文件内容" });
+    expect(pencil.previousElementSibling).toContainElement(fileTab);
+    expect(pencil).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(pencil);
+    expect(pencil).toHaveAttribute("aria-pressed", "true");
+    const getEditor = () =>
+      screen.getByRole<HTMLTextAreaElement>("textbox", {
+        name: "规则文件内容编辑区",
+      });
+    expect(getEditor()).toHaveValue(output.content);
+    const draft = "rules:\n  - DOMAIN,example.org,TEST\n";
+    fireEvent.change(getEditor(), { target: { value: draft } });
+    expect(screen.queryByRole("button", { name: /全选/ })).toBeNull();
+    fireEvent.click(pencil);
+    expect(pencil).toHaveAttribute("aria-pressed", "false");
+    expect(
+      screen.queryByRole("textbox", { name: "规则文件内容编辑区" }),
+    ).toBeNull();
+    expect(screen.getByText(/DOMAIN,example.org,TEST/)).toBeInTheDocument();
+    fireEvent.click(pencil);
+    expect(getEditor()).toHaveValue(draft);
+    fireEvent.change(screen.getByRole("textbox", { name: "文件名称" }), {
+      target: { value: "renamed" },
+    });
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "下载文件" })).toBeEnabled(),
+    );
+    expect(getEditor()).toHaveValue(draft);
+    fireEvent.click(screen.getByRole("button", { name: "复制内容" }));
+    fireEvent.click(screen.getByRole("button", { name: "下载文件" }));
+    expect(mockCopy).toHaveBeenCalledWith(draft);
+    expect(mockDownload).toHaveBeenCalledWith(
+      draft,
       output.filename,
       output.mime,
     );

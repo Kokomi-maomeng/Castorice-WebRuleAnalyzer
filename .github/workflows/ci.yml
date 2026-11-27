@@ -49,9 +49,13 @@ jobs:
       - run: go build -trimpath ./cmd/castorice
         working-directory: backend
       - if: runner.os == 'Windows'
-        run: node frontend/node_modules/playwright-core/cli.js install firefox webkit
+        run: node frontend/node_modules/playwright-core/cli.js install chromium firefox webkit
       - if: runner.os == 'Windows'
-        run: node scripts/verify-local.mjs msedge firefox webkit
+        shell: pwsh
+        run: |
+          $env:CASTORICE_TEST_BROWSER = node --input-type=module -e "import { chromium } from './frontend/node_modules/playwright-core/index.mjs'; console.log(chromium.executablePath())"
+          if ($LASTEXITCODE -ne 0 -or !(Test-Path -LiteralPath $env:CASTORICE_TEST_BROWSER -PathType Leaf)) { throw 'Missing pinned Chromium for capture tests' }
+          node scripts/verify-local.mjs msedge firefox webkit
       - if: runner.os == 'Windows'
         shell: pwsh
         run: ./scripts/build.ps1 -SkipInstall -SkipTests

@@ -16,6 +16,7 @@ import {
   HubRounded,
   MenuBookRounded,
   MinimizeRounded,
+  NetworkCheckRounded,
   RemoveRounded,
   SettingsRounded,
   FilterNoneRounded,
@@ -29,6 +30,7 @@ export default function AppTitleBar({
   onZoom,
   onLibrary,
   onHistory,
+  onNetwork,
   onSettings,
 }: {
   zoom: number;
@@ -37,6 +39,7 @@ export default function AppTitleBar({
   onZoom: (action: "in" | "out" | "reset") => void;
   onLibrary: () => void;
   onHistory: () => void;
+  onNetwork: () => void;
   onSettings: () => void;
 }) {
   const desktop = window.castoriceWindow;
@@ -142,21 +145,28 @@ export default function AppTitleBar({
             <AddRounded fontSize="small" />
           </IconButton>
         </Box>
-        <Tooltip title="开源规则库">
-          <IconButton size="small" aria-label="开源规则库" onClick={onLibrary}>
-            <MenuBookRounded fontSize="small" />
-          </IconButton>
-        </Tooltip>
-        <Tooltip title="扫描历史">
-          <IconButton size="small" aria-label="扫描历史" onClick={onHistory}>
-            <HistoryRounded fontSize="small" />
-          </IconButton>
-        </Tooltip>
-        <Tooltip title="软件设置">
-          <IconButton size="small" aria-label="软件设置" onClick={onSettings}>
-            <SettingsRounded fontSize="small" />
-          </IconButton>
-        </Tooltip>
+        <Box className="titlebar-tools" role="group" aria-label="软件功能">
+          <Tooltip title="开源规则库">
+            <IconButton aria-label="开源规则库" onClick={onLibrary}>
+              <MenuBookRounded />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="扫描历史">
+            <IconButton aria-label="扫描历史" onClick={onHistory}>
+              <HistoryRounded />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="网络诊断">
+            <IconButton aria-label="网络诊断" onClick={onNetwork}>
+              <NetworkCheckRounded />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="软件设置">
+            <IconButton aria-label="软件设置" onClick={onSettings}>
+              <SettingsRounded />
+            </IconButton>
+          </Tooltip>
+        </Box>
         {desktop && (
           <Box className="window-buttons" sx={{ borderColor: "divider" }}>
             <IconButton

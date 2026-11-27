@@ -1,4 +1,4 @@
-import type { DomainRecord, RuleSource, ScanTask } from "../types";
+import type { Diagnostic, DomainRecord, RuleSource, ScanTask } from "../types";
 export const isRedacted = (url: string) =>
   /(?:%5b|\[)REDACTED(?:%5d|\])/i.test(url);
 export const isExportable = (domain: DomainRecord) =>
@@ -13,9 +13,9 @@ export const ruleCatalogKey = (sources: RuleSource[]) =>
     ]),
   );
 export const modeNames: Record<string, string> = {
-  quick: "快速扫描",
-  explore: "自动探索",
-  interactive: "辅助交互",
+  quick: "快速",
+  explore: "深度",
+  interactive: "自行交互",
 };
 export const statusNames: Record<string, string> = {
   starting: "准备浏览器",
@@ -30,12 +30,15 @@ export const statusNames: Record<string, string> = {
 export const reasonNames: Record<string, string> = {
   completed: "完成当前扫描队列",
   user_stopped: "用户主动停止",
+  browser_closed: "受控浏览器已关闭",
   time_limit: "达到最大扫描时间",
   page_limit: "达到页面数量上限",
-  request_limit: "达到 20,000 条请求上限",
+  request_limit: "达到请求数量上限",
   resource_limit: "达到页面或请求数量上限",
   navigation_failed: "页面无法完成导航",
   browser_start_failed: "浏览器启动失败",
+  browser_port_failed: "浏览器调试端口未就绪",
+  browser_cdp_failed: "浏览器 CDP 接入失败",
   browser_exited: "受控浏览器已退出",
   service_interrupted: "服务异常中断",
   database_error: "数据库写入失败",
@@ -63,3 +66,37 @@ export const date = (value?: string) =>
     : "尚未更新";
 export const errorMessage = (e: unknown) =>
   e instanceof Error ? e.message : String(e);
+export const tipText = (message: string) =>
+  message.trimEnd().replace(/(?:。+|(?<!\.)\.)$/u, "");
+
+const diagnosticStages: Record<string, string> = {
+  input: "地址输入",
+  browser: "采集浏览器",
+  storage: "保存结果",
+  dns: "DNS 解析",
+  safety: "地址安全检查",
+  proxy: "代理连接",
+  connection: "网络连接",
+  tls: "HTTPS",
+  http: "网站响应",
+  http3: "HTTP/3",
+  navigation: "页面加载",
+  scan: "扫描任务",
+  application: "应用",
+};
+
+export function diagnosticDetails(diagnostic: Diagnostic) {
+  if (!(diagnostic.detail || diagnostic.addresses?.length || diagnostic.host)) {
+    return "";
+  }
+  return [
+    `阶段：${diagnosticStages[diagnostic.stage] || diagnostic.stage}`,
+    diagnostic.host && `目标：${diagnostic.host}`,
+    diagnostic.addresses?.length &&
+      `解析地址：${diagnostic.addresses.join("、")}`,
+    diagnostic.detail && tipText(diagnostic.detail),
+    `诊断代码：${diagnostic.code}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}

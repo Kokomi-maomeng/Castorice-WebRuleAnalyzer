@@ -8,24 +8,78 @@ import (
 
 	"github.com/castorice/Castorice-WebRuleAnalyzer/backend/internal/model"
 	"github.com/castorice/Castorice-WebRuleAnalyzer/backend/internal/security"
+	"github.com/chromedp/cdproto/cdp"
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/cdproto/page"
+	"github.com/chromedp/cdproto/target"
 	"github.com/chromedp/chromedp"
 )
 
-func runInteractive(ctx context.Context, r *runtimeTask, proxy *security.GuardProxy, target string, lost <-chan struct{}) (string, error) {
+const browserClosed = "browser_closed"
+
+func runInteractive(scanCtx context.Context, r *runtimeTask, proxy *security.GuardProxy, startURL string, session scanBrowser) (string, error) {
+	ctx, cancelInteraction := context.WithCancel(session.tab)
+	defer cancelInteraction()
+	browser := chromedp.FromContext(session.tab)
+	lost := browser.Browser.LostConnection
+	targetID := browser.Target.TargetID
+	ended := make(chan string, 1)
+	chromedp.ListenBrowser(ctx, func(event any) {
+		var reason string
+		switch e := event.(type) {
+		case *target.EventTargetDestroyed:
+			if e.TargetID == targetID {
+				reason = browserClosed
+			}
+		case *target.EventTargetCrashed:
+			if e.TargetID == targetID {
+				reason = "browser_exited"
+			}
+		}
+		if reason != "" {
+			select {
+			case ended <- reason:
+				cancelInteraction()
+			default:
+			}
+		}
+	})
+	discovery, stopDiscovery := context.WithTimeout(ctx, time.Second)
+	_ = target.SetDiscoverTargets(true).Do(cdp.WithExecutor(discovery, browser.Browser))
+	stopDiscovery()
+	endInteraction := func() (string, error) {
+		if err := scanCtx.Err(); err != nil {
+			return "interrupted", err
+		}
+		select {
+		case reason := <-ended:
+			if reason == browserClosed {
+				return browserClosed, nil
+			}
+		default:
+			if session.cleanExit != nil && session.cleanExit() {
+				return browserClosed, nil
+			}
+		}
+		return "browser_exited", errors.New("受控浏览器意外退出")
+	}
+
 	r.mu.Lock()
 	r.pageFailureFor = proxy.FailureFor
 	r.mu.Unlock()
-	r.log("INFO", "interactive", "请在受控浏览器当前标签页操作，完成后点击停止。新标签页与独立 Worker 的覆盖有限。")
+	r.log("INFO", "interactive", "请在受控浏览器当前标签页操作，可随时暂停、继续或停止记录。新标签页与独立 Worker 的覆盖有限。")
 	navCtx, cancel := context.WithTimeout(ctx, time.Duration(r.snapshot().Options.NavigationSeconds)*time.Second)
-	_, err := chromedp.RunResponse(navCtx, chromedp.Navigate(target))
+	_, err := chromedp.RunResponse(navCtx, chromedp.Navigate(startURL))
 	cancel()
+	select {
+	case <-ctx.Done():
+		return endInteraction()
+	case <-lost:
+		return endInteraction()
+	default:
+	}
 	if err != nil && ctx.Err() == nil {
 		r.mu.Lock()
-		if r.pageURL == "" {
-			r.pageURL = navigationURL(target)
-		}
 		r.finishInteractiveDocument(err, false)
 		r.mu.Unlock()
 	}
@@ -38,7 +92,7 @@ func runInteractive(ctx context.Context, r *runtimeTask, proxy *security.GuardPr
 		r.mu.Unlock()
 		if pageLimit {
 			r.refreshInteractiveTitle(ctx)
-			r.log("INFO", "page_limit", "已达到辅助交互的页面数量上限")
+			r.log("INFO", "page_limit", "已达到自行交互的页面数量上限")
 			return "page_limit", nil
 		}
 		if requestLimit {
@@ -46,9 +100,9 @@ func runInteractive(ctx context.Context, r *runtimeTask, proxy *security.GuardPr
 		}
 		select {
 		case <-ctx.Done():
-			return "interrupted", ctx.Err()
+			return endInteraction()
 		case <-lost:
-			return "browser_exited", errors.New("受控浏览器已退出")
+			return endInteraction()
 		case <-ticker.C:
 			r.refreshInteractiveTitle(ctx)
 		}
@@ -69,6 +123,13 @@ func (r *runtimeTask) onInteractiveEvent(ev any) {
 	switch e := ev.(type) {
 	case *network.EventRequestWillBeSent:
 		if e.Type != network.ResourceTypeDocument || e.FrameID != r.mainFrame {
+			return
+		}
+		if r.task.RecordingPaused {
+			// A paused navigation must not replace the last captured page or
+			// make a subsequent SPA event look like part of that old page.
+			r.finishInteractiveDocument(nil, true)
+			r.pageRequest, r.pageRoute = "", ""
 			return
 		}
 		safe := navigationURL(e.Request.URL + e.Request.URLFragment)
@@ -108,7 +169,7 @@ func (r *runtimeTask) onInteractiveEvent(ev any) {
 			}
 		}
 	case *page.EventNavigatedWithinDocument:
-		if e.FrameID != r.mainFrame || r.pageRequest == "" {
+		if r.task.RecordingPaused || e.FrameID != r.mainFrame || r.pageRequest == "" {
 			return
 		}
 		if safe := navigationURL(e.URL); safe != "" {

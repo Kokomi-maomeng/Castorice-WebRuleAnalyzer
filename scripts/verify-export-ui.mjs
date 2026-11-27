@@ -53,12 +53,11 @@ try {
   const downloadLibrary = dialog.getByRole('button', { name: '下载规则库', exact: true });
   await downloadLibrary.waitFor();
   assert.equal(await category.getAttribute('aria-invalid'), 'true');
-  assert(await merge.evaluate(input => input.closest('label').hasAttribute('data-missing-library')));
   assert(await page.getByRole('checkbox', { name: /^导出 DOMAIN,/ }).count() > 0, 'empty cache hid captured entries');
   assert(await page.getByRole('button', { name: '下载文件' }).isDisabled(), 'empty merge enabled download');
   const help = dialog.getByRole('button', { name: '查看规则库下载提示' });
   await help.hover();
-  const tip = page.getByRole('tooltip').filter({ hasText: '两套开源规则库尚未下载，下载后可搜索分类并合并' });
+  const tip = page.getByRole('tooltip').filter({ hasText: '本地暂无可用的规则分类，下载后可搜索并合并' });
   await tip.waitFor();
   await help.click();
   await page.mouse.move(0, 0);
@@ -76,7 +75,7 @@ try {
   });
   assert(relation.alignment < 1 && relation.widthDifference < 1 && Math.abs(relation.gap) < 2, JSON.stringify(relation));
   await progress.waitFor({ state: 'hidden', timeout: 360000 });
-  assert(await page.evaluate(async () => (await (await fetch('/api/rules/sources')).json()).data.filter(s => s.category_count > 0).length === 2), 'both sources must initialize');
+  assert(await page.evaluate(async () => (await (await fetch('/api/rules/categories')).json()).data.length > 0), 'a catalog must be available');
   assert.equal(await category.getAttribute('aria-invalid'), 'false');
   assert.equal(await downloadLibrary.count(), 0);
   report.real.initialization = true;
@@ -149,10 +148,10 @@ try {
  await lineSize.click();
  await page.getByRole('option', { name: '200', exact: true }).click();
  report.real.fullNumberedPreview = true;
- const formatControl = dialog.getByRole('combobox', { name: '输出格式', exact: true });
+ const formatControl = dialog.getByRole('radiogroup', { name: '输出格式', exact: true });
  const formatWidth = (await formatControl.boundingBox()).width;
  for (const [label, format] of [['Clash / Mihomo YAML','clash'],['Mihomo Rule Provider','provider'],['sing-box Source Rule Set v3','singbox']]) {
-  await formatControl.click(); await page.getByRole('option', { name: label, exact: true }).click(); await ready(format);
+  await formatControl.getByRole('radio', { name: label, exact: true }).check(); await ready(format);
   assert(Math.abs((await formatControl.boundingBox()).width - formatWidth) < 1);
   assert(await formatControl.evaluate(element => element.scrollWidth <= element.clientWidth + 1));
   const content = latest.content;
@@ -201,7 +200,7 @@ try {
  await page.emulateMedia({ reducedMotion: 'reduce' });
  assert((await page.locator('.export-dialog .preview-row').first().evaluate(e => getComputedStyle(e).transitionDuration)).split(',').every(duration => duration.trim() === '0s'));
  await page.getByRole('button', { name: '关闭导出', exact: true }).click();
- await page.getByRole('button', { name: '高级配置', exact: true }).click();
+ await page.getByRole('button', { name: '软件设置', exact: true }).click();
  assert.equal(await page.locator('.MuiSwitch-switchBase').first().evaluate(e => getComputedStyle(e).transitionDuration), '0s');
  await page.emulateMedia({ reducedMotion: 'no-preference' });
  assert.notEqual(await page.locator('.MuiSwitch-switchBase').first().evaluate(e => getComputedStyle(e).transitionDuration), '0s');

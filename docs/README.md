@@ -1,4 +1,4 @@
-# 项目文档
+# v2.1 项目文档
 
 - [使用说明](用户运行说明.md)和[导出接入](EXPORT-INTEGRATION.md)说明如何运行应用、采集流量和接入客户端。
 - [当前测试报告](TEST-REPORT.md)记录最新正式版的实际覆盖。
@@ -10,6 +10,7 @@
 
 | 版本 | 记录 |
 | --- | --- |
+| v2.0 | [验收报告](https://github.com/Kokomi-maomeng/Castorice-WebRuleAnalyzer/blob/v2.0/docs/TEST-REPORT.md) |
 | v1.7 | [验收报告](TEST-REPORT-v1.7.md) |
 | v1.6 | [验收报告](TEST-REPORT-v1.6.md) |
 | v1.5 | [修复与发布验收](audits/v1.5-修复与发布验收报告.md) |

@@ -180,9 +180,10 @@ func Match(target string, observed []model.DomainRecord, categories []model.Rule
 		}
 	}
 	total := len(out)
-	if total > 60 {
-		note += fmt.Sprintf(" 当前显示前 60 个，共 %d 个命中分类；其余可在规则库中检索。", total)
-		out = out[:60]
+	const displayLimit = 60
+	if total > displayLimit {
+		out = out[:displayLimit]
+		note += fmt.Sprintf(" 当前显示前 %d 个，共 %d 个命中分类。其余可在规则库中检索。", len(out), total)
 	}
 	return out, recommended, note, total
 }

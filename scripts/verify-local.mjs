@@ -179,9 +179,9 @@ async function verify(name, fixturePort) {
       await page.getByRole('tooltip').filter({ hasText: hint }).waitFor({ state: 'hidden' });
     }
     await target.fill('');
-    await page.getByRole('button', { name: '高级配置' }).click();
+    await page.getByRole('button', { name: '软件设置' }).click();
     await page.getByRole('spinbutton', { name: '每页观察 / 秒' }).fill('1');
-    await page.getByRole('button', { name: '完成' }).click();
+    await page.getByRole('button', { name: '保存设置' }).click();
     await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'no-preference' });
     await page.getByRole('button', { name: '软件设置' }).click();
     const settings = page.getByRole('dialog', { name: '软件设置' });
@@ -189,8 +189,8 @@ async function verify(name, fixturePort) {
     await theme.click();
     await page.getByRole('option', { name: '跟随系统' }).click();
     assert.equal(await theme.locator('svg').count(), 1, 'Theme value has an icon');
-    await settings.getByRole('button', { name: '默认扫描参数应用范围' }).click();
-    await page.getByRole('tooltip').filter({ hasText: '保存后应用于尚未编辑的工作区' }).waitFor();
+    await settings.getByRole('button', { name: '查看扫描参数生效范围' }).click();
+    await page.getByRole('tooltip').filter({ hasText: '保存后的参数用于之后启动的扫描' }).waitFor();
     await settings.getByRole('button', { name: '保存设置' }).click();
     await waitFor(() => page.locator('body').evaluate(node => getComputedStyle(node).colorScheme === 'dark'), 'Follow system theme');
     await settings.waitFor({ state: 'hidden' });
@@ -227,15 +227,15 @@ async function verify(name, fixturePort) {
     await zoom(110).click();
     await zoom(100).waitFor();
 
-    await page.getByRole('button', { name: '高级配置' }).click();
+    await page.getByRole('button', { name: '软件设置' }).click();
     assert.equal(await page.getByRole('spinbutton', { name: '每页观察 / 秒' }).inputValue(), '1');
+    await page.getByRole('button', { name: '关闭设置' }).click();
     await page.getByRole('button', { name: '网络诊断' }).click();
-    const network = page.getByRole('dialog', { name: '网络诊断与本次网络设置' });
+    const network = page.getByRole('dialog', { name: '网络诊断' });
     await network.waitFor();
     await network.getByRole('button', { name: '关闭网络诊断' }).click();
-    await page.locator('[data-dialog-motion="exit"]').filter({ has: page.getByText('网络诊断与本次网络设置', { exact: true }) }).waitFor();
+    await page.locator('[data-dialog-motion="exit"]').filter({ has: page.getByText('网络诊断', { exact: true }) }).waitFor();
     await network.waitFor({ state: 'hidden' });
-    await page.getByRole('button', { name: '完成' }).click();
     await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'reduce' });
     let domainReads = 0;
     const releaseDomains = Promise.withResolvers();
@@ -256,7 +256,7 @@ async function verify(name, fixturePort) {
     assert.equal(scan.target_url, 'scan.test');
     assert.equal(scan.target_scheme, 'http');
     assert.equal(scan.target_port, fixturePort);
-    assert.equal(await target.inputValue(), 'scan.test');
+    await waitFor(async () => (await target.inputValue()) === 'scan.test', 'Normalized host appeared in the address field');
     try {
       await page.getByText('已自动清除前缀、路径或参数').waitFor();
       await page.getByText('正在补取最终采集结果…').waitFor({ timeout: 25000 });
@@ -321,8 +321,7 @@ async function verify(name, fixturePort) {
     for (const [i, format] of ['Clash / Mihomo', 'Rule Provider', 'sing-box'].entries()) {
       if (i === 1) await page.setViewportSize({ width: 1220, height: 800 });
       if (i > 0) {
-        await page.getByRole('combobox', { name: '输出格式', exact: true }).click();
-        await page.getByRole('option', { name: new RegExp(format, 'i') }).click();
+        await page.getByRole('radiogroup', { name: '输出格式', exact: true }).getByRole('radio', { name: new RegExp(format, 'i') }).check();
       }
       const download = page.waitForEvent('download');
       await page.getByRole('button', { name: '下载文件', exact: true }).click();

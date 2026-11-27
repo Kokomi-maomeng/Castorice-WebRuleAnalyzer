@@ -1,10 +1,10 @@
-# Castorice-WebRuleAnalyzer
+# Castorice-WebRuleAnalyzer v2.1
 
 Web 分流规则分析器。输入网址，用独立 Chrome / Edge / Chromium 采集实际网络请求，查看域名与规则命中，导出 Clash/Mihomo、Rule Provider 或 sing-box 规则。
 
 ## 下载与运行
 
-Windows 版使用便携 ZIP。**解压到可写目录后双击 `Castorice-WebRuleAnalyzer.exe`**，需要 Edge WebView2 Runtime 和 Chrome、Edge 或 Chromium。版本页列出当前正式版、Windows、Linux、macOS 和 Docker 发行包、SHA-256 校验值和验收范围。 [最新正式版与下载](https://github.com/Kokomi-maomeng/Castorice-WebRuleAnalyzer/releases/latest)
+Windows 版使用便携 ZIP。**解压到可写目录后双击 `Castorice-WebRuleAnalyzer.exe`**，需要 Edge WebView2 Runtime 和 Chrome、Edge 或 Chromium。发行页提供 Windows x64、Linux x64、Docker x64、macOS Intel 和 Apple 芯片包，以及各包的 SHA-256。 [v2.1 发行页](https://github.com/Kokomi-maomeng/Castorice-WebRuleAnalyzer/releases/tag/v2.1)
 
 软件数据存于 EXE 旁的 `data/`，导出文件存于 `exports/`。先关闭旧版再备份并迁移这两个目录。跨电脑迁移前请确认新电脑也具备系统组件和目录权限。 [用户运行说明](docs/用户运行说明.md) · [导出接入说明](docs/EXPORT-INTEGRATION.md)
 
@@ -12,18 +12,18 @@ Windows 版使用便携 ZIP。**解压到可写目录后双击 `Castorice-WebRul
 
 - 扫描历史支持直接打开、快速检索、范围选择和单条删除。完成状态与时间在同一行，弹窗退出后打开选中的记录。
 - 观察域名集中提供全选、排序方式、正倒序和选中计数。搜索从标题右侧展开，按住 Ctrl 可改变单条选择，按住 Shift 可选择连续范围。
-- 导出面板集中提供抓取范围和输出格式、行号、分页及完整显示。条目可整行勾选，选中条目数和文件总行数与分页独立。
-- 统一弹窗进出、下拉箭头和提示图标。界面主题在软件设置中选择，Windows 桌面支持跟随系统。标题栏提供缩放和恢复 100%。
+- 导出范围与输出格式均可直接单选。条目可整行勾选，文件内容可按行分页或完整显示，也可点击页签旁的铅笔编辑后复制或保存。
+- 扫描参数集中在软件设置。标题栏可以直接打开规则库、扫描历史和网络诊断，也提供缩放与恢复 100%。Windows 桌面支持跟随系统主题。
 
 [历次更新](CHANGELOG.md) · [历版验收记录](https://github.com/Kokomi-maomeng/Castorice-WebRuleAnalyzer/tree/main/docs)
 
 ## 操作
 
-1. 输入 URL 或域名，选择快速扫描、自动探索或辅助交互，点击“开始采集”。
+1. 输入 URL 或域名，直接选择「快速」「深度」或「自行交互」，点击「开始采集」。快速观察首个页面，深度自动访问同源链接，自行交互由你在受控浏览器的当前标签页操作。
 2. 左侧显示本次实际观察的域名。点击一行可查看该主机的相关请求。也可通过复选框或 Ctrl、Shift 选择需导出的域名。
 3. 在“规则命中”核对目标、第三方依赖与具体命中规则；可直接打开分类原文。
 4. 开源规则库 → 规则库设置，开启需要的来源自动更新，或手动下载。首次下载需要网络与时间，下载完成后本地搜索可离线使用。
-5. 选择域名，预览并导出。默认使用「抓取结果」和精确 DOMAIN。选择「抓取结果+开源规则库」后可添加并核对指定分类。
+5. 选择域名，预览并导出。默认使用「抓取结果」和精确 DOMAIN。选择「抓取结果+开源规则库」后可直接搜索已有分类，只有本地暂无可用分类时才会提示下载。
 
 规则原文中保留全部条目；自动匹配和转换支持 DOMAIN、DOMAIN-SUFFIX、DOMAIN-KEYWORD。IP、进程、逻辑、正则等保留在原文中，不伪装成域名。v2fly 原文保留 include，域名匹配使用经过有界递归解析的规则。
 
@@ -48,7 +48,7 @@ chmod +x castorice start.sh
 ./castorice --server --no-open --listen 127.0.0.1:19110 --data-dir ./data
 ```
 
-在图形会话下，以普通用户运行 `./start.sh` 或 `./castorice --desktop` 可打开原生窗口。服务模式使用 Chromium 无头采集。系统服务应采用专用普通用户并启用 Chromium 沙箱。Linux 既有数据目录在备份后设为该用户所有、权限 `0700`。打开数据库时会检查 SQLite 文件权限，保留既有历史和设置。当前包为 amd64，其他发行版须核对图形组件及沙箱。 [Linux 服务与反向代理说明](deploy/README.md)
+在图形会话下，以普通用户运行 `./start.sh` 或 `./castorice --desktop` 可打开原生窗口。Linux 网页和桌面沿用 Windows 的界面与操作。能否使用自行交互取决于采集服务所在机器能否打开图形浏览器。系统服务应采用专用普通用户并启用 Chromium 沙箱。备份 Linux 数据时保留目录所有者及 `0700` 权限，Windows 与 Linux 均可继续读取既有历史和设置。 [Linux 服务与反向代理说明](deploy/README.md)
 
 ## macOS
 
@@ -62,7 +62,7 @@ Apple 芯片选择 macos-arm64，Intel 选择 macos-amd64。安装 Chrome、Edge
 
 ## Docker 网页版
 
-使用 Docker x64 独立附件时，先解压并进入含 Dockerfile 与 compose.yaml 的目录。该附件内附已编译的 Linux 可执行文件、Compose 配置和沙箱策略。
+使用 Docker x64 独立附件时，先解压并进入含 Dockerfile 与 compose.yaml 的目录。该附件内附已编译的 Linux 可执行文件、Compose 配置和沙箱策略。默认容器使用无头采集，保留快速、深度和导出操作，自行交互在界面中置灰。
 
 ```sh
 docker compose up -d --build
@@ -106,7 +106,7 @@ cd ../backend && CGO_ENABLED=0 go build -trimpath -o castorice ./cmd/castorice
 
 - 这是受控标签页的 CDP 网络事件采集，不是系统 PCAP；失败请求也会记录。新标签页、独立 Worker、登录后功能和未操作流程的覆盖有限。扫描通过不证明整个应用完整覆盖。
 - 不保存请求头、Cookie、认证信息或正文；URL 查询值脱敏。任意业务路径仍可能敏感，请妥善保管自己的历史与导出文件。
-- 默认禁用 QUIC，保护代理支持 HTTP(S)/WebSocket；没有声称采集原生 HTTP/3。
+- 浏览器采集通过 HTTP(S) 与 WebSocket 保护代理，采集进程禁用 QUIC。独立网络诊断可检查 Alt-Svc、实际协商的 QUIC/HTTP/3 和响应状态。
 - 系统 DNS 含已知 Fake-IP 且其余均为公网地址时，自动模式使用固定 Cloudflare HTTPS DNS 重新验证公网地址；真实私网及其与公网混合的答案继续拒绝。不修改系统网络配置。
 - Windows 包没有代码签名。未在全新无 WebView2 的 Windows 10/11 安装上实测；第三方登录、支付等流程未执行。
 - 历史保存当时的匹配，重新匹配使用当前缓存。清缓存保留自动更新开关，已开启的来源会重新下载；外部仓库、网络及规则本身不由本项目保证。

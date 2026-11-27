@@ -54,6 +54,7 @@ func Open(path string) (*Store, error) {
 		if task.Active() {
 			now := time.Now().UTC()
 			task.Status = "failed"
+			task.RecordingPaused = false
 			task.EndReason = "service_interrupted"
 			task.Error = "上次服务退出，任务已中断"
 			task.EndedAt = &now
