@@ -104,6 +104,7 @@ func (s *Server) Handler() http.Handler {
 			URL           string             `json:"url"`
 			Options       *model.ScanOptions `json:"options"`
 			CompareSecure bool               `json:"compare_secure"`
+			HTTP3Mode     string             `json:"http3_mode"`
 			RootOnly      bool               `json:"root_only"`
 		}
 		if !decode(w, r, &body) {
@@ -124,7 +125,7 @@ func (s *Server) Handler() http.Handler {
 			}
 			body.URL = target.URL
 		}
-		result, err := s.Scans.Diagnose(r.Context(), body.URL, o, body.CompareSecure)
+		result, err := s.Scans.Diagnose(r.Context(), body.URL, o, body.CompareSecure, body.HTTP3Mode)
 		if body.RootOnly {
 			result.URL = result.Host
 		}
@@ -154,6 +155,21 @@ func (s *Server) Handler() http.Handler {
 			return
 		}
 		respond(w, 200, map[string]bool{"stopping": true})
+	})
+	mux.HandleFunc("POST /api/scans/{id}/recording", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Paused *bool `json:"paused"`
+		}
+		if !decode(w, r, &body) {
+			return
+		}
+		if body.Paused == nil {
+			fail(w, 400, "invalid_recording_state", "请指定是否暂停自行交互记录")
+			return
+		}
+		if !handleError(w, s.Scans.SetRecordingPaused(r.PathValue("id"), *body.Paused)) {
+			respond(w, 200, map[string]bool{"recording_paused": *body.Paused})
+		}
 	})
 	mux.HandleFunc("GET /api/scans/{id}/domains", func(w http.ResponseWriter, r *http.Request) {
 		domains, err := s.Scans.Domains(r.PathValue("id"))
@@ -611,6 +627,8 @@ func handleError(w http.ResponseWriter, err error) bool {
 		fail(w, 404, "not_found", "扫描任务不存在")
 	} else if errors.Is(err, scanner.ErrBusy) {
 		fail(w, 409, "scan_busy", err.Error())
+	} else if errors.Is(err, scanner.ErrRecordingInactive) {
+		fail(w, 409, "recording_inactive", err.Error())
 	} else if errors.Is(err, storage.ErrActiveHistory) {
 		fail(w, 409, "history_active", err.Error())
 	} else {

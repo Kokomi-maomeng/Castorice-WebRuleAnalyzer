@@ -106,20 +106,25 @@ func (e Engine) run(ctx context.Context, r *runtimeTask, target, browserPath str
 		return "proxy_error", err
 	}
 	defer proxy.Close()
-	opts := append([]chromedp.ExecAllocatorOption{}, chromedp.DefaultExecAllocatorOptions[:]...)
-	// An explicit false keeps chromedp from inserting an implicit --no-sandbox.
-	opts = append(opts, chromedp.Flag("no-sandbox", false))
-	opts = append(opts, chromedp.ExecPath(browserPath), chromedp.UserDataDir(profile), chromedp.Flag("headless", !o.Visible && o.Mode != "interactive"), chromedp.ProxyServer("http://"+proxy.Address), chromedp.Flag("proxy-bypass-list", "<-loopback>"), chromedp.Flag("disable-quic", true), chromedp.Flag("disable-extensions", true), chromedp.Flag("disable-background-networking", true), chromedp.Flag("disable-sync", true), chromedp.Flag("disable-popup-blocking", false), chromedp.Flag("force-webrtc-ip-handling-policy", "disable_non_proxied_udp"), chromedp.Flag("host-resolver-rules", "MAP * ~NOTFOUND , EXCLUDE 127.0.0.1"), chromedp.Flag("window-size", "1360,900"))
-	opts = append(opts, chromedp.Flag("crash-dumps-dir", filepath.Join(e.SessionDir, "crashes")), chromedp.Flag("disable-crash-reporter", true))
-	scopeOptions, closeScope := browserProcessScope(profile)
-	opts = append(opts, scopeOptions...)
-	allocCtx, cancelAllocator := chromedp.NewExecAllocator(ctx, opts...)
-	defer func() { cancelAllocator(); closeScope() }()
-	tabCtx, cancelTab := chromedp.NewContext(allocCtx, chromedp.WithErrorf(func(_ string, _ ...any) { /* Protocol diagnostics may contain unredacted URLs; task errors are logged separately. */
-	}))
-	defer cancelTab()
-	chromedp.ListenTarget(tabCtx, r.onEvent)
 	r.log("INFO", "browser", "启动独立浏览器；临时 Profile；逐连接地址保护；不采集 Cookie、认证头或正文")
+	session, err := openScanBrowser(ctx, browserLaunch{
+		executable: browserPath, profile: profile, crashDir: filepath.Join(e.SessionDir, "crashes"),
+		proxy: proxy.Address, headless: !o.Visible && o.Mode != "interactive",
+	})
+	if err != nil {
+		d := security.Explain(err)
+		return d.Code, err
+	}
+	defer func() {
+		r.mu.Lock()
+		r.recordingFinished = true
+		r.mu.Unlock()
+		if err := session.close(); err != nil {
+			r.log("WARN", "cleanup", "采集浏览器退出清理未完成: "+err.Error())
+		}
+	}()
+	tabCtx := session.tab
+	chromedp.ListenTarget(tabCtx, r.onEvent)
 	if err = chromedp.Run(tabCtx, network.Enable(), page.Enable(), chromedp.ActionFunc(func(ctx context.Context) error {
 		tree, err := page.GetFrameTree().Do(ctx)
 		if err == nil {
@@ -129,17 +134,21 @@ func (e Engine) run(ctx context.Context, r *runtimeTask, target, browserPath str
 		}
 		return err
 	}), cdpbrowser.SetDownloadBehavior(cdpbrowser.SetDownloadBehaviorBehaviorDeny)); err != nil {
-		return "browser_start_failed", fmt.Errorf("浏览器启动失败: %s", security.RedactText(err.Error()))
+		return "browser_cdp_failed", browserFailure("browser_cdp_failed", "无法初始化采集浏览器的 CDP 监听", err)
 	}
 	r.mu.Lock()
+	if r.task.Status == "stopping" || ctx.Err() != nil {
+		r.mu.Unlock()
+		return "interrupted", ctx.Err()
+	}
 	r.task.Status = "running"
 	r.task.Browser = filepath.Base(browserPath)
 	r.revision++
 	r.mu.Unlock()
-	lost := chromedp.FromContext(tabCtx).Browser.LostConnection
 	if o.Mode == "interactive" {
-		return runInteractive(tabCtx, r, proxy, target, lost)
+		return runInteractive(ctx, r, proxy, target, session)
 	}
+	lost := chromedp.FromContext(tabCtx).Browser.LostConnection
 	startURL, err := domain.NormalizeURL(target)
 	if err != nil {
 		return "invalid_url", err

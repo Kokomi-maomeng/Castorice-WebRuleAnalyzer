@@ -28,14 +28,24 @@ type DNSCheck struct {
 }
 
 type NetworkDiagnosis struct {
-	URL         string      `json:"url"`
-	Host        string      `json:"host"`
-	DNSMode     string      `json:"dns_mode"`
-	DNSProvider string      `json:"dns_provider"`
-	Route       string      `json:"route"`
-	System      DNSCheck    `json:"system"`
-	Secure      *DNSCheck   `json:"secure,omitempty"`
-	SecureNote  string      `json:"secure_note,omitempty"`
-	Connected   bool        `json:"connected"`
-	Connection  *Diagnostic `json:"connection,omitempty"`
+	URL         string          `json:"url"`
+	Host        string          `json:"host"`
+	DNSMode     string          `json:"dns_mode"`
+	DNSProvider string          `json:"dns_provider"`
+	Route       string          `json:"route"`
+	System      DNSCheck        `json:"system"`
+	Secure      *DNSCheck       `json:"secure,omitempty"`
+	SecureNote  string          `json:"secure_note,omitempty"`
+	Connected   bool            `json:"connected"`
+	Connection  *Diagnostic     `json:"connection,omitempty"`
+	HTTP3       *HTTP3Diagnosis `json:"http3,omitempty"`
+}
+
+type HTTP3Diagnosis struct {
+	Route               string      `json:"route"`
+	Advertised          *bool       `json:"advertised,omitempty"`
+	AdvertisementSource string      `json:"advertisement_source,omitempty"`
+	ALPN                string      `json:"alpn,omitempty"`
+	HTTPStatus          int         `json:"http_status,omitempty"`
+	Diagnostic          *Diagnostic `json:"diagnostic,omitempty"`
 }

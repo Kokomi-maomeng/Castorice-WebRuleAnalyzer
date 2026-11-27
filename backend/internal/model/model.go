@@ -54,6 +54,7 @@ type ScanTask struct {
 	TargetPort           string          `json:"target_port,omitempty"`
 	TargetRedacted       bool            `json:"target_redacted,omitempty"`
 	Status               string          `json:"status"`
+	RecordingPaused      bool            `json:"recording_paused,omitempty"`
 	Options              ScanOptions     `json:"options"`
 	StartedAt            time.Time       `json:"started_at"`
 	EndedAt              *time.Time      `json:"ended_at,omitempty"`

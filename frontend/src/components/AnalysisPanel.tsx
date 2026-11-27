@@ -1,4 +1,4 @@
-import DiagnosticAlert from "./DiagnosticAlert";
+import ContextHelp from "./ContextHelp";
 import { scanTargetLabel } from "../utils/scanAddress";
 import { type ReactNode, useState } from "react";
 import {
@@ -36,6 +36,7 @@ import {
   DataObjectRounded,
   DeleteOutlineRounded,
   HubRounded,
+  PauseRounded,
   RadioButtonCheckedRounded,
   RouteRounded,
   WarningAmberRounded,
@@ -44,21 +45,28 @@ import {
 import type {
   NetworkRequest,
   RequestFilter,
+  ScanOptions,
   ScanTask,
   TaskEvent,
 } from "../types";
 import {
   active,
+  diagnosticDetails,
   modeNames,
   pageNames,
   reasonNames,
   statusNames,
   time,
+  tipText,
 } from "../utils/format";
 import { copy } from "../services/api";
 interface Props {
   matchContent?: ReactNode;
   task?: ScanTask;
+  options: ScanOptions;
+  browserManaged: boolean;
+  connection?: string;
+  syncingResults?: boolean;
   requests: NetworkRequest[];
   total: number;
   filter: RequestFilter;
@@ -69,7 +77,72 @@ interface Props {
   logLevel: string;
   notify: (s: string) => void;
 }
+
+type ScanNotice = {
+  message: string;
+  details: string;
+  tone: "info" | "warning" | "error";
+};
+
+function scanNotices(t?: ScanTask): ScanNotice[] {
+  if (!t) return [];
+  const notices: ScanNotice[] = [];
+  const reason = t.end_reason ? reasonNames[t.end_reason] || t.end_reason : "";
+  const message = tipText(t.diagnostic?.message || t.error || reason);
+  if (message) {
+    notices.push({
+      message,
+      details: [
+        reason ? `${reason}。本次扫描仅代表实际访问和观察范围` : message,
+        reason && message !== reason && message,
+        t.diagnostic?.hint && tipText(t.diagnostic.hint),
+        t.diagnostic && diagnosticDetails(t.diagnostic),
+      ]
+        .filter(Boolean)
+        .join("\n"),
+      tone:
+        t.status === "failed" || t.error
+          ? "error"
+          : t.diagnostic || t.status === "partial" || t.status === "timed_out"
+            ? "warning"
+            : "info",
+    });
+  }
+  if (
+    !active(t) &&
+    t.summary &&
+    (t.summary.failed_pages ||
+      t.summary.blocked_pages ||
+      t.summary.pending_pages)
+  ) {
+    notices.push({
+      message: "页面覆盖不完整",
+      details: `访问失败 ${t.summary.failed_pages}，受阻 ${t.summary.blocked_pages}，未访问 ${t.summary.pending_pages}。观察域名可用于排障，网站可用性还需结合请求结果判断`,
+      tone: "warning",
+    });
+  }
+  if (t.test_mode) {
+    notices.push({
+      message: "已启用测试白名单",
+      details: "当前任务的测试白名单仅用于本地验收站",
+      tone: "warning",
+    });
+  }
+  return notices;
+}
 const levels: Record<string, number> = { DEBUG: 0, INFO: 1, WARN: 2, ERROR: 3 };
+const requestFailedLabel = "请求失败";
+const depthColumnWidth = 104;
+
+function describeScan(options: ScanOptions, browser: string, managed: boolean) {
+  const selected = (options.browser_path || "").split(/[\\/]/).at(-1);
+  const name =
+    browser || (managed ? "服务端指定浏览器" : selected || "自动检测浏览器");
+  const limit =
+    options.max_seconds > 0 ? `${options.max_seconds}s 上限` : "时长未记录";
+  return `${modeNames[options.mode] || "扫描"} · ${limit} · ${name} · 独立临时 Profile`;
+}
+
 export default function AnalysisPanel(p: Props) {
   const [detail, setDetail] = useState<NetworkRequest>();
   const [detailOpen, setDetailOpen] = useState(false);
@@ -82,6 +155,26 @@ export default function AnalysisPanel(p: Props) {
   const [pageLimit, setPageLimit] = useState(20);
   const t = p.task;
   const running = active(t);
+  const recordingPaused = t?.status === "running" && t.recording_paused;
+  const notices = scanNotices(t);
+  if (p.connection) {
+    notices.push({
+      message: "实时连接暂不可用",
+      details: tipText(p.connection),
+      tone: "warning",
+    });
+  } else if (p.syncingResults) {
+    notices.push({
+      message: "正在补取最终采集结果…",
+      details: "补取完成后将显示最终请求和域名",
+      tone: "info",
+    });
+  }
+  const recordedInfo = t
+    ? `本次 · ${describeScan(t.options, t.browser || "", p.browserManaged)}${t.ip_count > 0 ? ` · 另有 ${t.ip_count} 个 IP 主机` : ""}`
+    : "";
+  const nextInfo = `下次 · ${describeScan(p.options, "", p.browserManaged)}`;
+  const scanInfo = running ? recordedInfo : nextInfo;
   const filteredLogs = p.logs.filter(
     (l) =>
       l.id > cleared &&
@@ -99,6 +192,8 @@ export default function AnalysisPanel(p: Props) {
       "page_loaded",
       "explore",
       "interactive",
+      "recording_paused",
+      "recording_resumed",
       "extract",
       "ended",
       "stopping",
@@ -120,32 +215,36 @@ export default function AnalysisPanel(p: Props) {
         overflow: "hidden",
       }}
     >
-      <Stack
-        direction="row"
-        sx={{
-          px: 2,
-          py: 1,
-          alignItems: "center",
-          justifyContent: "space-between",
-        }}
-      >
-        <Typography variant="h6">实时抓取与分析</Typography>
+      <Box className="analysis-heading">
+        <Typography variant="h6" noWrap>
+          实时抓取与分析
+        </Typography>
         <Chip
           size="small"
-          label={t ? statusNames[t.status] || t.status : "就绪"}
+          label={
+            recordingPaused
+              ? "记录已暂停"
+              : t
+                ? statusNames[t.status] || t.status
+                : "就绪"
+          }
           color={
-            running
-              ? "primary"
-              : t?.status === "failed"
-                ? "error"
-                : t?.status === "completed"
-                  ? "success"
-                  : t?.status === "timed_out" || t?.status === "partial"
-                    ? "warning"
-                    : "default"
+            recordingPaused
+              ? "warning"
+              : running
+                ? "primary"
+                : t?.status === "failed"
+                  ? "error"
+                  : t?.status === "completed"
+                    ? "success"
+                    : t?.status === "timed_out" || t?.status === "partial"
+                      ? "warning"
+                      : "default"
           }
           icon={
-            running ? (
+            recordingPaused ? (
+              <PauseRounded />
+            ) : running ? (
               <RadioButtonCheckedRounded
                 sx={{ animation: "pulse 1.5s infinite" }}
               />
@@ -160,33 +259,78 @@ export default function AnalysisPanel(p: Props) {
             )
           }
         />
-      </Stack>
-      <Tabs
-        value={p.tab}
-        onChange={(_, value) => p.setTab(value)}
-        variant="scrollable"
-        scrollButtons="auto"
-        sx={{ px: 1.5, borderBottom: 1, borderColor: "divider" }}
-      >
-        <Tab
-          icon={<RouteRounded sx={{ fontSize: 18 }} />}
-          iconPosition="start"
-          label="抓取流程"
-        />
-        <Tab
-          icon={<HubRounded sx={{ fontSize: 18 }} />}
-          iconPosition="start"
-          label={`网络请求${t ? ` (${t.request_count})` : ""}`}
-        />
-        <Tab
-          icon={<ArticleRounded sx={{ fontSize: 18 }} />}
-          iconPosition="start"
-          label="运行日志"
-        />
-        <Tab
-          label={`规则命中${t ? ` (${t.matches.filter((m) => m.relation === "target").length})` : ""}`}
-        />
-      </Tabs>
+        {notices.length > 0 && (
+          <Box className="analysis-notices" role="status">
+            {notices.map(({ message, details, tone }) => (
+              <Box className="analysis-notice" key={message}>
+                <Typography
+                  variant="body2"
+                  color={tone === "info" ? "text.secondary" : tone + ".main"}
+                  noWrap
+                >
+                  {message}
+                </Typography>
+                <ContextHelp
+                  label={`查看${message}详情`}
+                  error={tone === "error"}
+                  warning={tone === "warning"}
+                  alignEnd
+                >
+                  {details}
+                </ContextHelp>
+              </Box>
+            ))}
+          </Box>
+        )}
+      </Box>
+      <Box className="analysis-tab-row" sx={{ borderColor: "divider" }}>
+        <Tabs
+          value={p.tab}
+          onChange={(_, value) => p.setTab(value)}
+          variant="scrollable"
+          scrollButtons="auto"
+          sx={{
+            px: 1,
+            "& .MuiTab-root": { px: 0.75, minWidth: 0 },
+            "& .MuiTab-icon": { mr: 0.5 },
+            "& .MuiTabs-scrollButtons": { width: 24 },
+          }}
+        >
+          <Tab
+            icon={<RouteRounded sx={{ fontSize: 18 }} />}
+            iconPosition="start"
+            label="抓取流程"
+          />
+          <Tab
+            icon={<HubRounded sx={{ fontSize: 18 }} />}
+            iconPosition="start"
+            label={`网络请求${t ? ` (${t.request_count})` : ""}`}
+          />
+          <Tab
+            icon={<ArticleRounded sx={{ fontSize: 18 }} />}
+            iconPosition="start"
+            label="运行日志"
+          />
+          <Tab
+            label={`规则命中${t ? ` (${t.matches.filter((m) => m.relation === "target").length})` : ""}`}
+          />
+        </Tabs>
+        {scanInfo && (
+          <Typography
+            className="analysis-scan-info"
+            variant="caption"
+            color="text.secondary"
+            title={
+              !running && recordedInfo
+                ? `${nextInfo}\n${recordedInfo}`
+                : scanInfo
+            }
+            noWrap
+          >
+            {scanInfo}
+          </Typography>
+        )}
+      </Box>
       {p.tab === 0 && (
         <Box className="analysis-body motion-panel" sx={{ p: 2 }}>
           {!t ? (
@@ -213,68 +357,46 @@ export default function AnalysisPanel(p: Props) {
             </Stack>
           ) : (
             <>
-              <Stack direction="row" sx={{ mb: 1, gap: 1 }}>
+              <Box className="analysis-metrics">
                 {[
                   ["观察域名", t.domain_count],
                   ["网络请求", t.request_count],
+                  ...(t.summary
+                    ? [
+                        ["已取得响应", t.summary.responded],
+                        [requestFailedLabel, t.summary.connection_failed],
+                        ["HTTP 异常", t.summary.http_error],
+                        ["未完成", t.summary.unfinished],
+                      ]
+                    : []),
                   ["已访问页面", visited],
                 ].map(([label, value]) => (
                   <Box
                     key={label}
+                    className="analysis-metric"
                     sx={{
-                      p: 1,
-                      flex: 1,
                       bgcolor: "action.hover",
-                      borderRadius: 3,
                     }}
                   >
                     <Typography variant="h5">{value}</Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      {label}
-                    </Typography>
+                    <Box className="analysis-metric-label">
+                      <Typography variant="caption" color="text.secondary">
+                        {label}
+                      </Typography>
+                      {label === requestFailedLabel && (
+                        <ContextHelp
+                          className="analysis-inline-help"
+                          label="查看请求失败统计说明"
+                        >
+                          「已取得响应」按是否收到 HTTP
+                          状态码统计，「请求失败」按请求最终状态统计。收到响应后如果加载失败，同一条请求会同时计入这两项
+                        </ContextHelp>
+                      )}
+                    </Box>
                   </Box>
                 ))}
-              </Stack>
+              </Box>
               {running && <LinearProgress sx={{ borderRadius: 2, mb: 2 }} />}
-              {t.test_mode && (
-                <Alert severity="warning" sx={{ mb: 2 }}>
-                  当前任务启用了显式测试白名单，仅用于本地验收站。
-                </Alert>
-              )}
-              {t.diagnostic ? (
-                <DiagnosticAlert
-                  diagnostic={t.diagnostic}
-                  severity={t.status === "failed" ? "error" : "warning"}
-                />
-              ) : (
-                t.error && (
-                  <Alert severity="error" sx={{ mb: 2 }}>
-                    {t.error}
-                  </Alert>
-                )
-              )}
-              {t.summary && (
-                <Typography
-                  variant="body2"
-                  color="text.secondary"
-                  sx={{ mb: 1.5 }}
-                >
-                  已取得响应 {t.summary.responded} · 连接失败{" "}
-                  {t.summary.connection_failed} · HTTP 异常{" "}
-                  {t.summary.http_error} · 未完成 {t.summary.unfinished}
-                </Typography>
-              )}
-              {!running &&
-                t.summary &&
-                (t.summary.failed_pages > 0 ||
-                  t.summary.blocked_pages > 0 ||
-                  t.summary.pending_pages > 0) && (
-                  <Alert severity="warning" sx={{ mb: 1.5 }}>
-                    页面覆盖不完整：访问失败 {t.summary.failed_pages}，受阻{" "}
-                    {t.summary.blocked_pages}，未访问 {t.summary.pending_pages}
-                    。观察域名可用于排障，不能据此判定网站可用。
-                  </Alert>
-                )}
               <Typography variant="body2" sx={{ overflowWrap: "anywhere" }}>
                 <b>当前页面</b>　
                 {t.current_page || scanTargetLabel(t.target_url)}
@@ -288,37 +410,6 @@ export default function AnalysisPanel(p: Props) {
                   {t.main_status ? ` · HTTP ${t.main_status}` : ""}
                 </Typography>
               ) : null}
-              <Typography
-                variant="caption"
-                color="text.secondary"
-                sx={{ mt: 0.8, display: "block" }}
-              >
-                {modeNames[t.options.mode]} · {t.options.max_seconds}s 上限 ·{" "}
-                {t.browser || "检测浏览器中"} · 独立临时 Profile
-                {t.ip_count > 0 ? ` · 另有 ${t.ip_count} 个 IP 主机` : ""}
-              </Typography>
-              {t.end_reason && (
-                <Alert
-                  icon={
-                    t.status === "completed" ? (
-                      <CheckCircleRounded fontSize="small" />
-                    ) : (
-                      <WarningAmberRounded fontSize="small" />
-                    )
-                  }
-                  severity={
-                    t.status === "failed" ||
-                    t.status === "partial" ||
-                    t.status === "timed_out"
-                      ? "warning"
-                      : "info"
-                  }
-                  sx={{ mt: 1 }}
-                >
-                  {reasonNames[t.end_reason] || t.end_reason}
-                  。本次扫描仅代表实际访问和观察范围。
-                </Alert>
-              )}
               <Stack
                 role="region"
                 aria-label="最近采集事件"
@@ -362,11 +453,46 @@ export default function AnalysisPanel(p: Props) {
               {t.pages.length > 0 && (
                 <>
                   <Divider sx={{ my: 1 }} />
-                  <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                    页面覆盖记录 · {t.pages.length} 条
-                  </Typography>
+                  <Stack
+                    direction="row"
+                    sx={{
+                      mb: 0.5,
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <Typography variant="subtitle2">
+                      页面覆盖记录 · {t.pages.length} 条
+                    </Typography>
+                    <Stack
+                      direction="row"
+                      sx={{
+                        width: depthColumnWidth,
+                        flexShrink: 0,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 0.25,
+                      }}
+                    >
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        noWrap
+                      >
+                        探索深度
+                      </Typography>
+                      <ContextHelp
+                        className="analysis-inline-help"
+                        label="查看探索深度说明"
+                        alignEnd
+                      >
+                        深度模式从起始页深度 0 开始，每跟随一层链接加
+                        1。快速模式的起始页和自行交互的手动访问均记为 0
+                      </ContextHelp>
+                    </Stack>
+                  </Stack>
                   <TableContainer sx={{ maxHeight: 220 }}>
-                    <Table size="small">
+                    <Table size="small" aria-label="页面覆盖记录">
                       <TableBody>
                         {t.pages.slice(0, pageLimit).map((page, i) => (
                           <TableRow key={i}>
@@ -397,7 +523,13 @@ export default function AnalysisPanel(p: Props) {
                                 }
                               />
                             </TableCell>
-                            <TableCell>{page.depth}</TableCell>
+                            <TableCell
+                              align="center"
+                              sx={{ width: depthColumnWidth, px: 0 }}
+                              aria-label={`探索深度 ${page.depth}`}
+                            >
+                              {page.depth}
+                            </TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
@@ -493,7 +625,7 @@ export default function AnalysisPanel(p: Props) {
                 ["3", "3xx"],
                 ["4", "4xx"],
                 ["5", "5xx"],
-                ["failed", "连接失败"],
+                ["failed", requestFailedLabel],
               ].map(([v, label]) => (
                 <MenuItem value={v} key={v}>
                   {label}
@@ -626,7 +758,7 @@ export default function AnalysisPanel(p: Props) {
               color="text.secondary"
               sx={{ flex: 1 }}
             >
-              最近 2,000 条
+              当前 {filteredLogs.length.toLocaleString("zh-CN")} 条
             </Typography>
             <Tooltip title="清空当前显示">
               <IconButton
@@ -713,6 +845,7 @@ export default function AnalysisPanel(p: Props) {
         <Box className="analysis-body motion-panel">{p.matchContent}</Box>
       )}
       <Dialog
+        aria-labelledby="request-detail-title"
         open={detailOpen}
         onClose={() => setDetailOpen(false)}
         slotProps={{
@@ -721,7 +854,7 @@ export default function AnalysisPanel(p: Props) {
         fullWidth
         maxWidth="md"
       >
-        <DialogTitle>
+        <DialogTitle id="request-detail-title">
           请求详情
           <IconButton
             aria-label="关闭请求详情"
@@ -733,8 +866,7 @@ export default function AnalysisPanel(p: Props) {
         </DialogTitle>
         <DialogContent dividers>
           <Alert severity="info" sx={{ mb: 2 }}>
-            查询参数值已脱敏；不记录请求头、Cookie、认证信息或正文。远端 IP
-            为浏览器报告值，可能是本地保护代理端点。
+            查询参数值已脱敏。不记录请求头、Cookie、认证信息或正文
           </Alert>
           {detail && (
             <Table size="small">
@@ -753,7 +885,6 @@ export default function AnalysisPanel(p: Props) {
                     detail.duration_ms === undefined
                       ? "未完成或未提供"
                       : `${detail.duration_ms.toFixed(2)} ms`,
-                  "浏览器报告远端 IP": detail.remote_ip || "未提供",
                   来源页面: detail.source_page || "未提供",
                   Initiator: detail.initiator || "未提供",
                   失败原因: detail.failure || "—",

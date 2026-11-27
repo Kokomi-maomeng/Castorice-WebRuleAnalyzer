@@ -35,6 +35,7 @@ import {
   errorMessage,
   isExportable,
   isRedacted,
+  tipText,
 } from "../utils/format";
 import {
   savedScanTarget,
@@ -43,6 +44,7 @@ import {
 } from "../utils/scanAddress";
 
 const SettingsDialog = lazy(() => import("../components/SettingsDialog"));
+const NetworkDialog = lazy(() => import("../components/NetworkDialog"));
 const HistoryDialog = lazy(() => import("../components/HistoryDialog"));
 const RuleLibrary = lazy(() => import("../components/RuleLibrary"));
 const ExportDialog = lazy(() => import("../components/ExportDialog"));
@@ -56,12 +58,17 @@ const emptyFilter: RequestFilter = {
 
 export default function App() {
   const [settings, setSettings] = useState<Settings>();
-  const [optionsOverride, setOptions] = useState<ScanOptions>();
+  const [modeOverride, setScanMode] = useState<ScanOptions["mode"]>();
+  const [networkOverride, setScanNetwork] =
+    useState<
+      Pick<ScanOptions, "dns_mode" | "dns_provider" | "upstream_proxy">
+    >();
   const address = useScanAddress();
   const [historyTarget, setHistoryTarget] = useState("");
   const [id, setID] = useState("");
   const [resetCount, setResetCount] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [recordingPending, setRecordingPending] = useState(false);
   const [initializing, setInitializing] = useState(true);
   const [retry, setRetry] = useState(0);
   const [canShowBrowser, setCanShowBrowser] = useState(true);
@@ -168,18 +175,19 @@ export default function App() {
   useEffect(() => {
     if (!initializing) window.castoriceWindow?.command("ready");
   }, [initializing]);
-  const preferredOptions = optionsOverride ?? settings?.scan;
-  const options =
-    preferredOptions && !canShowBrowser
+  const selectedMode = modeOverride ?? settings?.scan.mode;
+  const options: ScanOptions | undefined =
+    settings && selectedMode
       ? {
-          ...preferredOptions,
-          visible: false,
+          ...settings.scan,
+          ...networkOverride,
           mode:
-            preferredOptions.mode === "interactive"
-              ? ("quick" as const)
-              : preferredOptions.mode,
+            !canShowBrowser && selectedMode === "interactive"
+              ? "quick"
+              : selectedMode,
+          visible: canShowBrowser && settings.scan.visible,
         }
-      : preferredOptions;
+      : undefined;
   function resetView() {
     setExcluded(new Set());
     setFilter(emptyFilter);
@@ -193,10 +201,6 @@ export default function App() {
     setID(t.id);
     address.edit(redacted ? "" : scanTargetLabel(t.target_url), saved);
     setHistoryTarget(redacted ? scanTargetLabel(t.target_url) : "");
-    setOptions({
-      ...t.options,
-      browser_path: settings?.scan.browser_path || "",
-    });
   }
   const running = !!currentActive;
   function reset(keepDialog = false) {
@@ -212,7 +216,6 @@ export default function App() {
     setResetCount((v) => v + 1);
     setLibraryCategory(undefined);
     resetView();
-    setOptions(undefined);
   }
   async function start() {
     if (!options || busy || running) return;
@@ -227,6 +230,9 @@ export default function App() {
         options,
         root_only: true,
       });
+      setScanNetwork((current) =>
+        current === networkOverride ? undefined : current,
+      );
       resetView();
       setHistoryTarget("");
       setID(scan.id);
@@ -248,6 +254,28 @@ export default function App() {
       setError(errorMessage(e));
     } finally {
       setBusy(false);
+    }
+  }
+  async function setRecordingPaused(paused: boolean) {
+    if (!currentActive) return;
+    const recordingID = currentActive.id;
+    setRecordingPending(true);
+    try {
+      const result = await api<{ recording_paused: boolean }>(
+        `/scans/${recordingID}/recording`,
+        "POST",
+        { paused },
+      );
+      const apply = (old?: ScanTask) =>
+        old?.id === recordingID && old.status === "running"
+          ? { ...old, recording_paused: result.recording_paused }
+          : old;
+      setTask(apply);
+      rememberActive(apply);
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setRecordingPending(false);
     }
   }
   async function rematch() {
@@ -278,6 +306,7 @@ export default function App() {
           onZoom={changeZoom}
           onLibrary={() => openLibrary()}
           onHistory={() => openDialog("history")}
+          onNetwork={() => openDialog("network")}
           onSettings={() => openDialog("settings")}
         />
         <Box
@@ -294,7 +323,7 @@ export default function App() {
           )}
           <Collapse in={!!error} unmountOnExit>
             <Alert severity="error" onClose={() => setError("")}>
-              {error}
+              {tipText(error)}
             </Alert>
           </Collapse>
           {!initializing && !settings && (
@@ -313,12 +342,11 @@ export default function App() {
               {!browserAvailable && (
                 <Alert severity="warning">
                   采集需要 Chrome、Edge 或
-                  Chromium。请在运行服务的电脑安装浏览器，再重新打开应用。
+                  Chromium。请在运行服务的电脑安装浏览器，再重新打开应用
                 </Alert>
               )}
               <ScanControls
                 url={address.value}
-                target={address.target}
                 setURL={address.edit}
                 onNormalize={address.prepare}
                 addressIssue={address.issue}
@@ -327,14 +355,21 @@ export default function App() {
                 historyTarget={historyTarget}
                 browserAvailable={browserAvailable}
                 options={options}
-                setOptions={setOptions}
+                setMode={setScanMode}
                 canShowBrowser={canShowBrowser}
                 running={running}
                 busy={busy || initializing}
+                interactiveTask={
+                  currentActive?.options.mode === "interactive" &&
+                  currentActive.status === "running"
+                    ? currentActive
+                    : undefined
+                }
+                recordingPending={recordingPending}
+                onRecordingChange={(paused) => void setRecordingPaused(paused)}
                 onStart={() => void start()}
                 onStop={() => void stop()}
                 onReset={reset}
-                notify={notify}
               />
               {currentActive && currentActive.id !== id && (
                 <Alert
@@ -345,14 +380,8 @@ export default function App() {
                     </Button>
                   }
                 >
-                  {task ? "另一个任务正在采集。" : "有任务正在采集。"}
+                  {task ? "另一个任务正在采集" : "有任务正在采集"}
                 </Alert>
-              )}
-              {connection && <Alert severity="warning">{connection}</Alert>}
-              {syncingResults && (
-                <Typography role="status" color="text.secondary">
-                  正在补取最终采集结果…
-                </Typography>
               )}
               <Box className="mobile-switch">
                 <Button
@@ -398,6 +427,10 @@ export default function App() {
                 <AnalysisPanel
                   key={`analysis:${id}:${resetCount}`}
                   task={task}
+                  options={options}
+                  browserManaged={browserManaged}
+                  connection={connection}
+                  syncingResults={syncingResults}
                   requests={requests}
                   total={total}
                   filter={filter}
@@ -436,7 +469,12 @@ export default function App() {
               canShowBrowser={canShowBrowser}
               browserManaged={browserManaged}
               settings={settings}
-              onSave={setSettings}
+              selectedMode={selectedMode ?? settings.scan.mode}
+              onSave={(value) => {
+                setSettings(value);
+                setScanMode(undefined);
+                setScanNetwork(undefined);
+              }}
               onClose={closeDialog}
               onLibrary={() => {
                 setSettingsLibrary(true);
@@ -456,6 +494,20 @@ export default function App() {
                 />
               )}
             </SettingsDialog>
+          )}
+          {dialog === "network" && options && (
+            <NetworkDialog
+              open={dialogOpen}
+              onExited={dialogExited}
+              onClose={closeDialog}
+              url={address.target?.url || address.value}
+              label={address.target?.host || address.value.trim()}
+              options={options}
+              onApply={({ dns_mode, dns_provider, upstream_proxy }) => {
+                setScanNetwork({ dns_mode, dns_provider, upstream_proxy });
+              }}
+              notify={notify}
+            />
           )}
           {dialog === "history" && (
             <HistoryDialog
@@ -502,7 +554,7 @@ export default function App() {
           autoHideDuration={4500}
           disableWindowBlurListener
           onClose={() => notify("")}
-          message={notice}
+          message={tipText(notice)}
           sx={{ pointerEvents: "none" }}
         />
       </Box>

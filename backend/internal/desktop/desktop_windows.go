@@ -27,6 +27,7 @@ import (
 	"github.com/castorice/Castorice-WebRuleAnalyzer/backend/internal/portable"
 	"github.com/castorice/Castorice-WebRuleAnalyzer/backend/internal/scanner"
 	"github.com/castorice/Castorice-WebRuleAnalyzer/backend/internal/storage"
+	"github.com/castorice/Castorice-WebRuleAnalyzer/backend/internal/winjob"
 	"github.com/jchv/go-webview2"
 	"github.com/jchv/go-webview2/webviewloader"
 	"golang.org/x/sys/windows"
@@ -86,16 +87,11 @@ func Supervisor() error {
 		return err
 	}
 	defer logFile.Close()
-	job, err := windows.CreateJobObject(nil, nil)
+	job, err := winjob.New()
 	if err != nil {
 		return err
 	}
 	defer windows.CloseHandle(job)
-	info := windows.JOBOBJECT_EXTENDED_LIMIT_INFORMATION{}
-	info.BasicLimitInformation.LimitFlags = windows.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
-	if _, err = windows.SetInformationJobObject(job, windows.JobObjectExtendedLimitInformation, uintptr(unsafe.Pointer(&info)), uint32(unsafe.Sizeof(info))); err != nil {
-		return err
-	}
 	reader, writer, err := os.Pipe()
 	if err != nil {
 		return err
@@ -184,14 +180,11 @@ func Supervisor() error {
 }
 
 func jobActive(job windows.Handle) uint32 {
-	var accounting struct {
-		TotalUserTime, TotalKernelTime, ThisPeriodTotalUserTime, ThisPeriodTotalKernelTime int64
-		TotalPageFaultCount, TotalProcesses, ActiveProcesses, TotalTerminatedProcesses     uint32
-	}
-	if err := windows.QueryInformationJobObject(job, windows.JobObjectBasicAccountingInformation, uintptr(unsafe.Pointer(&accounting)), uint32(unsafe.Sizeof(accounting)), nil); err != nil {
+	active, err := winjob.Active(job)
+	if err != nil {
 		return ^uint32(0)
 	}
-	return accounting.ActiveProcesses
+	return active
 }
 
 func Worker(gate string) error {

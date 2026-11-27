@@ -41,10 +41,13 @@ func (m *Manager) DeleteHistory(ids []string, all bool) (storage.HistoryDeletion
 	return m.store.DeleteHistory(ids, all, activeID)
 }
 
-func (m *Manager) Diagnose(ctx context.Context, raw string, o model.ScanOptions, compareSecure bool) (model.NetworkDiagnosis, error) {
+func (m *Manager) Diagnose(ctx context.Context, raw string, o model.ScanOptions, compareSecure bool, http3Mode string) (model.NetworkDiagnosis, error) {
 	result := model.NetworkDiagnosis{DNSMode: o.DNSMode, DNSProvider: o.DNSProvider, Route: "系统网络（可由 TUN 接管）"}
 	if err := ValidateOptions(o); err != nil {
 		return result, err
+	}
+	if http3Mode != "" && http3Mode != "selected" && http3Mode != "direct" {
+		return result, security.Fail("invalid_http3_mode", "input", "未知的 HTTP/3 探测路径", "", "", nil)
 	}
 	u, err := domain.NormalizeURL(raw)
 	if err != nil {
@@ -68,6 +71,11 @@ func (m *Manager) Diagnose(ctx context.Context, raw string, o model.ScanOptions,
 	}
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
+	var http3Result chan model.HTTP3Diagnosis
+	if http3Mode != "" {
+		http3Result = make(chan model.HTTP3Diagnosis, 1)
+		go func() { http3Result <- m.engine.diagnoseHTTP3(ctx, u, o, http3Mode) }()
+	}
 	check := func(p security.Policy) model.DNSCheck {
 		ips, e := p.Resolve(ctx, host, port)
 		out := model.DNSCheck{Addresses: []string{}, Diagnostic: security.Explain(e)}
@@ -97,7 +105,7 @@ func (m *Manager) Diagnose(ctx context.Context, raw string, o model.ScanOptions,
 	} else if o.DNSMode == "secure" || compareSecure {
 		result.SecureNote = "目标是 IP 地址或系统解析指向内部／受限网络，未向外部服务查询名称。"
 	} else if o.DNSMode != "system" {
-		result.SecureNote = "本次诊断仅使用系统 DNS。扫描在自动模式下可对已知 Fake-IP 执行安全 DNS 回退。"
+		result.SecureNote = "当前 TCP 诊断使用系统 DNS。扫描在自动模式下可对已知 Fake-IP 执行安全 DNS 回退。"
 	}
 	result.Route += " · " + selectedDNS
 	connectCtx, connectCancel := context.WithTimeout(ctx, 8*time.Second)
@@ -108,6 +116,10 @@ func (m *Manager) Diagnose(ctx context.Context, raw string, o model.ScanOptions,
 	} else {
 		result.Connected = true
 		_ = conn.Close()
+	}
+	if http3Result != nil {
+		outcome := <-http3Result
+		result.HTTP3 = &outcome
 	}
 	return result, nil
 }

@@ -33,6 +33,7 @@ import {
   CloseRounded,
   ContentCopyRounded,
   DownloadRounded,
+  EditRounded,
   ExpandMoreRounded,
   RefreshRounded,
   TuneRounded,
@@ -49,9 +50,10 @@ import type {
 } from "../types";
 import { api, copy, download } from "../services/api";
 import useRangeSelection from "../hooks/useRangeSelection";
-import { errorMessage, ruleCatalogKey } from "../utils/format";
+import { errorMessage, ruleCatalogKey, tipText } from "../utils/format";
 import ContextHelp from "./ContextHelp";
-import ExportScope from "./ExportScope";
+import SegmentedControl from "./SegmentedControl";
+import NumberedTextEditor, { lineNumberText } from "./NumberedTextEditor";
 import "../styles/export-v2.css";
 
 interface Props {
@@ -69,6 +71,10 @@ const suffixWarning =
 const suffixHelp =
   "后缀匹配会包含观察域名的全部子域名；默认精确 DOMAIN 更保守。";
 const defaultFilename = "castorice-rules";
+const scopes: { value: ExportJob["mode"]; label: string }[] = [
+  { value: "observed", label: "抓取结果" },
+  { value: "merged", label: "抓取结果+开源规则库" },
+];
 const formats: { value: ExportFormat; label: string }[] = [
   { value: "clash", label: "Clash / Mihomo YAML" },
   { value: "provider", label: "Mihomo Rule Provider" },
@@ -187,6 +193,10 @@ export default function ExportDialog(p: Props) {
     content: string;
   }>();
   const [manualCopy, setManualCopy] = useState(false);
+  const [editingKey, setEditingKey] = useState<string>();
+  const [drafts, setDrafts] = useState<ReadonlyMap<string, string>>(
+    () => new Map(),
+  );
   const [tab, setTab] = useState(0);
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(30);
@@ -202,6 +212,7 @@ export default function ExportDialog(p: Props) {
   const mounted = useRef(false);
   const entryScroll = useRef<HTMLDivElement>(null);
   const contentScroll = useRef<HTMLDivElement>(null);
+  const editor = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -315,6 +326,16 @@ export default function ExportDialog(p: Props) {
     ],
   );
   const key = useMemo(() => JSON.stringify(job), [job]);
+  // Renaming the destination preserves the edit to the same generated content.
+  const draftKey = useMemo(
+    () => JSON.stringify({ ...job, filename: undefined }),
+    [job],
+  );
+  const draft = drafts.get(draftKey);
+  const editing = editingKey === draftKey;
+  function updateDraft(content: string) {
+    setDrafts((previous) => new Map(previous).set(draftKey, content));
+  }
   const scope = useMemo(
     () =>
       JSON.stringify([
@@ -360,8 +381,8 @@ export default function ExportDialog(p: Props) {
     setLibraryError("");
     setSyncError("");
     const failures: string[] = [];
-    // The cache has one writer. Keep the download active through both sources and the refresh.
-    for (const source of missingSources) {
+    // The cache has one writer. Keep the download active through all sources and the refresh.
+    for (const source of sources) {
       try {
         await api(
           "/rules/sync",
@@ -382,7 +403,7 @@ export default function ExportDialog(p: Props) {
       if (!mounted.current) return;
       setSources(latestSources);
       applyCategories(latestCategories);
-      if (!failures.length) p.onRematch();
+      if (latestCategories.length) p.onRematch();
     } catch (e) {
       failures.push(errorMessage(e));
     } finally {
@@ -507,10 +528,13 @@ export default function ExportDialog(p: Props) {
     isSelected: (key) => !excluded.has(key),
     onSelect: setEntriesSelected,
   });
+  const content = draft ?? result?.content ?? "";
   const lines = useMemo(
     () =>
-      result?.content ? result.content.replace(/\n$/, "").split("\n") : [],
-    [result?.content],
+      tab === 1 && !editing && !manualCopy && content
+        ? content.replace(/\n$/, "").split("\n")
+        : [],
+    [tab, editing, manualCopy, content],
   );
   const actualContentPage =
     lineSize === "all"
@@ -530,13 +554,7 @@ export default function ExportDialog(p: Props) {
   );
   // Two text nodes keep even a complete export scrollable and searchable.
   const contentLineNumbers = useMemo(
-    () =>
-      tab === 1
-        ? Array.from(
-            { length: contentEnd - contentStart },
-            (_, index) => contentStart + index + 1,
-          ).join("\n")
-        : "",
+    () => (tab === 1 ? lineNumberText(contentStart, contentEnd) : ""),
     [tab, contentStart, contentEnd],
   );
   useEffect(() => {
@@ -551,20 +569,23 @@ export default function ExportDialog(p: Props) {
   useEffect(() => {
     contentScroll.current?.scrollTo?.(0, 0);
   }, [actualContentPage, lineSize]);
-  const updating = syncing || sources.some((s) => s.status === "syncing");
-  const missingSources = sources.filter((s) => !s.category_count);
-  const showLibraryControls = !loadingLibrary && missingSources.length > 0;
-  const libraryHelp =
-    missingSources.length === sources.length
-      ? "两套开源规则库尚未下载，下载后可搜索分类并合并"
-      : "还有规则库尚未下载，下载后可搜索该来源的分类";
-  const downloadFailure =
-    syncError ||
-    missingSources
-      .flatMap((source) =>
-        source.error ? [`${source.id}：${source.error}`] : [],
-      )
-      .join("。");
+  const hasRuleCategories = categories.length > 0;
+  const updating =
+    syncing ||
+    (!hasRuleCategories && sources.some((s) => s.status === "syncing"));
+  const showLibraryControls =
+    !loadingLibrary &&
+    !libraryError &&
+    !hasRuleCategories &&
+    sources.length > 0;
+  const downloadFailure = hasRuleCategories
+    ? ""
+    : syncError ||
+      sources
+        .flatMap((source) =>
+          source.error ? [`${source.id}：${source.error}`] : [],
+        )
+        .join("。");
   const canSaveFile = fresh && (!window.castoriceDesktop || !!filename.trim());
   const scopeWarnings = [
     ...(p.task.status !== "completed" ||
@@ -600,19 +621,30 @@ export default function ExportDialog(p: Props) {
 
   const verifiedCopy =
     copyPreview?.key === key ? copyPreview.content : undefined;
+  function toggleEditing() {
+    if (editing) {
+      setEditingKey(undefined);
+      return;
+    }
+    if (!fresh || !result) return;
+    if (draft === undefined) updateDraft(result.content);
+    setManualCopy(false);
+    setEditingKey(draftKey);
+  }
   function copyContent() {
     if (!fresh || !result) return;
     if (mode === "merged" && verifiedCopy === undefined) {
       useFreshResult(async (current) => {
         setCopyPreview({ key, content: current.content });
-        p.notify("已核对规则版本，点击「复制内容」复制。");
+        p.notify("已核对规则版本，点击「复制内容」复制");
       });
       return;
     }
-    void copy(verifiedCopy ?? result.content)
+    void copy(draft ?? verifiedCopy ?? result.content)
       .then(() => p.notify("完整规则已复制"))
       .catch((e) => {
         setTab(1);
+        setEditingKey(undefined);
         setManualCopy(true);
         p.notify(errorMessage(e));
       });
@@ -635,7 +667,7 @@ export default function ExportDialog(p: Props) {
             className="export-hint"
             warning
           >
-            {scopeWarnings.join("\n\n")}
+            {scopeWarnings.map(tipText).join("\n\n")}
           </ContextHelp>
         )}
         <Button
@@ -679,9 +711,11 @@ export default function ExportDialog(p: Props) {
           }}
         >
           <Box className="export-primary-controls">
-            <ExportScope
+            <SegmentedControl
+              label="导出范围"
+              className="export-scope"
+              options={scopes}
               value={mode}
-              missingLibrary={mode === "merged" && showLibraryControls}
               onChange={(next) => {
                 setMode(next);
                 setStateFilter("all");
@@ -689,31 +723,13 @@ export default function ExportDialog(p: Props) {
                 setPage(0);
               }}
             />
-            <Box className="export-format">
-              {formats.map(({ value, label }) => (
-                <Typography
-                  key={value}
-                  component="span"
-                  className="export-format-size"
-                  aria-hidden="true"
-                >
-                  {label}
-                </Typography>
-              ))}
-              <TextField
-                select
-                fullWidth
-                label="输出格式"
-                value={format}
-                onChange={(e) => setFormat(e.target.value as ExportFormat)}
-              >
-                {formats.map(({ value, label }) => (
-                  <MenuItem key={value} value={value}>
-                    {label}
-                  </MenuItem>
-                ))}
-              </TextField>
-            </Box>
+            <SegmentedControl
+              label="输出格式"
+              className="export-format"
+              options={formats}
+              value={format}
+              onChange={setFormat}
+            />
             <TextField
               className="export-policy"
               label="策略组名称"
@@ -725,7 +741,7 @@ export default function ExportDialog(p: Props) {
                   endAdornment: format === "clash" && (
                     <ContextHelp label="查看策略组说明" className="export-hint">
                       在 Clash 或 Mihomo 客户端配置的 proxy-groups
-                      中找到已有的名称，再将它填入这里。
+                      中找到已有的名称，再将它填入这里
                     </ContextHelp>
                   ),
                 },
@@ -761,9 +777,11 @@ export default function ExportDialog(p: Props) {
                         : "正在读取规则分类…"
                     }
                     noOptionsText={
-                      categories.length
+                      hasRuleCategories
                         ? "没有匹配的分类，请换个名称搜索"
-                        : "请先下载规则库"
+                        : libraryError
+                          ? "暂时无法读取分类，可重试"
+                          : "本地暂无可用的规则分类"
                     }
                     getOptionLabel={(c) => `${c.name} · ${c.source}`}
                     getOptionKey={(c) => c.id}
@@ -868,7 +886,7 @@ export default function ExportDialog(p: Props) {
                       下载规则库
                     </Button>
                     <ContextHelp label="查看规则库下载提示" error>
-                      {libraryHelp}
+                      本地暂无可用的规则分类，下载后可搜索并合并
                     </ContextHelp>
                   </Stack>
                 )}
@@ -888,12 +906,12 @@ export default function ExportDialog(p: Props) {
                     </Button>
                   }
                 >
-                  {libraryError}
+                  {tipText(libraryError)}
                 </Alert>
               )}
               {!updating && downloadFailure && (
                 <Alert severity="error" sx={{ mt: 1 }}>
-                  {downloadFailure}
+                  {tipText(downloadFailure)}
                 </Alert>
               )}
             </Box>
@@ -951,34 +969,51 @@ export default function ExportDialog(p: Props) {
               <Button onClick={() => setExcluded(new Set())}>恢复选择</Button>
             }
           >
-            {error}
+            {tipText(error)}
           </Alert>
         )}
         <Box className="export-preview-header" sx={{ borderColor: "divider" }}>
-          <Tabs
-            value={tab}
-            onChange={(_, value) => {
-              setTab(value);
-              setManualCopy(false);
-            }}
-          >
-            <Tab
-              label="条目与来源"
-              id="export-entries-tab"
-              aria-controls="export-entries"
-            />
-            <Tab
-              label="文件内容"
-              id="export-content-tab"
-              aria-controls="export-content"
-            />
-          </Tabs>
+          <Box className="export-preview-tabs">
+            <Tabs
+              value={tab}
+              onChange={(_, value) => {
+                setTab(value);
+                setEditingKey(undefined);
+                setManualCopy(false);
+              }}
+            >
+              <Tab
+                label="条目与来源"
+                id="export-entries-tab"
+                aria-controls="export-entries"
+              />
+              <Tab
+                label="文件内容"
+                id="export-content-tab"
+                aria-controls="export-content"
+              />
+            </Tabs>
+            {tab === 1 && (
+              <IconButton
+                size="small"
+                aria-label="编辑文件内容"
+                aria-pressed={editing}
+                aria-controls="export-content"
+                title={editing ? "退出编辑" : "编辑文件内容"}
+                color={editing ? "primary" : "default"}
+                disabled={!editing && !fresh}
+                onClick={toggleEditing}
+              >
+                <EditRounded fontSize="small" />
+              </IconButton>
+            )}
+          </Box>
           {result && !error && (
             <Stack direction="row" className="export-summary">
               <Chip label={`抓取 ${result.observed_domains} 个域名`} />
               <Chip label={`重复或覆盖 ${result.duplicate_or_covered} 条`} />
               <Chip
-                label={`最终导出 ${result.final_rules} 条`}
+                label={`${draft !== undefined && draft !== result.content ? "原预览" : "最终导出"} ${result.final_rules} 条`}
                 color="primary"
               />
             </Stack>
@@ -1142,7 +1177,7 @@ export default function ExportDialog(p: Props) {
                               color="text.secondary"
                             >
                               由 {entry.covered_by}{" "}
-                              覆盖，不重复输出。取消上层规则后会恢复。
+                              覆盖，不重复输出。取消上层规则后会恢复
                             </Typography>
                           )}
                         </TableCell>
@@ -1183,24 +1218,24 @@ export default function ExportDialog(p: Props) {
           >
             {manualCopy ? (
               <>
-                <Box
-                  component="textarea"
+                <NumberedTextEditor
+                  editorRef={editor}
+                  label="可手动复制的完整规则"
+                  value={fresh ? (draft ?? verifiedCopy ?? result.content) : ""}
                   autoFocus
-                  readOnly
-                  value={fresh ? (verifiedCopy ?? result.content) : ""}
-                  onFocus={(event) => event.currentTarget.select()}
-                  aria-label="可手动复制的完整规则"
-                  className="rule-editor"
-                  sx={{
-                    color: "text.primary",
-                    bgcolor: "action.hover",
-                    minHeight: 130,
-                  }}
                 />
                 <Button size="small" onClick={() => setManualCopy(false)}>
                   返回文件预览
                 </Button>
               </>
+            ) : editing ? (
+              <NumberedTextEditor
+                editorRef={editor}
+                label="规则文件内容编辑区"
+                value={content}
+                onChange={updateDraft}
+                autoFocus
+              />
             ) : (
               <>
                 <Box
@@ -1256,16 +1291,17 @@ export default function ExportDialog(p: Props) {
             下载来源说明
           </Button>
         )}
-        <Button
-          startIcon={<ContentCopyRounded />}
-          disabled={!fresh}
-          onClick={copyContent}
-        >
-          {mode === "merged" && verifiedCopy === undefined
-            ? "校验并准备复制"
-            : "复制内容"}
-        </Button>
         <Box className="export-save-controls">
+          <Button
+            className="export-copy-action"
+            startIcon={<ContentCopyRounded />}
+            disabled={!fresh}
+            onClick={copyContent}
+          >
+            {mode === "merged" && verifiedCopy === undefined
+              ? "校验并准备复制"
+              : "复制内容"}
+          </Button>
           <TextField
             className="export-filename"
             label="文件名称"
@@ -1279,11 +1315,14 @@ export default function ExportDialog(p: Props) {
             disabled={!canSaveFile}
             onClick={() =>
               useFreshResult((current) =>
-                download(current.content, current.filename, current.mime).then(
-                  (path) =>
-                    p.notify(
-                      path ? `已保存至 ${path}` : `已生成 ${current.filename}`,
-                    ),
+                download(
+                  draft ?? current.content,
+                  current.filename,
+                  current.mime,
+                ).then((path) =>
+                  p.notify(
+                    path ? `已保存至 ${path}` : `已生成 ${current.filename}`,
+                  ),
                 ),
               )
             }

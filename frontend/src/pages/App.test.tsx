@@ -49,8 +49,9 @@ beforeEach(() => {
   FakeEventSource.instances = [];
   vi.stubGlobal("EventSource", FakeEventSource);
   mockAPI.mockImplementation(
-    async (path: string, _method?: string, body?: { url: string }) => {
-      if (path === "/settings") return defaultSettings;
+    async (path: string, method?: string, body?: { url: string }) => {
+      if (path === "/settings")
+        return method === "PUT" ? body : defaultSettings;
       if (path === "/health") return { visible_browser: true };
       if (path === "/scans/target" && body) {
         const input = new URL(
@@ -91,6 +92,56 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 describe("清空工作区", () => {
+  it("打开历史和清空工作区均保留下次采集的设置", async () => {
+    render(<App />);
+    await openHistory();
+    fireEvent.click(screen.getByRole("button", { name: "软件设置" }));
+    const dialog = await screen.findByRole("dialog", { name: "软件设置" });
+    const modes = within(dialog).getByRole("tablist");
+    expect(within(modes).getAllByRole("tab")).toHaveLength(3);
+    expect(
+      within(dialog).getByRole("spinbutton", { name: "每页观察 / 秒" }),
+    ).toBeInTheDocument();
+    fireEvent.click(within(modes).getByRole("tab", { name: "深度" }));
+    expect(
+      within(dialog).getByRole("spinbutton", { name: "探索深度" }),
+    ).toBeInTheDocument();
+    fireEvent.click(within(modes).getByRole("tab", { name: "自行交互" }));
+    expect(
+      within(dialog).queryByRole("spinbutton", { name: "每页观察 / 秒" }),
+    ).toBeNull();
+    fireEvent.change(
+      within(dialog).getByRole("spinbutton", { name: "总时长 / 秒" }),
+      {
+        target: { value: 200 },
+      },
+    );
+    fireEvent.click(within(dialog).getByRole("button", { name: "保存设置" }));
+    await waitFor(() => expect(dialog).not.toBeInTheDocument());
+    const summary = await screen.findByText(/下次 · 自行交互 · 200s 上限/);
+    expect(summary).toHaveAttribute(
+      "title",
+      expect.stringContaining(
+        `本次 · 快速 · ${task.options.max_seconds}s 上限`,
+      ),
+    );
+    await openHistory();
+    expect(summary).toHaveTextContent(/下次 · 自行交互 · 200s 上限/);
+    fireEvent.change(screen.getByRole("textbox", { name: "要分析的网站" }), {
+      target: { value: "example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "清空工作区" }));
+    expect(screen.getByRole("textbox", { name: "要分析的网站" })).toHaveValue(
+      "",
+    );
+    expect(screen.getByRole("radio", { name: "自行交互" })).toBeChecked();
+    expect(summary).toHaveTextContent(/下次 · 自行交互 · 200s 上限/);
+    fireEvent.click(screen.getByRole("button", { name: "软件设置" }));
+    expect(
+      await screen.findByRole("spinbutton", { name: "总时长 / 秒" }),
+    ).toHaveValue(200);
+  });
+
   async function openHistory() {
     fireEvent.click(screen.getByRole("button", { name: "扫描历史" }));
     fireEvent.click(
@@ -307,21 +358,42 @@ it("清理粘贴地址并保留实际连接协议和端口", async () => {
   );
 });
 
-it("按模式显示有效参数并从高级配置打开网络诊断", async () => {
+it("在软件设置切换各模式参数，从标题栏单独打开网络诊断", async () => {
   render(<App />);
-  const advanced = await screen.findByRole("button", { name: "高级配置" });
-  await waitFor(() => expect(advanced).toBeEnabled());
-  expect(screen.queryByRole("button", { name: "网络诊断" })).toBeNull();
-  fireEvent.click(advanced);
-  const config = await screen.findByRole("dialog", { name: /高级配置/ });
+  expect(screen.queryByRole("button", { name: "高级配置" })).toBeNull();
+  const modes = within(
+    await screen.findByRole("radiogroup", { name: "扫描模式" }),
+  );
+  const quick = modes.getByRole("radio", { name: "快速" });
+  const depth = modes.getByRole("radio", { name: "深度" });
+  expect(modes.getAllByRole("radio")).toHaveLength(3);
+  expect(quick).toBeChecked();
+  fireEvent.click(depth);
+  expect(quick).not.toBeChecked();
+  expect(depth).toBeChecked();
+  fireEvent.click(quick);
+  const settings = await screen.findByRole("button", { name: "软件设置" });
+  const networkButton = screen.getByRole("button", { name: "网络诊断" });
+  expect(networkButton.nextElementSibling).toBe(settings);
+  fireEvent.click(settings);
+  const config = await screen.findByRole("dialog", { name: "软件设置" });
   const panel = within(config);
+  expect(panel.queryByRole("button", { name: "网络诊断" })).toBeNull();
   expect(panel.getByLabelText("每页观察 / 秒")).toBeInTheDocument();
   expect(panel.queryByLabelText("探索深度")).toBeNull();
   expect(panel.queryByLabelText("最多页面")).toBeNull();
-  fireEvent.click(panel.getByRole("button", { name: "扫描模式，快速扫描" }));
-  fireEvent.click(screen.getByRole("button", { name: "自动探索说明" }));
-  expect(await screen.findByRole("tooltip")).toHaveTextContent("同源链接");
-  fireEvent.click(screen.getByRole("button", { name: "自动探索" }));
+  const browserHelp = panel.getByRole("button", {
+    name: "查看显示受控浏览器说明",
+  });
+  fireEvent.mouseOver(browserHelp);
+  const tooltip = await screen.findByRole("tooltip");
+  expect(tooltip).toHaveTextContent("自行交互始终显示窗口");
+  expect(tooltip.querySelector(".MuiTooltip-arrow")).toBeNull();
+  fireEvent.mouseLeave(browserHelp);
+  fireEvent.click(panel.getByRole("tab", { name: "深度" }));
+  expect(panel.getByRole("tabpanel", { name: "深度" })).toHaveTextContent(
+    "同源链接",
+  );
   expect(panel.getByLabelText("探索深度")).toBeInTheDocument();
   expect(panel.getByLabelText("最多页面")).toBeInTheDocument();
   const pages = panel.getByLabelText("最多页面");
@@ -330,15 +402,24 @@ it("按模式显示有效参数并从高级配置打开网络诊断", async () =
   expect(pages).toBeInvalid();
   fireEvent.change(pages, { target: { value: "2" } });
   expect(pages).toBeValid();
-  fireEvent.click(panel.getByRole("button", { name: "扫描模式，自动探索" }));
-  fireEvent.click(screen.getByRole("button", { name: "辅助交互" }));
+  fireEvent.click(panel.getByRole("tab", { name: "自行交互" }));
   expect(panel.getByLabelText("最多页面")).toBeInTheDocument();
   expect(panel.queryByLabelText("每页观察 / 秒")).toBeNull();
   expect(panel.queryByLabelText("显示受控浏览器")).toBeNull();
-  fireEvent.click(panel.getByRole("button", { name: "网络诊断" }));
-  await screen.findByRole("dialog", { name: /网络诊断/ });
-  fireEvent.click(screen.getByRole("button", { name: "关闭网络诊断" }));
-  expect(await screen.findByRole("dialog", { name: /高级配置/ })).toBe(config);
+  expect(
+    panel.queryByRole("button", { name: "查看显示受控浏览器说明" }),
+  ).toBeNull();
+  fireEvent.click(panel.getByRole("button", { name: "关闭设置" }));
+  await waitFor(() => expect(config).not.toBeInTheDocument());
+  fireEvent.click(networkButton);
+  const network = await screen.findByRole("dialog", { name: "网络诊断" });
+  expect(
+    within(network).getByRole("button", { name: "用于下次扫描" }),
+  ).toBeEnabled();
+  fireEvent.click(
+    within(network).getByRole("button", { name: "关闭网络诊断" }),
+  );
+  await waitFor(() => expect(network).not.toBeInTheDocument());
 });
 
 it("规则库以设置的子弹窗打开并保留未保存的设置", async () => {
@@ -351,10 +432,7 @@ it("规则库以设置的子弹窗打开并保留未保存的设置", async () =
     within(settings).getByRole("button", { name: "管理 / 更新规则库" }),
   );
   await screen.findByRole("dialog", { name: /开源规则库/ });
-  fireEvent.click(screen.getByRole("button", { name: "规则库术语说明" }));
-  expect(await screen.findByRole("tooltip")).toHaveTextContent(
-    "include:分类名",
-  );
+  expect(screen.queryByRole("button", { name: "规则库术语说明" })).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "规则库设置" }));
   await screen.findByRole("dialog", { name: "规则库设置" });
   fireEvent.click(screen.getByRole("button", { name: "完成" }));

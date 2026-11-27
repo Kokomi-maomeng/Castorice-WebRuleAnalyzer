@@ -20,34 +20,35 @@ const MaxRequests = 20000
 const MaxEvents = 2000
 
 type runtimeTask struct {
-	mainFrame        cdp.FrameID
-	mainDocumentHost string
-	mu               sync.Mutex
-	task             model.ScanTask
-	requests         map[string]model.NetworkRequest
-	domains          map[string]model.DomainRecord
-	active           map[network.RequestID]string
-	starts           map[string]float64
-	dirtyRequests    map[string]bool
-	dirtyDomains     map[string]bool
-	events           []model.Event
-	pendingEvents    []model.Event
-	sequence         int64
-	revision         int64
-	lastRequest      time.Time
-	limit            bool
-	pageLimit        bool
-	pageRequest      network.RequestID
-	pageLoader       cdp.LoaderID
-	pageURL          string
-	pageVersion      uint64
-	pageRoute        string
-	pageResult       string
-	pageFailureFor   func(string) *model.Diagnostic
-	cancel           func()
-	done             chan struct{}
-	flushMu          sync.Mutex
-	flushError       error
+	mainFrame         cdp.FrameID
+	mainDocumentHost  string
+	mu                sync.Mutex
+	task              model.ScanTask
+	requests          map[string]model.NetworkRequest
+	domains           map[string]model.DomainRecord
+	active            map[network.RequestID]string
+	starts            map[string]float64
+	dirtyRequests     map[string]bool
+	dirtyDomains      map[string]bool
+	events            []model.Event
+	pendingEvents     []model.Event
+	sequence          int64
+	revision          int64
+	lastRequest       time.Time
+	limit             bool
+	pageLimit         bool
+	pageRequest       network.RequestID
+	pageLoader        cdp.LoaderID
+	pageURL           string
+	pageVersion       uint64
+	pageRoute         string
+	pageResult        string
+	pageFailureFor    func(string) *model.Diagnostic
+	recordingFinished bool
+	cancel            func()
+	done              chan struct{}
+	flushMu           sync.Mutex
+	flushError        error
 }
 
 func newRuntime(task model.ScanTask) *runtimeTask {
@@ -223,6 +224,9 @@ func (r *runtimeTask) finish(id network.RequestID, mono float64, state, failure 
 func (r *runtimeTask) onEvent(ev any) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.recordingFinished {
+		return
+	}
 	if r.task.Options.Mode == "interactive" {
 		r.onInteractiveEvent(ev)
 	}
@@ -237,6 +241,10 @@ func (r *runtimeTask) onEvent(ev any) {
 			r.response(e.RequestID, e.RedirectResponse)
 			r.finish(e.RequestID, monotonic(e.Timestamp), "redirected", "")
 		}
+		if r.task.RecordingPaused {
+			delete(r.active, e.RequestID)
+			return
+		}
 		r.add(e.RequestID, e.Request.URL, e.Request.Method, string(e.Type), e.DocumentURL, initiator(e.Initiator), wallTime(e.WallTime), monotonic(e.Timestamp))
 	case *network.EventResponseReceived:
 		if r.task.Options.Mode != "interactive" && e.Type == network.ResourceTypeDocument && e.FrameID == r.mainFrame && e.Response != nil {
@@ -249,11 +257,14 @@ func (r *runtimeTask) onEvent(ev any) {
 	case *network.EventLoadingFailed:
 		r.finish(e.RequestID, monotonic(e.Timestamp), "failed", e.ErrorText)
 	case *network.EventWebSocketCreated:
-		r.add(e.RequestID, e.URL, "GET", "WebSocket", r.task.CurrentPage, initiator(e.Initiator), time.Now().UTC(), 0)
+		if !r.task.RecordingPaused {
+			r.add(e.RequestID, e.URL, "GET", "WebSocket", r.task.CurrentPage, initiator(e.Initiator), time.Now().UTC(), 0)
+		}
 	case *network.EventWebSocketWillSendHandshakeRequest:
-		key := r.active[e.RequestID]
-		r.starts[key] = monotonic(e.Timestamp)
-		r.update(e.RequestID, func(req *model.NetworkRequest) { req.Time = wallTime(e.WallTime) })
+		r.update(e.RequestID, func(req *model.NetworkRequest) {
+			r.starts[req.ID] = monotonic(e.Timestamp)
+			req.Time = wallTime(e.WallTime)
+		})
 	case *network.EventWebSocketHandshakeResponseReceived:
 		r.update(e.RequestID, func(req *model.NetworkRequest) {
 			req.StatusCode = int(e.Response.Status)

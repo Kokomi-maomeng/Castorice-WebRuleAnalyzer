@@ -27,7 +27,7 @@ it("其他来源更新不重载编辑区，同源更新保留草稿直到明确�
     source: "v2fly",
     name: "app",
     version: own,
-    raw: "original " + own,
+    raw: "original " + own + "\nsecond line",
     warnings: [],
   });
   mockAPI.mockImplementation(async (path: string) => {
@@ -52,7 +52,14 @@ it("其他来源更新不重载编辑区，同源更新保留草稿直到明确�
     await vi.advanceTimersByTimeAsync(250);
   });
   const editor = screen.getByRole("textbox", { name: "规则原文编辑区" });
-  expect(editor).toHaveValue("original one");
+  expect(editor).toHaveValue("original one\nsecond line");
+  expect(editor.parentElement?.querySelector(".line-number")?.textContent).toBe(
+    "1\n2",
+  );
+  expect(
+    screen.queryByRole("button", { name: "下载" }),
+  ).toBeNull();
+  expect(screen.queryByRole("button", { name: "规则库术语说明" })).toBeNull();
   fireEvent.change(editor, { target: { value: "my draft" } });
   const loads = mockAPI.mock.calls.filter(([path]) =>
     path.startsWith("/rules/content"),
@@ -87,6 +94,6 @@ it("其他来源更新不重载编辑区，同源更新保留草稿直到明确�
   );
   fireEvent.click(adopt);
   expect(screen.getByRole("textbox", { name: "规则原文编辑区" })).toHaveValue(
-    "original two",
+    "original two\nsecond line",
   );
 });

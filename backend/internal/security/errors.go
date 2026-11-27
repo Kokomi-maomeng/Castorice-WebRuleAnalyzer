@@ -60,9 +60,9 @@ func NavigationFailure(err error, status int, host string) *model.Diagnostic {
 		hint := "网站或中间服务返回错误，请稍后重试。"
 		switch status {
 		case 401:
-			hint = "网站要求登录；可使用辅助交互模式在受控浏览器中登录后观察。"
+			hint = "网站要求登录。可在自行交互模式的受控浏览器中登录后观察。"
 		case 403:
-			hint = "服务器拒绝访问，可能与权限、地区或风控有关；可使用辅助交互模式核对。"
+			hint = "服务器拒绝访问，可能与权限、地区或风控有关。可切换到自行交互核对。"
 		case 404:
 			hint = "服务器已响应，但此页面不存在，请检查路径。"
 		case 429:
@@ -74,7 +74,7 @@ func NavigationFailure(err error, status int, host string) *model.Diagnostic {
 	if err != nil {
 		text = err.Error()
 	}
-	code, stage, message, hint := "navigation_failed", "navigation", "页面未能完成加载", "请运行网络诊断，或使用辅助交互模式检查实际页面。"
+	code, stage, message, hint := "navigation_failed", "navigation", "页面未能完成加载", "请运行网络诊断，或切换到自行交互检查实际页面。"
 	switch {
 	case strings.Contains(text, "ERR_TOO_MANY_REDIRECTS"):
 		code, stage, message, hint = "redirect_loop", "navigation", "网站发生重定向循环", "请核对最后地址；稍后重试或检查网站的跳转配置。"
@@ -87,7 +87,7 @@ func NavigationFailure(err error, status int, host string) *model.Diagnostic {
 	case strings.Contains(text, "ERR_TUNNEL_") || strings.Contains(text, "ERR_PROXY_"):
 		code, stage, message, hint = "proxy_connection", "proxy", "代理连接未能建立", "检查本机代理监听地址和当前代理连接。"
 	case errors.Is(err, context.DeadlineExceeded) || strings.Contains(text, "ERR_TIMED_OUT"):
-		code, stage, message, hint = "navigation_timeout", "navigation", "页面加载超过本次单页时间限制", "可增加单页等待时间，或使用辅助交互模式核对。"
+		code, stage, message, hint = "navigation_timeout", "navigation", "页面加载超过本次单页时间限制", "可增加单页等待时间，或切换到自行交互核对。"
 	case strings.Contains(text, "ERR_CONNECTION_CLOSED") || strings.Contains(text, "ERR_CONNECTION_RESET"):
 		code, stage, message, hint = "connection_closed", "connection", "连接被关闭或重置，未取得完整页面", "这不能证明域名拼写错误；请检查目标服务及代理路径。"
 	case strings.Contains(text, "ERR_CONNECTION_REFUSED"):

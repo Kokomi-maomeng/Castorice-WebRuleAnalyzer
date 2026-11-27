@@ -62,6 +62,7 @@ export interface ScanTask {
   target_redacted?: boolean;
   rule_cache_available?: boolean;
   status: string;
+  recording_paused?: boolean;
   options: ScanOptions;
   started_at: string;
   ended_at?: string;
@@ -240,6 +241,14 @@ export interface NetworkDiagnosis {
   secure_note?: string;
   connected: boolean;
   connection?: Diagnostic;
+  http3?: {
+    route: string;
+    advertised?: boolean;
+    advertisement_source?: string;
+    alpn?: string;
+    http_status?: number;
+    diagnostic?: Diagnostic;
+  };
 }
 export interface HistoryPage {
   items: ScanTask[];

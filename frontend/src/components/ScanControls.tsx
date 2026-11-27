@@ -1,41 +1,32 @@
-import NetworkOptions from "./NetworkOptions";
-import NetworkDialog from "./NetworkDialog";
 import ScanModeSelect from "./ScanModeSelect";
-import ScanNumberFields, { invalidScanField } from "./ScanNumberFields";
+import { invalidScanField } from "./ScanNumberFields";
 import ContextHelp from "./ContextHelp";
-import { useState, type ClipboardEvent } from "react";
+import { useEffect, useState, type ClipboardEvent } from "react";
 import {
   Box,
   Button,
   CircularProgress,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
   Fade,
-  FormControlLabel,
-  IconButton,
   InputAdornment,
   Paper,
   Stack,
-  Switch,
   TextField,
   Typography,
 } from "@mui/material";
 import {
   ArrowForwardRounded,
-  CloseRounded,
   LinkRounded,
+  PauseRounded,
+  PlayArrowRounded,
   RestartAltRounded,
   StopRounded,
-  TuneRounded,
 } from "@mui/icons-material";
-import type { ScanOptions, ScanTarget } from "../types";
+import type { ScanOptions, ScanTask } from "../types";
+import { tipText } from "../utils/format";
 
 interface Props {
   canShowBrowser: boolean;
   url: string;
-  target?: ScanTarget;
   addressIssue: string;
   addressNotice: string;
   showingEarlierResult: boolean;
@@ -44,32 +35,20 @@ interface Props {
   setURL: (v: string) => void;
   onNormalize: (v: string, freshlyEdited?: boolean) => void;
   options: ScanOptions;
-  setOptions: (v: ScanOptions) => void;
+  setMode: (mode: ScanOptions["mode"]) => void;
   running: boolean;
   busy: boolean;
+  interactiveTask?: ScanTask;
+  recordingPending: boolean;
+  onRecordingChange: (paused: boolean) => void;
   onStart: () => void;
   onStop: () => void;
   onReset: () => void;
-  notify: (s: string) => void;
 }
 export default function ScanControls(p: Props) {
-  const [advanced, setAdvanced] = useState(false);
-  const [diagnosing, setDiagnosing] = useState(false);
-  const [diagnosticMounted, setDiagnosticMounted] = useState(false);
-  const { mode } = p.options;
-  const set = <K extends keyof ScanOptions>(key: K, value: ScanOptions[K]) =>
-    p.setOptions({ ...p.options, [key]: value });
   const invalid = invalidScanField(p.options);
   const canStart =
     !p.running && !p.busy && p.browserAvailable && p.url.trim() && !invalid;
-  const modeSelect = () => (
-    <ScanModeSelect
-      value={mode}
-      onChange={(value) => set("mode", value)}
-      disabled={p.running || p.busy}
-      canShowBrowser={p.canShowBrowser}
-    />
-  );
 
   return (
     <Paper
@@ -140,9 +119,9 @@ export default function ScanControls(p: Props) {
                 endAdornment: p.addressIssue && (
                   <InputAdornment position="end">
                     <ContextHelp label="查看地址问题" error>
-                      {p.addressIssue}
+                      {tipText(p.addressIssue)}
                       {p.showingEarlierResult && (
-                        <div>下方仍显示上次采集结果。</div>
+                        <div>下方仍显示上次采集结果</div>
                       )}
                     </ContextHelp>
                   </InputAdornment>
@@ -160,21 +139,16 @@ export default function ScanControls(p: Props) {
               elevation={2}
               sx={{ borderColor: "divider" }}
             >
-              {p.addressNotice}
+              {tipText(p.addressNotice)}
             </Paper>
           </Fade>
         </Box>
-        {modeSelect()}
-        <Button
-          className="advanced-button"
-          startIcon={<TuneRounded />}
-          onClick={() => setAdvanced(true)}
-          aria-label="高级配置"
-          title="高级配置"
-          disabled={p.busy || p.running}
-        >
-          <span>高级配置</span>
-        </Button>
+        <ScanModeSelect
+          value={p.options.mode}
+          onChange={p.setMode}
+          disabled={p.running || p.busy}
+          canShowBrowser={p.canShowBrowser}
+        />
         <Stack direction="row" className="scan-actions" sx={{ gap: 0.75 }}>
           {p.running ? (
             <Button
@@ -212,95 +186,73 @@ export default function ScanControls(p: Props) {
           </Button>
         </Stack>
       </Box>
+      {p.interactiveTask && (
+        <InteractiveControls
+          task={p.interactiveTask}
+          busy={p.busy || p.recordingPending}
+          onChange={p.onRecordingChange}
+        />
+      )}
       {p.historyTarget && (
         <Typography
           variant="body2"
           color="text.secondary"
           sx={{ mt: 0.75, overflowWrap: "anywhere" }}
         >
-          历史域名 {p.historyTarget}。原地址已脱敏，重新采集时请填写域名。
+          历史域名 {p.historyTarget}。原地址已脱敏，重新采集时请填写域名
         </Typography>
       )}
       {invalid && (
         <Typography variant="body2" color="error">
-          请在高级配置中修正「{invalid}」。
+          请在软件设置中修正「{invalid}」
         </Typography>
       )}
-      <Dialog
-        open={advanced}
-        aria-labelledby="advanced-config-title"
-        onClose={() => setAdvanced(false)}
-        fullWidth
-        maxWidth="sm"
-      >
-        <DialogTitle id="advanced-config-title">
-          高级配置
-          <IconButton
-            aria-label="关闭高级配置"
-            onClick={() => setAdvanced(false)}
-            sx={{ float: "right" }}
-          >
-            <CloseRounded />
-          </IconButton>
-        </DialogTitle>
-        <DialogContent dividers>
-          <Box className="advanced-grid" sx={{ pt: 0.5 }}>
-            <Box sx={{ gridColumn: "1 / -1" }}>{modeSelect()}</Box>
-            <ScanNumberFields
-              options={p.options}
-              change={p.setOptions}
-              disabled={p.running}
-            />
-            <Box sx={{ gridColumn: "1 / -1" }}>
-              <NetworkOptions options={p.options} onChange={p.setOptions} />
-            </Box>
-          </Box>
-          {mode === "interactive" && !window.castoriceDesktop && (
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-              受控浏览器在运行采集服务的电脑上打开。远程访问此网页时，请在服务端图形会话操作。
-            </Typography>
-          )}
-          {p.canShowBrowser && mode !== "interactive" && (
-            <FormControlLabel
-              sx={{ mt: 0.75 }}
-              control={
-                <Switch
-                  checked={p.options.visible}
-                  disabled={p.running}
-                  onChange={(_, value) => set("visible", value)}
-                />
-              }
-              label="显示受控浏览器"
-            />
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button
-            onClick={() => {
-              setDiagnosticMounted(true);
-              setDiagnosing(true);
-            }}
-            sx={{ mr: "auto" }}
-          >
-            网络诊断
-          </Button>
-          <Button onClick={() => setAdvanced(false)}>完成</Button>
-        </DialogActions>
-        {diagnosticMounted && (
-          <NetworkDialog
-            open={diagnosing}
-            onClose={() => setDiagnosing(false)}
-            onExited={() => {
-              if (!diagnosing) setDiagnosticMounted(false);
-            }}
-            url={p.target?.url || p.url}
-            label={p.target?.host}
-            options={p.options}
-            onApply={p.setOptions}
-            notify={p.notify}
-          />
-        )}
-      </Dialog>
     </Paper>
+  );
+}
+
+function InteractiveControls({
+  task,
+  busy,
+  onChange,
+}: {
+  task: ScanTask;
+  busy: boolean;
+  onChange: (paused: boolean) => void;
+}) {
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    const clock = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(clock);
+  }, []);
+  const paused = !!task.recording_paused;
+  const elapsed = Math.max(
+    0,
+    Math.floor((now - Date.parse(task.started_at)) / 1000),
+  );
+  const remaining = Math.max(0, task.options.max_seconds - elapsed);
+  return (
+    <Stack
+      direction="row"
+      sx={{ mt: 1, gap: 1, alignItems: "center", flexWrap: "wrap" }}
+    >
+      <Button
+        size="small"
+        variant={paused ? "contained" : "outlined"}
+        startIcon={paused ? <PlayArrowRounded /> : <PauseRounded />}
+        disabled={busy || !remaining}
+        onClick={() => onChange(!paused)}
+      >
+        {paused ? "继续记录" : "暂停记录"}
+      </Button>
+      {paused && (
+        <Typography variant="body2" color="text.secondary" role="status">
+          记录已暂停，浏览器和登录状态保留
+        </Typography>
+      )}
+      <Typography variant="body2" color="text.secondary" role="timer">
+        剩余 {remaining} 秒
+      </Typography>
+    </Stack>
   );
 }

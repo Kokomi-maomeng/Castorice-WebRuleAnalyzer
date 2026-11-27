@@ -9,7 +9,7 @@ import {
 } from "@mui/material";
 import { RefreshRounded } from "@mui/icons-material";
 import type { ScanTask } from "../types";
-import { active } from "../utils/format";
+import { active, tipText } from "../utils/format";
 interface Props {
   task?: ScanTask;
   onRematch: () => void;
@@ -106,7 +106,7 @@ export default function MatchPanel(p: Props) {
       </Stack>
       {!t || active(t) ? (
         <Typography color="text.secondary">
-          扫描结束后查看目标主机与第三方请求的实际规则命中。
+          扫描结束后查看目标主机与第三方请求的实际规则命中
         </Typography>
       ) : (
         <>
@@ -114,7 +114,9 @@ export default function MatchPanel(p: Props) {
             severity={t.recommended_category && !legacy ? "success" : "info"}
             sx={{ mb: 1.5 }}
           >
-            {legacy ? "历史结果使用旧版算法，请重新匹配。" : t.match_note}
+            {legacy
+              ? "历史结果使用旧版算法，请重新匹配"
+              : tipText(t.match_note || "")}
           </Alert>
           <Typography variant="subtitle2" sx={{ mb: 1 }}>
             目标主机命中 · {target.length}
@@ -124,10 +126,10 @@ export default function MatchPanel(p: Props) {
           ) : (
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
               {t.rule_cache_available === false
-                ? "本次匹配时规则库尚未下载。可直接导出抓取结果，或在规则库下载后重新匹配。"
+                ? "本次匹配时规则库尚未下载。可直接导出抓取结果，或在规则库下载后重新匹配"
                 : t.rule_cache_available === true
-                  ? "本次匹配使用的规则缓存中没有命中目标主机。"
-                  : "旧版任务未记录匹配时的规则库状态。可从规则库检查后重新匹配。"}
+                  ? "本次匹配使用的规则缓存中没有命中目标主机"
+                  : "旧版任务未记录匹配时的规则库状态。可从规则库检查后重新匹配"}
             </Typography>
           )}
           {dependencies.length > 0 && (
@@ -140,7 +142,7 @@ export default function MatchPanel(p: Props) {
                 color="text.secondary"
                 sx={{ display: "block", mb: 1 }}
               >
-                以下集合仅包含部分第三方依赖，不表示目标属于这些应用。
+                以下集合仅包含部分第三方依赖，不表示目标属于这些应用
               </Typography>
               {results(dependencies)}
             </>
