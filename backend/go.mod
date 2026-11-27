@@ -8,7 +8,7 @@ require (
 	github.com/gorilla/websocket v1.5.4-0.20240701034025-d67f41855da4
 	github.com/jchv/go-webview2 v0.0.0-20260205173254-56598839c808
 	github.com/quic-go/quic-go v0.66.0
-	go.yaml.in/yaml/v3 v3.0.5
+	go.yaml.in/yaml/v3 v3.0.6
 	golang.org/x/net v0.62.0
 	golang.org/x/sys v0.50.0
 	modernc.org/sqlite v1.60.1
