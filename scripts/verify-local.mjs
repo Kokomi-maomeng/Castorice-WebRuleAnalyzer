@@ -189,8 +189,8 @@ async function verify(name, fixturePort) {
     await theme.click();
     await page.getByRole('option', { name: '跟随系统' }).click();
     assert.equal(await theme.locator('svg').count(), 1, 'Theme value has an icon');
-    await settings.getByRole('button', { name: '默认扫描参数应用范围' }).click();
-    await page.getByRole('tooltip').filter({ hasText: '保存后应用于尚未编辑的工作区' }).waitFor();
+    await settings.getByRole('button', { name: '查看扫描参数生效范围' }).click();
+    await page.getByRole('tooltip').filter({ hasText: '保存后的参数用于之后启动的扫描' }).waitFor();
     await settings.getByRole('button', { name: '保存设置' }).click();
     await waitFor(() => page.locator('body').evaluate(node => getComputedStyle(node).colorScheme === 'dark'), 'Follow system theme');
     await settings.waitFor({ state: 'hidden' });
