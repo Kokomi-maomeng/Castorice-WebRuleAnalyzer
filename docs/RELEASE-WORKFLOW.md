@@ -86,7 +86,7 @@ python scripts/audit-release.py --zip ($package + '.zip')
 
 - 复现先检查实际使用的数据目录和来源状态；开发测试缓存正常不代表用户便携目录已有规则。
 - 规则源更新共享互斥写入器，多个来源应依次执行；不能用并发初始化测试掩盖只成功一套的情况。
-- `node scripts/verify-export-ui.mjs` 检查真实分类、完整导出、分页、清空、八种尺寸、字体放大、按压与减少动效；密集夹具会明确标记。使用 `CASTORICE_INIT_RULES=1` 测试全新缓存，同时断言两套来源都完成。
+- `node scripts/verify-export-ui.mjs` 检查真实分类、完整导出、分页、清空、八种尺寸、字体放大、按压与减少动效。使用 `CASTORICE_INIT_RULES=1` 测试从空缓存下载并确认可搜索的分类目录已出现。单来源缓存也可直接用于合并导出。
 - 界面脚本支持 `CASTORICE_UI_CDP` 与 `CASTORICE_PLAYWRIGHT_MODULE`，可在 Debian 内直接控制本机 GUI Chromium，避免新增转发；只连接专属测试 Profile。
 - Debian 临时浏览器需要与真实会话匹配；Wayland 使用 `--ozone-platform=wayland`。临时 Docker 必须连同 containerd 一起隔离在同一挂载命名空间，不能借用系统 containerd；记录并对比原有容器 PID/启动时间。
 - 原生关闭脚本使用稳定的“关闭导出”标签，截图前等待包含本机保存路径的通知消失。

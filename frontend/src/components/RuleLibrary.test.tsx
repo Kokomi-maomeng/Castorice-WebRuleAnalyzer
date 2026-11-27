@@ -56,9 +56,7 @@ it("其他来源更新不重载编辑区，同源更新保留草稿直到明确�
   expect(editor.parentElement?.querySelector(".line-number")?.textContent).toBe(
     "1\n2",
   );
-  expect(
-    screen.queryByRole("button", { name: "下载" }),
-  ).toBeNull();
+  expect(screen.queryByRole("button", { name: "下载" })).toBeNull();
   expect(screen.queryByRole("button", { name: "规则库术语说明" })).toBeNull();
   fireEvent.change(editor, { target: { value: "my draft" } });
   const loads = mockAPI.mock.calls.filter(([path]) =>

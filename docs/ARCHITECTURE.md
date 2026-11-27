@@ -27,11 +27,12 @@ flowchart LR
 ## 采集与生命周期
 
 - `manager.Start` 规范化/解析目标、校验参数、获取单任务槽，先保存任务再启动 Context 限时扫描。
-- 浏览器由服务从已检测的 Chrome、Edge、Chromium 列表选取。管理员可通过 CLI 指定可执行文件，网页输入只用于选择已有条目。引擎为每个任务创建临时 Profile 和逐连接校验代理。辅助交互使用服务端可见窗口。
+- 浏览器由服务从已检测的 Chrome、Edge、Chromium 列表选取。管理员可通过 CLI 指定可执行文件，网页输入只用于选择已有条目。引擎为每个任务创建临时 Profile 和逐连接校验代理。自行交互使用服务端可见窗口，缺少图形会话时对应选项置灰。
 - 监听 requestWillBeSent、responseReceived、loadingFinished、loadingFailed、webSocketCreated、webSocketWillSendHandshakeRequest、webSocketHandshakeResponseReceived、webSocketClosed、webSocketFrameError，以及 SPA 路由/主框架导航事件。
 - 同 CDP RequestID 的重定向各跳生成不同记录 ID。耗时使用同一单调时钟差值；未完成请求不推测成功或完整耗时。WebSocket 不保存帧正文。
+- 取得响应按浏览器是否报告 HTTP 状态码统计。请求失败按最终状态统计。同一个请求收到响应后加载失败，可同时计入这两项。
 - 事件回调只更新受互斥保护的内存记录。750ms 将脏请求、脏域名、新日志及小任务快照在一个 SQLite 事务批量写入；结束强制最终写入。
-- 超时/取消/浏览器退出统一结束，停止浏览器 allocator、关闭代理连接、删除 Profile，再释放任务槽。Linux 浏览器使用本次独立进程组，allocator 等候后关闭该组；Profile 清理需保持至少 250ms 不再出现，最长 3 秒，避免 Chromium 异步晚写入重建目录。Linux XDG 配置与缓存也放入该临时 Profile。数据库错误取消任务并在界面标明；进程被强制终止遗留的 active 任务在下一次启动修正为 failed。
+- 超时、停止和浏览器退出都会写入终态、关闭代理、清除临时 Profile，再释放任务槽。自行交互的受控窗口被主动关闭会记录为已停止。Windows 用 Job Object 管理本次进程，Linux 使用独立进程组，并把 XDG 配置和缓存放入临时 Profile。若应用强制退出，下一次启动时将遗留的活动任务记录为失败。
 - 主文档 HTTP 4xx/5xx 与导航异常标记失败，子资源失败保留记录并允许继续。大量请求不会每条写数据库或渲染全表。
 
 ## 地址和 API 保护
@@ -39,6 +40,8 @@ flowchart LR
 自动 DNS 默认使用系统解析，仅对包含已知双栈 Fake-IP、且其余地址全部属于公网的答案，通过固定 1.1.1.1 的 Cloudflare HTTPS DNS Wireformat 重新查询 A/AAAA，再次执行原有公网校验。TLS 证书正常验证，拒绝 DNS HTTP 重定向、截断/不匹配消息及过大响应，缓存上限 60 秒。私网/公私混合答案不会借此放行，用户可选择仅系统 DNS。不会改变系统配置。
 
 仅导航 HTTP(S)，拒绝 URL 凭据、非法端口和含混主机。HTTP CONNECT/普通 HTTP/WebSocket 每次建立 TCP 前校验所有 DNS 地址，并连接字面 IP，不进行第二次域名解析；任一私网答案即拒绝。重定向和子资源同样经过该代理。隐式 loopback bypass、QUIC、非代理 WebRTC UDP 关闭；不使用 `--no-sandbox` 或忽略证书错误。
+
+HTTP/3 网络诊断独立于浏览器采集。诊断可读取 HTTPS 初始响应的 Alt-Svc，再对经过校验的字面 IP 执行限时的 QUIC 握手和 HTTPS 请求。它校验证书，展示实际 ALPN 和响应状态。选择本地代理的路径不提供 UDP 转发时，须由用户明确选择系统网络单独探测。
 
 普通运行无法从 GUI/API 放开私网。测试程序只为精确 loopback IP:port 或 `.test:port → loopback IP` 开启显式内存白名单；既不接受网段或通配符，也不保存为用户偏好。
 
@@ -75,6 +78,7 @@ SQLite WAL、busy_timeout、单连接事务；任务、请求、域名、事件�
 | GET /api/health | 名称、版本、健康 |
 | GET /api/session | 当前服务写操作令牌 |
 | GET /api/browsers | 已安装浏览器检测 |
+| POST /api/network/diagnose | 地址、DNS、TCP 诊断及可选 HTTP/3 探测 |
 | POST /api/scans | `{url, options?}` 创建任务 |
 | GET /api/scans | 最近 100 条任务，包含当前运行状态 |
 | GET /api/scans/history | 按 `q` 搜索历史，使用 `limit` 和 `offset` 分页 |
@@ -109,11 +113,11 @@ Linux 服务及桌面以普通用户运行 Chromium 沙箱。Compose 仅发布�
 
 ## 预览与工作区
 
-导出设置与筛选属于前端临时状态。空合并先生成观察预览。两套规则源共享互斥的原子缓存写入器，初始化按来源依次执行。页面轮询来源元数据，分类版本或计数变化时才刷新完整分类索引。
+导出设置与筛选属于前端临时状态。未选分类时先生成观察预览。导出通过实际的本地分类目录判断是否能直接选择，任一来源的分类均可用。规则源共享互斥的原子缓存写入器，初始化按来源依次执行。页面轮询来源元数据，分类版本或计数变化时才刷新完整分类索引。
 
 条目默认每页 30 条，按规则键保存排除项。文件可按行分页或完整显示，行号和总行数与分页无关。复制与下载使用完整内容。合并复制先校验版本，再通过用户点击完成。预览、规则文件和来源说明采用 16 MiB 大小上限。合并还限制候选条目和来源数。普通 JSON 请求限制为 2 MiB，并执行单对象与未知字段校验。
 
-清空解除当前任务与 SSE，丢弃迟到请求，重置面板状态和本次参数。历史和默认设置存于 SQLite。系统减少动态效果同时影响主题和 CSS。
+清空解除当前任务与 SSE，丢弃迟到请求并重置面板。当前模式和配置继续用于下次采集。历史及默认设置存于 SQLite，软件设置中可永久保存参数。网络诊断可临时应用 DNS 和代理到下次扫描。系统减少动态效果同时影响主题和 CSS。
 
 ## 统一窗口栏
 
