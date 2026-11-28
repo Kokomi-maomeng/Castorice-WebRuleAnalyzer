@@ -1,6 +1,7 @@
 .domain-panel {
   --domain-action-size: 44px;
-  --domain-motion: 180ms cubic-bezier(0.2, 0, 0, 1);
+  --domain-motion: var(--motion-standard) var(--motion-ease);
+  container: domains / inline-size;
 }
 
 .domain-heading {
@@ -13,7 +14,7 @@
 }
 
 .domain-heading > .MuiTypography-root {
-  flex-shrink: 0;
+  min-width: 0;
 }
 
 .domain-search {
@@ -195,4 +196,31 @@
 .domain-footer {
   flex-shrink: 0;
   padding: 8px 12px;
+}
+
+@container domains (max-width: 340px) {
+  .domain-heading[data-search-open="true"] {
+    flex-wrap: wrap;
+  }
+  .domain-heading[data-search-open="true"] .domain-search {
+    flex-basis: 100%;
+  }
+}
+
+@container domains (max-width: 245px) {
+  .domain-panel .domain-row-action {
+    width: 34px;
+    height: 36px;
+  }
+  .domain-row .domain-request {
+    padding-inline: 40px;
+  }
+  .domain-toolbar,
+  .domain-row {
+    grid-template-columns: 3px 34px minmax(0, 1fr) 34px 3px;
+  }
+  .domain-toolbar-controls {
+    flex-wrap: wrap;
+    row-gap: 0;
+  }
 }

@@ -23,6 +23,7 @@ import {
   RefreshRounded,
 } from "@mui/icons-material";
 import useRangeSelection from "../hooks/useRangeSelection";
+import { selectAllInList } from "../utils/selection";
 import type { HistoryDeletion, HistoryPage, ScanTask } from "../types";
 import { api } from "../services/api";
 import {
@@ -75,20 +76,24 @@ export default function HistoryDialog(p: Props) {
   const requestedQuery = useRef("");
   const mounted = useRef(true);
   const { transitions } = useTheme();
+  const selectableIDs = history.items
+    .filter((task) => !active(task))
+    .map((task) => task.id);
+  function setRecordsSelected(keys: readonly string[], checked: boolean) {
+    setSelected((old) => {
+      const updated = new Set(old);
+      for (const key of keys) {
+        if (checked) updated.add(key);
+        else updated.delete(key);
+      }
+      return updated;
+    });
+  }
   const select = useRangeSelection({
-    keys: history.items.filter((task) => !active(task)).map((task) => task.id),
+    keys: selectableIDs,
     scope: `${result?.page ?? 0}:${result?.query ?? ""}`,
     isSelected: (key) => selected.has(key),
-    onSelect: (keys, checked) => {
-      setSelected((old) => {
-        const updated = new Set(old);
-        for (const key of keys) {
-          if (checked) updated.add(key);
-          else updated.delete(key);
-        }
-        return updated;
-      });
-    },
+    onSelect: setRecordsSelected,
   });
 
   useEffect(() => {
@@ -195,13 +200,15 @@ export default function HistoryDialog(p: Props) {
           transition: { onExited: p.onExited },
         }}
       >
-        <DialogTitle id="history-title" className="history-title">
-          扫描历史
+        <DialogTitle
+          id="history-heading"
+          className="dialog-heading history-title"
+        >
+          <span id="history-title">扫描历史</span>
           <IconButton
             aria-label="刷新历史"
             onClick={() => setRefresh((count) => count + 1)}
             disabled={loading || busy}
-            sx={{ ml: 1 }}
           >
             <RefreshRounded />
           </IconButton>
@@ -209,7 +216,7 @@ export default function HistoryDialog(p: Props) {
             aria-label="关闭历史"
             onClick={p.onClose}
             disabled={busy}
-            sx={{ float: "right" }}
+            sx={{ ml: "auto" }}
           >
             <CloseRounded />
           </IconButton>
@@ -260,6 +267,12 @@ export default function HistoryDialog(p: Props) {
               tabIndex={0}
               aria-label="历史列表"
               aria-busy={loading}
+              onKeyDown={(event) =>
+                selectAllInList(event, () => {
+                  if (!busy && !loading)
+                    setRecordsSelected(selectableIDs, true);
+                })
+              }
             >
               <div ref={results} className="history-results">
                 {history.items.map((t) => {
@@ -286,7 +299,12 @@ export default function HistoryDialog(p: Props) {
                           input: { "aria-label": `选择历史 ${host}` },
                         }}
                         onClick={(event) => {
-                          if (selectable) select(t.id, event.shiftKey);
+                          if (selectable) {
+                            event.currentTarget
+                              .querySelector("input")
+                              ?.focus({ preventScroll: true });
+                            select(t.id, event.shiftKey);
+                          }
                         }}
                       />
                       <ButtonBase
@@ -301,6 +319,7 @@ export default function HistoryDialog(p: Props) {
                             event.metaKey ||
                             event.shiftKey
                           ) {
+                            event.currentTarget.focus({ preventScroll: true });
                             if (selectable) select(t.id, event.shiftKey);
                           } else p.onOpen(t);
                         }}

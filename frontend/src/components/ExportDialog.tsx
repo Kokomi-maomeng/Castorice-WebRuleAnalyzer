@@ -50,6 +50,7 @@ import type {
 } from "../types";
 import { api, copy, download } from "../services/api";
 import useRangeSelection from "../hooks/useRangeSelection";
+import { selectAllInList } from "../utils/selection";
 import { errorMessage, ruleCatalogKey, tipText } from "../utils/format";
 import ContextHelp from "./ContextHelp";
 import SegmentedControl from "./SegmentedControl";
@@ -652,6 +653,7 @@ export default function ExportDialog(p: Props) {
 
   return (
     <Dialog
+      aria-labelledby="export-dialog-title"
       slotProps={{ transition: { onExited: p.onExited } }}
       open={p.open ?? true}
       onClose={p.onClose}
@@ -659,8 +661,10 @@ export default function ExportDialog(p: Props) {
       fullWidth
       className="export-dialog"
     >
-      <DialogTitle className="export-title">
-        <Box component="span">预览与导出规则</Box>
+      <DialogTitle id="export-dialog-heading" className="export-title">
+        <Box component="span" id="export-dialog-title">
+          预览与导出规则
+        </Box>
         {scopeWarnings.length > 0 && (
           <ContextHelp
             label="查看抓取与范围提示"
@@ -1010,7 +1014,6 @@ export default function ExportDialog(p: Props) {
           </Box>
           {result && !error && (
             <Stack direction="row" className="export-summary">
-              <Chip label={`抓取 ${result.observed_domains} 个域名`} />
               <Chip label={`重复或覆盖 ${result.duplicate_or_covered} 条`} />
               <Chip
                 label={`${draft !== undefined && draft !== result.content ? "原预览" : "最终导出"} ${result.final_rules} 条`}
@@ -1045,6 +1048,11 @@ export default function ExportDialog(p: Props) {
             aria-labelledby="export-entries-tab"
             className="preview-panel"
             aria-busy={loading}
+            onKeyDown={(event) =>
+              selectAllInList(event, () => {
+                if (currentScope) setEntriesSelected(entryKeys, true);
+              })
+            }
           >
             <Stack direction="row" className="preview-toolbar">
               <TextField
@@ -1083,7 +1091,13 @@ export default function ExportDialog(p: Props) {
                 恢复全选
               </Button>
             </Stack>
-            <TableContainer ref={entryScroll} className="preview-scroll">
+            <TableContainer
+              ref={entryScroll}
+              className="preview-scroll scroll-region"
+              role="region"
+              aria-label="预览条目列表"
+              tabIndex={0}
+            >
               <Table size="small" stickyHeader sx={{ tableLayout: "fixed" }}>
                 <TableHead>
                   <TableRow>
@@ -1118,11 +1132,19 @@ export default function ExportDialog(p: Props) {
                         className="preview-row"
                         data-selectable={currentScope}
                         data-selected={!excluded.has(key)}
+                        tabIndex={-1}
                         onMouseDown={(event) => {
                           if (event.shiftKey) event.preventDefault();
                         }}
                         onClick={(event) => {
-                          if (currentScope) selectEntry(key, event.shiftKey);
+                          if (!currentScope) return;
+                          if (
+                            !event.currentTarget.contains(
+                              document.activeElement,
+                            )
+                          )
+                            event.currentTarget.focus({ preventScroll: true });
+                          selectEntry(key, event.shiftKey);
                         }}
                       >
                         <TableCell padding="checkbox">

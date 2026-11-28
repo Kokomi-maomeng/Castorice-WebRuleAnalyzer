@@ -106,7 +106,7 @@ export default function AppTitleBar({
               Castorice-WebRuleAnalyzer
             </Box>
             <Box component="span" className="brand-short">
-              Web规则分析器
+              规则分析器
             </Box>
             <Typography
               component="span"

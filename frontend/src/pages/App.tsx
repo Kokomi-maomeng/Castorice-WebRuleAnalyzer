@@ -30,6 +30,7 @@ import { useActiveScan } from "../hooks/useActiveScan";
 import { useScanAddress } from "../hooks/useScanAddress";
 import { maxZoom, minZoom, useAppZoom } from "../hooks/useAppZoom";
 import { api } from "../services/api";
+import { isApplicationSelectAll } from "../utils/selection";
 import {
   active,
   errorMessage,
@@ -79,8 +80,6 @@ export default function App() {
   const [notice, notify] = useState("");
   const [dialog, setDialog] = useState("");
   const pendingHistory = useRef<ScanTask>(undefined);
-  const [settingsLibrary, setSettingsLibrary] = useState(false);
-  const [settingsLibraryOpen, setSettingsLibraryOpen] = useState(false);
   function openDialog(name: string) {
     setDialog(name);
     setDialogOpen(true);
@@ -127,6 +126,13 @@ export default function App() {
     return () => window.removeEventListener("castorice-system-theme", changed);
   }, []);
   const { zoom, changeZoom } = useAppZoom();
+  useEffect(() => {
+    function preventPageSelection(event: KeyboardEvent) {
+      if (isApplicationSelectAll(event)) event.preventDefault();
+    }
+    window.addEventListener("keydown", preventPageSelection);
+    return () => window.removeEventListener("keydown", preventPageSelection);
+  }, []);
   const { activeTask: backgroundTask, rememberActive } = useActiveScan(task);
   const currentActive = active(task)
     ? task
@@ -192,12 +198,12 @@ export default function App() {
     setExcluded(new Set());
     setFilter(emptyFilter);
     setTab(0);
-    setMobilePanel("domains");
   }
   function openTask(t: ScanTask) {
     const redacted = t.target_redacted || isRedacted(t.target_url);
     const saved = redacted ? undefined : savedScanTarget(t);
     resetView();
+    setMobilePanel("domains");
     setID(t.id);
     address.edit(redacted ? "" : scanTargetLabel(t.target_url), saved);
     setHistoryTarget(redacted ? scanTargetLabel(t.target_url) : "");
@@ -216,6 +222,7 @@ export default function App() {
     setResetCount((v) => v + 1);
     setLibraryCategory(undefined);
     resetView();
+    setMobilePanel("domains");
   }
   async function start() {
     if (!options || busy || running) return;
@@ -238,7 +245,6 @@ export default function App() {
       setID(scan.id);
       setTask(scan);
       rememberActive(scan);
-      setTab(0);
     } catch (e) {
       address.setIssue(scanAddressIssue(e));
     } finally {
@@ -469,31 +475,15 @@ export default function App() {
               canShowBrowser={canShowBrowser}
               browserManaged={browserManaged}
               settings={settings}
-              selectedMode={selectedMode ?? settings.scan.mode}
+              selectedMode={options?.mode ?? settings.scan.mode}
               onSave={(value) => {
                 setSettings(value);
                 setScanMode(undefined);
                 setScanNetwork(undefined);
               }}
               onClose={closeDialog}
-              onLibrary={() => {
-                setSettingsLibrary(true);
-                setSettingsLibraryOpen(true);
-              }}
               notify={notify}
-            >
-              {settingsLibrary && (
-                <RuleLibrary
-                  open={settingsLibraryOpen}
-                  onClose={() => setSettingsLibraryOpen(false)}
-                  onExited={() => {
-                    if (!settingsLibraryOpen) setSettingsLibrary(false);
-                  }}
-                  notify={notify}
-                  onRematch={() => void rematch()}
-                />
-              )}
-            </SettingsDialog>
+            />
           )}
           {dialog === "network" && options && (
             <NetworkDialog
@@ -531,6 +521,7 @@ export default function App() {
               initialCategory={libraryCategory?.id}
               expectedVersion={libraryCategory?.version}
               expectedPath={libraryCategory?.path}
+              zoom={zoom}
               onClose={closeDialog}
               notify={notify}
               onRematch={() => void rematch()}

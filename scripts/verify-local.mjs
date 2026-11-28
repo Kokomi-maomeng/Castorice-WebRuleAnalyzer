@@ -6,6 +6,7 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
+import { verifyModes, verifyResponsive, verifyRuleLibrary } from './verify-responsive.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const require = createRequire(new URL('../frontend/package.json', import.meta.url));
@@ -103,6 +104,8 @@ async function verifyHistoryLayout(page, baseTask) {
     await first.click({ modifiers: ['Control'] });
     await dialog.getByRole('button', { name: '打开历史 entry-4.example.com' }).click({ modifiers: ['Shift'] });
     assert.equal(await dialog.locator('.history-content input:checked').count(), 5, 'Shift includes every visible record in the range');
+    await page.keyboard.press('Control+a');
+    assert.equal(await dialog.locator('.history-content input:checked').count(), 30, 'Ctrl+A selects the current history page');
     assert(await first.evaluate(row => {
       const badge = row.querySelector('.MuiChip-root');
       const badgeRect = badge.getBoundingClientRect();
@@ -159,6 +162,10 @@ async function verify(name, fixturePort) {
     const target = page.getByRole('textbox', { name: '要分析的网站' });
     await target.waitFor();
     assert.equal(await target.inputValue(), '', 'Blank workspace');
+    await verifyModes(page);
+    await target.fill('example.com');
+    await target.press('Control+a');
+    assert(await target.evaluate(input => input.selectionStart === 0 && input.selectionEnd === input.value.length), 'Address text keeps native select-all');
     const help = page.getByRole('button', { name: '查看地址问题' });
     for (const [raw, hint] of [
       ['hostname', /域名后缀/],
@@ -297,7 +304,12 @@ async function verify(name, fixturePort) {
     assert.equal(copyTarget.height, selectTarget.height);
     await checkbox.click();
     assert.equal(await page.getByRole('tab', { name: '网络请求' }).getAttribute('aria-selected'), 'false');
+    assert.equal(await checkbox.isChecked(), false, 'Row checkbox toggles selection');
+    await page.keyboard.press('Control+a');
+    assert(await checkbox.isChecked(), 'Ctrl+A selects the domains when focus is in the list');
     await checkbox.click();
+    await page.keyboard.press('Meta+a');
+    assert(await checkbox.isChecked(), 'Command+A selects the domains when focus is in the list');
     await row.getByText(/次 ·/).click();
     assert.equal(await page.getByRole('textbox', { name: '精确主机' }).inputValue(), 'scan.test');
     await page.getByRole('tab', { name: '抓取流程' }).click();
@@ -310,6 +322,8 @@ async function verify(name, fixturePort) {
     const workspace = page.getByRole('main', { name: '扫描工作区' });
     await workspace.evaluate((node) => { node.scrollTop = 0; });
     await workspace.focus();
+    await page.keyboard.press('Control+a');
+    assert.equal(await page.evaluate(() => getSelection().toString()), '', 'Select-all does not highlight application text');
     await page.keyboard.press('PageDown');
     await waitFor(() => workspace.evaluate((node) => node.scrollTop > 0), 'Keyboard work area cannot scroll');
     await workspace.evaluate((node) => { node.scrollTop = 0; });
@@ -317,6 +331,14 @@ async function verify(name, fixturePort) {
     await page.mouse.wheel(0, 480);
     await waitFor(() => workspace.evaluate((node) => node.scrollTop > 0), 'Wheel work area cannot scroll');
     await page.getByRole('button', { name: '预览与导出规则' }).click();
+    const preview = page.getByRole('dialog', { name: '预览与导出规则', exact: true });
+    const observedRow = preview.locator('.preview-row').first();
+    await observedRow.locator('code').click();
+    const observedCheckbox = observedRow.getByRole('checkbox');
+    assert.equal(await observedCheckbox.isChecked(), false);
+    await page.keyboard.press('Control+a');
+    assert(await observedCheckbox.isChecked(), 'Ctrl+A selects preview entries after clicking the row text');
+    assert.equal(await preview.getByText(/^抓取 \d+ 个域名$/).count(), 0);
     const files = [];
     for (const [i, format] of ['Clash / Mihomo', 'Rule Provider', 'sing-box'].entries()) {
       if (i === 1) await page.setViewportSize({ width: 1220, height: 800 });
@@ -333,16 +355,42 @@ async function verify(name, fixturePort) {
       files.push(format);
     }
     await page.getByRole('button', { name: '关闭导出', exact: true }).click();
+    const screenshots = name === 'chrome' ? stage : undefined;
+    const layouts = await verifyResponsive(page, screenshots);
+    await verifyRuleLibrary(page, screenshots);
     await verifyHistoryLayout(page, await request(`/scans/${id}`));
     await page.getByRole('button', { name: '扫描历史' }).click();
     await page.getByRole('button', { name: /^打开历史 / }).first().press('Enter');
     await page.getByRole('dialog', { name: '扫描历史' }).waitFor({ state: 'hidden' });
     assert.equal(await target.inputValue(), 'scan.test');
     assert(await page.getByRole('button', { name: '开始采集' }).isEnabled());
-    await page.getByRole('button', { name: '清空工作区' }).click();
+    await page.getByRole('button', { name: '重置工作区' }).click();
     await page.getByText('等待首次发现').waitFor();
+    if (name === 'chrome') {
+      const touchPage = await browser.newPage({
+        viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true,
+        deviceScaleFactor: 2, reducedMotion: 'reduce',
+      });
+      try {
+        await touchPage.goto(base);
+        const depth = touchPage.getByRole('radio', { name: '深度' });
+        await depth.tap();
+        assert(await depth.isChecked());
+        await touchPage.getByRole('tooltip').filter({ hasText: '同源链接' }).waitFor();
+        await touchPage.getByRole('button', { name: '开源规则库', exact: true }).tap();
+        await touchPage.getByRole('button', { name: '展开规则库设置' }).tap();
+        await touchPage.getByRole('complementary', { name: '规则库设置' }).waitFor();
+        await touchPage.getByRole('button', { name: '收起规则库设置' }).tap();
+        await touchPage.getByRole('button', { name: '关闭规则库' }).tap();
+      } finally {
+        await touchPage.close();
+      }
+    }
     assert.deepEqual(pageErrors, []);
-    return { engine: name, requests: all.total, exact: exact.total, exports: files, viewport: [320, 256], historyRows: 67, inlineAddressChecks: 3, rootAddress: true, weakNetworkReads: domainReads, passed: true };
+    return { engine: name, requests: all.total, exact: exact.total, exports: files, viewport: [320, 256], layouts, historyRows: 67, inlineAddressChecks: 3, rootAddress: true, weakNetworkReads: domainReads, passed: true };
+  } catch (error) {
+    await browser.contexts()[0]?.pages()[0]?.screenshot({ path: path.join(stage, name + '-failure.png'), timeout: 5000 }).catch(() => {});
+    throw error;
   } finally {
     await browser.close();
   }

@@ -64,6 +64,12 @@ export default function ScanControls(p: Props) {
         }}
         className="scan-form"
       >
+        <ScanModeSelect
+          value={p.options.mode}
+          onChange={p.setMode}
+          disabled={p.running || p.busy}
+          canShowBrowser={p.canShowBrowser}
+        />
         <Box className="scan-address">
           <TextField
             fullWidth
@@ -143,12 +149,6 @@ export default function ScanControls(p: Props) {
             </Paper>
           </Fade>
         </Box>
-        <ScanModeSelect
-          value={p.options.mode}
-          onChange={p.setMode}
-          disabled={p.running || p.busy}
-          canShowBrowser={p.canShowBrowser}
-        />
         <Stack direction="row" className="scan-actions" sx={{ gap: 0.75 }}>
           {p.running ? (
             <Button
@@ -177,12 +177,11 @@ export default function ScanControls(p: Props) {
             </Button>
           )}
           <Button
-            className="clear-workspace"
             startIcon={<RestartAltRounded />}
             onClick={() => p.onReset()}
             disabled={p.running || p.busy}
           >
-            清空工作区
+            重置工作区
           </Button>
         </Stack>
       </Box>

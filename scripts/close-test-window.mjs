@@ -61,7 +61,7 @@ try {
   await candidates[0].locator('.MuiSnackbar-root').waitFor({ state: 'hidden', timeout: 7000 });
   await candidates[0].screenshot({ path: process.env.CASTORICE_DESKTOP_SCREENSHOT.replace(/\.png$/, '-export.png') });
   await dialog.getByRole('button', { name: '关闭导出', exact: true }).click();
-  await candidates[0].getByRole('button', { name: '清空工作区', exact: true }).click();
+  await candidates[0].getByRole('button', { name: '重置工作区', exact: true }).click();
   await candidates[0].getByText('等待首次发现', { exact: true }).waitFor();
   await candidates[0].reload();
   await candidates[0].getByText('等待首次发现', { exact: true }).waitFor();

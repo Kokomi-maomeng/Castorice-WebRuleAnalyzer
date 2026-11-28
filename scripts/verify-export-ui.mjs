@@ -175,7 +175,7 @@ try {
  report.real.largeCategory = { id: largest.id, rules: largest.rule_count, previewEntries: latest.entries.length, elapsedMs: Math.round(performance.now() - started) };
  report.real.sources = await page.evaluate(async () => (await (await fetch('/api/rules/sources')).json()).data.map(s => ({ id: s.id, version: s.version, category_count: s.category_count })));
  await page.getByRole('button', { name: '关闭导出', exact: true }).click();
- await page.getByRole('button', { name: '清空工作区', exact: true }).click();
+ await page.getByRole('button', { name: '重置工作区', exact: true }).click();
  await page.getByText('等待首次发现', { exact: true }).waitFor();
  assert.equal(await page.getByRole('textbox', { name: '要分析的网站' }).inputValue(), '');
  await page.reload(); await page.getByText('等待首次发现', { exact: true }).waitFor();

@@ -1,33 +1,35 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import NumberedTextEditor, { SelectAllTextButton } from "./NumberedTextEditor";
+import RuleLibrarySettings, {
+  type RuleSourceOperation,
+} from "./RuleLibrarySettings";
 import {
   Alert,
   Box,
   Button,
-  Chip,
   CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
-  FormControlLabel,
   IconButton,
   Link,
   MenuItem,
   Stack,
-  Switch,
   TextField,
+  Tooltip,
   Typography,
 } from "@mui/material";
 import {
   CloseRounded,
   ContentCopyRounded,
-  RefreshRounded,
+  KeyboardDoubleArrowRightRounded,
   SettingsRounded,
 } from "@mui/icons-material";
 import type { RuleCategory, RuleSource } from "../types";
 import { api, copy } from "../services/api";
-import { date, errorMessage, ruleCatalogKey, tipText } from "../utils/format";
+import { errorMessage, ruleCatalogKey, tipText } from "../utils/format";
+import "../styles/rule-library.css";
 interface Props {
   open?: boolean;
   onExited?: () => void;
@@ -37,15 +39,8 @@ interface Props {
   initialCategory?: string;
   expectedVersion?: string;
   expectedPath?: string;
+  zoom?: number;
 }
-const names: Record<string, string> = {
-  not_initialized: "未下载",
-  syncing: "正在更新",
-  ready: "本地可用",
-  error: "更新失败",
-  cached: "使用旧缓存",
-  cache_invalid: "需重新更新",
-};
 export default function RuleLibrary(p: Props) {
   const [sources, setSources] = useState<RuleSource[]>([]);
   const [categories, setCategories] = useState<RuleCategory[]>([]);
@@ -60,7 +55,16 @@ export default function RuleLibrary(p: Props) {
   const [busy, setBusy] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [settings, setSettings] = useState(false);
+  const [refreshCatalog, setRefreshCatalog] = useState(0);
+  const [wide, setWide] = useState(true);
+  const layoutIsWide = useRef(true);
+  const [settingsOverride, setSettingsOverride] = useState<boolean>();
+  const settingsOpen = settingsOverride ?? wide;
+  const settingsID = useId();
+  const [workspace, setWorkspace] = useState<HTMLDivElement | null>(null);
+  const settingsToggle = useRef<HTMLButtonElement>(null);
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [clearError, setClearError] = useState("");
   const [details, setDetails] = useState("");
   const [detailsOpen, setDetailsOpen] = useState(false);
   function showDetails(kind: "license" | "warnings") {
@@ -69,6 +73,33 @@ export default function RuleLibrary(p: Props) {
   }
   const [limit, setLimit] = useState(100);
   const editor = useRef<HTMLTextAreaElement>(null);
+  useLayoutEffect(() => {
+    if (!workspace) return;
+    const resize = () => {
+      const { clientWidth, clientHeight } = workspace;
+      if (!clientWidth || !clientHeight) return;
+      const isWide = clientWidth >= 1020 && clientHeight >= 330;
+      if (isWide === layoutIsWide.current) return;
+      if (
+        !isWide &&
+        document.getElementById(settingsID)?.contains(document.activeElement)
+      )
+        settingsToggle.current?.focus({ preventScroll: true });
+      layoutIsWide.current = isWide;
+      setWide(isWide);
+      setSettingsOverride(undefined);
+    };
+    const frame = requestAnimationFrame(resize);
+    const observer =
+      typeof ResizeObserver === "undefined"
+        ? undefined
+        : new ResizeObserver(resize);
+    observer?.observe(workspace);
+    return () => {
+      cancelAnimationFrame(frame);
+      observer?.disconnect();
+    };
+  }, [workspace, settingsID, p.zoom]);
   const selectedVersion = sources.find(
     (s) => s.id === selected.split(":")[0],
   )?.version;
@@ -113,7 +144,7 @@ export default function RuleLibrary(p: Props) {
       clearTimeout(timer);
       clearInterval(interval);
     };
-  }, [query]);
+  }, [query, refreshCatalog]);
   useEffect(() => {
     if (!selected) return;
     let cancelled = false;
@@ -174,7 +205,7 @@ export default function RuleLibrary(p: Props) {
   }, [selected, selectedVersion]);
   async function action(
     id: string,
-    operation: "sync" | "check" | "auto",
+    operation: RuleSourceOperation,
     enabled?: boolean,
   ) {
     setBusy(id);
@@ -186,12 +217,6 @@ export default function RuleLibrary(p: Props) {
         { source: id, ...(operation === "auto" ? { enabled } : {}) },
         { timeoutMs: operation === "sync" ? 610_000 : 35_000 },
       );
-      setSources(await api<RuleSource[]>("/rules/sources"));
-      setCategories(
-        await api<RuleCategory[]>(
-          "/rules/categories?q=" + encodeURIComponent(query.trim()),
-        ),
-      );
       if (operation === "sync") {
         p.notify("规则原文与索引已更新到本地");
         p.onRematch();
@@ -199,10 +224,30 @@ export default function RuleLibrary(p: Props) {
       if (operation === "check") p.notify("已检查上游可达性与最新版本");
     } catch (e) {
       setError(errorMessage(e));
-      setSources(
-        await api<RuleSource[]>("/rules/sources").catch(() => sources),
-      );
     } finally {
+      setRefreshCatalog((previous) => previous + 1);
+      setBusy("");
+    }
+  }
+  async function clearLibrary() {
+    setBusy("clear");
+    setClearError("");
+    try {
+      await api("/rules/cache", "DELETE");
+      setCategories([]);
+      setSelected("");
+      setContent(undefined);
+      setDraft("");
+      setIncoming(undefined);
+      setLoading(false);
+      setError("");
+      setConfirmClear(false);
+      p.notify("已清理本地规则库");
+      p.onRematch();
+    } catch (e) {
+      setClearError(errorMessage(e));
+    } finally {
+      setRefreshCatalog((previous) => previous + 1);
       setBusy("");
     }
   }
@@ -211,8 +256,12 @@ export default function RuleLibrary(p: Props) {
   );
   const source = sources.find((s) => s.id === content?.source);
   const sourceURL =
-    source && content
-      ? source.repository + "/blob/" + content.version + "/" + content.path
+    source?.repository && content?.path
+      ? source.repository +
+        "/blob/" +
+        content.version +
+        "/" +
+        content.path.split("/").map(encodeURIComponent).join("/")
       : "";
   const expectedVersion =
     selected === p.initialCategory ? p.expectedVersion : undefined;
@@ -237,53 +286,36 @@ export default function RuleLibrary(p: Props) {
       onClose={p.onClose}
       className="library-dialog"
     >
-      <DialogTitle sx={{ py: 1, px: 2 }}>
-        <Stack direction="row" sx={{ gap: 1, alignItems: "center" }}>
-          <Typography variant="h6" id="rule-library-title" sx={{ flex: 1 }}>
-            开源规则库
-          </Typography>
-          <Button
-            size="small"
-            startIcon={<SettingsRounded />}
-            onClick={() => setSettings(true)}
-          >
-            规则库设置
-          </Button>
-          <IconButton aria-label="关闭规则库" onClick={p.onClose}>
-            <CloseRounded />
-          </IconButton>
-        </Stack>
-      </DialogTitle>
-      <DialogContent
-        dividers
-        sx={{
-          p: 0,
-          display: "flex",
-          flexDirection: "column",
-          overflow: "hidden",
-        }}
-      >
-        <Stack
-          direction="row"
-          className="library-toolbar"
-          sx={{ gap: 1, px: 2, py: 1.5, flexShrink: 0 }}
+      <DialogTitle id="rule-library-heading" className="dialog-heading">
+        <span id="rule-library-title">开源规则库</span>
+        <IconButton
+          aria-label="关闭规则库"
+          onClick={p.onClose}
+          sx={{ ml: "auto" }}
         >
+          <CloseRounded />
+        </IconButton>
+      </DialogTitle>
+      <DialogContent dividers className="library-body">
+        <Stack direction="row" className="library-toolbar">
           <TextField
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);
               setLimit(100);
             }}
-            placeholder="搜索分类或规则域名，如 Facebook"
+            placeholder="搜索分类或规则域名"
             slotProps={{ htmlInput: { "aria-label": "搜索规则分类" } }}
-            sx={{ flex: 1 }}
+            className="library-query"
           />
           <TextField
             select
             value={sourceFilter}
             onChange={(e) => setSourceFilter(e.target.value)}
-            slotProps={{ htmlInput: { "aria-label": "规则来源筛选" } }}
-            sx={{ minWidth: 130 }}
+            slotProps={{
+              select: { SelectDisplayProps: { "aria-label": "规则来源筛选" } },
+            }}
+            className="library-source-filter"
           >
             <MenuItem value="all">所有来源</MenuItem>
             {sources.map((s) => (
@@ -302,11 +334,18 @@ export default function RuleLibrary(p: Props) {
             {tipText(error)}
           </Alert>
         )}
-        <Box className="library-workspace">
+        <Box
+          className="library-workspace"
+          ref={setWorkspace}
+          data-wide={wide}
+          data-settings-open={settingsOpen}
+        >
           <Box
-            className="category-list"
+            className="category-list scroll-region"
             role="navigation"
             aria-label="规则分类列表"
+            tabIndex={0}
+            sx={{ borderColor: "divider" }}
           >
             <Typography
               variant="caption"
@@ -319,6 +358,7 @@ export default function RuleLibrary(p: Props) {
               <Button
                 key={c.id}
                 onClick={() => setSelected(c.id)}
+                aria-current={selected === c.id ? "true" : undefined}
                 className="category-button"
                 variant={selected === c.id ? "contained" : "text"}
                 sx={{
@@ -360,12 +400,66 @@ export default function RuleLibrary(p: Props) {
                       : "尚未下载规则库"}
                 </Typography>
                 {!sources.some((s) => s.category_count) && (
-                  <Button sx={{ mt: 1 }} onClick={() => setSettings(true)}>
+                  <Button
+                    sx={{ mt: 1 }}
+                    onClick={() => {
+                      setSettingsOverride(true);
+                      settingsToggle.current?.focus({ preventScroll: true });
+                    }}
+                  >
                     下载 / 自动更新设置
                   </Button>
                 )}
               </Box>
             )}
+          </Box>
+          <Box className="rule-reader-toolbar" sx={{ borderColor: "divider" }}>
+            <Box className="rule-reader-label">
+              <Typography sx={{ fontWeight: 650 }}>
+                {content
+                  ? content.name + (content.format === "yaml" ? ".yaml" : "")
+                  : "规则原文"}
+              </Typography>
+              {content && (
+                <Typography variant="caption" color="text.secondary">
+                  {content.source} · {content.version.slice(0, 8)}
+                </Typography>
+              )}
+            </Box>
+            {content && !loading && (wide || !settingsOpen) && (
+              <Box className="rule-reader-actions">
+                <SelectAllTextButton editorRef={editor} />
+                <Button
+                  size="small"
+                  startIcon={<ContentCopyRounded />}
+                  onClick={() =>
+                    void copy(draft)
+                      .then(() => p.notify("规则文本已复制"))
+                      .catch((e) => p.notify(errorMessage(e)))
+                  }
+                >
+                  复制
+                </Button>
+              </Box>
+            )}
+            <Tooltip title={settingsOpen ? "收起规则库设置" : "展开规则库设置"}>
+              <IconButton
+                size="small"
+                ref={settingsToggle}
+                className="rule-settings-toggle"
+                color={settingsOpen ? "primary" : "default"}
+                aria-label={settingsOpen ? "收起规则库设置" : "展开规则库设置"}
+                aria-expanded={settingsOpen}
+                aria-controls={settingsOpen ? settingsID : undefined}
+                onClick={() => setSettingsOverride(!settingsOpen)}
+              >
+                {settingsOpen ? (
+                  <KeyboardDoubleArrowRightRounded />
+                ) : (
+                  <SettingsRounded />
+                )}
+              </IconButton>
+            </Tooltip>
           </Box>
           <Box className="rule-reader">
             {expectedVersion &&
@@ -418,39 +512,6 @@ export default function RuleLibrary(p: Props) {
               </Stack>
             ) : content ? (
               <>
-                <Stack
-                  direction="row"
-                  sx={{
-                    gap: 1,
-                    alignItems: "center",
-                    flexWrap: "wrap",
-                    p: 1.5,
-                    borderBottom: 1,
-                    borderColor: "divider",
-                  }}
-                >
-                  <Box sx={{ flex: 1, minWidth: 100 }}>
-                    <Typography sx={{ fontWeight: 650 }}>
-                      {content.name}
-                      {content.format === "yaml" ? ".yaml" : ""}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      {content.source} · {content.version.slice(0, 8)}
-                    </Typography>
-                  </Box>
-                  <SelectAllTextButton editorRef={editor} />
-                  <Button
-                    size="small"
-                    startIcon={<ContentCopyRounded />}
-                    onClick={() =>
-                      void copy(draft)
-                        .then(() => p.notify("规则文本已复制"))
-                        .catch((e) => p.notify(errorMessage(e)))
-                    }
-                  >
-                    复制
-                  </Button>
-                </Stack>
                 <NumberedTextEditor
                   editorRef={editor}
                   label="规则原文编辑区"
@@ -476,14 +537,16 @@ export default function RuleLibrary(p: Props) {
                     borderColor: "divider",
                   }}
                 >
-                  <Link
-                    href={sourceURL}
-                    target="_blank"
-                    rel="noreferrer"
-                    variant="caption"
-                  >
-                    上游原文件
-                  </Link>
+                  {sourceURL && (
+                    <Link
+                      href={sourceURL}
+                      target="_blank"
+                      rel="noreferrer"
+                      variant="caption"
+                    >
+                      上游原文件
+                    </Link>
+                  )}
                   <Button size="small" onClick={() => showDetails("license")}>
                     许可证
                   </Button>
@@ -502,15 +565,7 @@ export default function RuleLibrary(p: Props) {
                     >
                       恢复原文
                     </Button>
-                  ) : (
-                    <Typography
-                      variant="caption"
-                      color="text.secondary"
-                      sx={{ ml: "auto" }}
-                    >
-                      原文可完整选中、编辑、复制
-                    </Typography>
-                  )}
+                  ) : null}
                 </Stack>
               </>
             ) : (
@@ -535,121 +590,61 @@ export default function RuleLibrary(p: Props) {
               </Stack>
             )}
           </Box>
+          {settingsOpen && (
+            <RuleLibrarySettings
+              id={settingsID}
+              sources={sources}
+              busy={busy}
+              onSourceAction={(id, operation, enabled) =>
+                void action(id, operation, enabled)
+              }
+              onClear={() => {
+                setClearError("");
+                setConfirmClear(true);
+              }}
+            />
+          )}
         </Box>
       </DialogContent>
       <Dialog
-        open={settings}
-        aria-labelledby="rule-settings-title"
-        onClose={() => setSettings(false)}
+        open={confirmClear}
+        aria-labelledby="clear-library-title"
+        aria-describedby="clear-library-description"
+        onClose={() => {
+          if (!busy) setConfirmClear(false);
+        }}
         fullWidth
-        maxWidth="sm"
+        maxWidth="xs"
       >
-        <DialogTitle id="rule-settings-title">规则库设置</DialogTitle>
+        <DialogTitle id="clear-library-title">清理规则库</DialogTitle>
         <DialogContent dividers>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            开启后立即下载，运行期间每天检查更新。更新失败时保留旧缓存。
-            下载通过服务进程的系统网络和代理环境连接 GitHub，独立于扫描的 DNS
-            和本机代理
+          <Typography id="clear-library-description" variant="body2">
+            此操作会移除已下载的规则。自动更新开关会保留，已开启的来源会重新下载
           </Typography>
-          {sources.map((s) => (
-            <Box
-              key={s.id}
-              sx={{
-                border: 1,
-                borderColor: "divider",
-                borderRadius: 2,
-                p: 1.5,
-                mb: 1.5,
-              }}
-            >
-              <Stack direction="row" sx={{ alignItems: "center", gap: 1 }}>
-                <Typography variant="subtitle2" sx={{ flex: 1 }}>
-                  {s.name}
-                </Typography>
-                <Chip
-                  size="small"
-                  label={names[s.status] || s.status}
-                  color={s.status === "ready" ? "success" : "default"}
-                />
-              </Stack>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={s.auto_update || false}
-                    disabled={!!busy}
-                    onChange={(_, checked) =>
-                      void action(s.id, "auto", checked)
-                    }
-                  />
-                }
-                label="自动更新到本地"
-              />
-              <Typography
-                variant="caption"
-                color="text.secondary"
-                sx={{ display: "block" }}
-              >
-                {s.loaded_count} / {s.category_count} 分类 · 更新于{" "}
-                {date(s.updated_at)} · {s.version.slice(0, 8) || "—"}
-              </Typography>
-              <Typography
-                variant="caption"
-                color="text.secondary"
-                sx={{ display: "block" }}
-              >
-                检查于 {date(s.checked_at)}
-                {s.remote_version && s.remote_version !== s.version
-                  ? " · 有新版本可下载"
-                  : s.remote_version
-                    ? " · 已是当前上游版本"
-                    : ""}
-              </Typography>
-              {s.error && (
-                <Alert severity="warning" sx={{ my: 1 }}>
-                  {tipText(s.error)}
-                </Alert>
-              )}
-              <Stack direction="row" sx={{ gap: 0.5, mt: 1 }}>
-                <Button
-                  size="small"
-                  disabled={
-                    !!busy || sources.some((v) => v.status === "syncing")
-                  }
-                  startIcon={
-                    busy === s.id || s.status === "syncing" ? (
-                      <CircularProgress size={14} />
-                    ) : (
-                      <RefreshRounded />
-                    )
-                  }
-                  onClick={() => void action(s.id, "sync")}
-                >
-                  {s.version ? "立即更新" : "下载规则库"}
-                </Button>
-                <Button
-                  size="small"
-                  disabled={
-                    !!busy || sources.some((v) => v.status === "syncing")
-                  }
-                  onClick={() => void action(s.id, "check")}
-                >
-                  检查更新
-                </Button>
-                <Link
-                  sx={{ ml: "auto", alignSelf: "center" }}
-                  variant="caption"
-                  href={s.repository}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  上游 · {s.license}
-                </Link>
-              </Stack>
-            </Box>
-          ))}
+          {clearError && (
+            <Alert severity="error" sx={{ mt: 1 }}>
+              {tipText(clearError)}
+            </Alert>
+          )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setSettings(false)}>完成</Button>
+          <Button
+            autoFocus
+            disabled={!!busy}
+            onClick={() => setConfirmClear(false)}
+          >
+            取消
+          </Button>
+          <Button
+            color="error"
+            variant="contained"
+            disabled={
+              !!busy || sources.some((source) => source.status === "syncing")
+            }
+            onClick={() => void clearLibrary()}
+          >
+            {busy === "clear" ? "正在清理…" : "确认清理"}
+          </Button>
         </DialogActions>
       </Dialog>
       <Dialog

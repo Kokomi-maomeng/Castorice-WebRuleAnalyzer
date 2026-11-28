@@ -3,6 +3,18 @@
   --app-viewport-width: calc(100vw / var(--app-zoom));
   --app-viewport-height: calc(100vh / var(--app-zoom));
   --app-viewport-height: calc(100dvh / var(--app-zoom));
+  --font-ui:
+    "Segoe UI", "Microsoft YaHei UI", "PingFang SC", "Noto Sans CJK SC",
+    system-ui, sans-serif;
+  --font-code:
+    "Cascadia Code", Consolas, "SFMono-Regular", "Liberation Mono",
+    "Noto Sans Mono CJK SC", monospace;
+  --font-size-code: 0.8125rem;
+  --motion-quick: 160ms;
+  --motion-standard: 180ms;
+  --motion-enter: 240ms;
+  --motion-ease: cubic-bezier(0.2, 0, 0, 1);
+  --motion-exit-ease: cubic-bezier(0.3, 0, 1, 1);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -41,7 +53,8 @@ body {
 }
 .desktop-closing body {
   pointer-events: none;
-  animation: desktop-window-exit 180ms cubic-bezier(0.3, 0, 1, 1) forwards;
+  animation: desktop-window-exit var(--motion-standard) var(--motion-exit-ease)
+    forwards;
 }
 @keyframes desktop-window-exit {
   to {
@@ -65,8 +78,18 @@ body {
 }
 code,
 pre,
-.mono {
-  font-family: Consolas, "Cascadia Code", monospace;
+.mono,
+.domain-name {
+  font-family: var(--font-code);
+}
+.dialog-heading.MuiDialogTitle-root {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 16px;
+}
+.dialog-heading > .MuiIconButton-root {
+  flex: none;
 }
 pre {
   white-space: pre-wrap;
@@ -85,8 +108,7 @@ pre {
   background: transparent;
 }
 .domain-name {
-  font-family: Consolas, "Cascadia Code", monospace;
-  font-size: 13px;
+  font-size: var(--font-size-code);
   overflow-wrap: anywhere;
 }
 .segmented-control {
@@ -108,7 +130,7 @@ pre {
   border-radius: 8px;
   background: var(--segment-active);
   pointer-events: none;
-  transition: transform 180ms cubic-bezier(0.2, 0, 0, 1);
+  transition: transform var(--motion-standard) var(--motion-ease);
 }
 .segmented-option {
   position: relative;
@@ -132,7 +154,7 @@ pre {
   min-height: 32px;
   padding: 3px 6px;
   border-radius: 8px;
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 600;
   line-height: 1.25;
   overflow-wrap: anywhere;
@@ -150,6 +172,9 @@ pre {
 .segmented-option:has(> input:disabled) {
   cursor: default;
   color: var(--segment-disabled);
+}
+.segmented-option > input:disabled {
+  pointer-events: none;
 }
 .segmented-option > input:disabled:checked + span {
   color: inherit;
@@ -187,6 +212,18 @@ body {
   padding-inline: 12px 6px;
   gap: 2px;
   flex-shrink: 0;
+}
+.app-titlebar .titlebar-brand {
+  grid-area: brand;
+}
+.app-titlebar .titlebar-zoom {
+  grid-area: zoom;
+}
+.app-titlebar .titlebar-tools {
+  grid-area: tools;
+}
+.app-titlebar .window-buttons {
+  grid-area: window;
 }
 .app-titlebar.desktop-titlebar {
   padding-right: 0;
@@ -270,19 +307,21 @@ body {
 }
 .scan-form {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) max-content max-content;
+  grid-template-columns: max-content minmax(0, 1fr) max-content;
   align-items: center;
   gap: 10px;
 }
 .scan-mode {
-  width: 210px;
+  width: 14rem;
 }
 .scan-mode .segmented-option > span {
   padding-inline: 4px;
 }
 .scan-form .MuiButton-root {
-  white-space: nowrap;
   min-height: 40px;
+}
+.scan-actions {
+  flex-wrap: wrap;
 }
 .scan-address {
   min-width: 0;
@@ -316,7 +355,7 @@ body {
 }
 .history-footer > .MuiTablePagination-root {
   margin-inline-start: auto;
-  flex-shrink: 0;
+  max-width: 100%;
 }
 .history-footer .MuiTablePagination-toolbar {
   min-height: 44px;
@@ -327,6 +366,9 @@ body {
 }
 .history-footer .MuiTablePagination-actions {
   margin-inline-start: 6px;
+}
+.history-footer .MuiTablePagination-actions .MuiIconButton-root {
+  padding: 5px;
 }
 .advanced-grid {
   display: grid;
@@ -347,6 +389,9 @@ body {
 .analysis-panel {
   height: 100%;
   min-width: 0;
+}
+.analysis-panel {
+  container: analysis / inline-size;
 }
 .analysis-body {
   flex: 1;
@@ -369,14 +414,27 @@ body {
   gap: 8px;
   flex-shrink: 0;
 }
-.analysis-heading {
-  padding: 8px 16px;
+.panel-heading {
+  min-height: 52px;
 }
-.analysis-heading > .MuiChip-root {
+.analysis-heading {
+  flex-wrap: wrap;
+  column-gap: 10px;
+  row-gap: 4px;
+  padding: 6px 12px;
+}
+.analysis-heading .analysis-status {
+  height: auto;
+  min-height: 25px;
   flex-shrink: 0;
+  font-weight: 600;
+}
+.analysis-status .MuiChip-icon {
+  font-size: 16px;
 }
 .analysis-notices {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
@@ -387,6 +445,7 @@ body {
   display: flex;
   align-items: center;
   min-width: 0;
+  overflow-wrap: anywhere;
 }
 .analysis-notice .MuiIconButton-root {
   flex-shrink: 0;
@@ -402,6 +461,9 @@ body {
 .analysis-tab-row .analysis-scan-info {
   max-width: 46%;
   margin-inline-end: 16px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .analysis-metrics {
   display: grid;
@@ -432,36 +494,57 @@ body {
 .analysis-panel .MuiTablePagination-root {
   flex-shrink: 0;
 }
+.requests-pager .MuiTablePagination-toolbar {
+  padding-inline: 8px 2px;
+}
+.requests-pager .MuiTablePagination-actions {
+  margin-inline-start: 4px;
+}
+.requests-pager .MuiTablePagination-actions .MuiIconButton-root {
+  padding: 5px;
+}
+.analysis-log-list {
+  font: var(--font-size-code)/1.6 var(--font-code);
+}
+.analysis-log-entry {
+  display: flex;
+  align-items: baseline;
+  gap: 0 8px;
+  padding-block: 4px;
+}
+.analysis-log-message {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+@container analysis (max-width: 680px) {
+  .analysis-tab-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+  }
+  .analysis-tab-row .analysis-scan-info {
+    max-width: none;
+    margin: 0;
+    padding: 4px 12px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .analysis-notices {
+    flex: 1 0 100%;
+    justify-content: flex-start;
+    margin: 0;
+  }
+}
+@container analysis (max-width: 320px) {
+  .analysis-log-entry {
+    flex-wrap: wrap;
+  }
+  .analysis-log-message {
+    flex-basis: 100%;
+  }
+}
 .brand-short {
   display: none;
-}
-.library-dialog > .MuiDialog-container > .MuiDialog-paper {
-  width: calc(var(--app-viewport-width) - 48px);
-  max-width: 1440px;
-  height: calc(var(--app-viewport-height) - 48px);
-  max-height: calc(var(--app-viewport-height) - 48px);
-  margin: 24px;
-}
-.library-workspace {
-  display: grid;
-  grid-template-columns: 250px minmax(0, 1fr);
-  flex: 1;
-  min-height: 0;
-}
-.category-list {
-  min-height: 0;
-  overflow: auto;
-  padding: 0 8px 8px;
-  border-right: 1px solid #aca4b433;
-}
-.rule-reader {
-  min-height: 0;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-}
-.rule-reader > .MuiStack-root {
-  flex-shrink: 0;
 }
 .rule-editor {
   flex: 1;
@@ -471,10 +554,7 @@ body {
   border: 0;
   outline-offset: -3px;
   padding: 16px;
-  font:
-    13px/1.7 Consolas,
-    "Cascadia Code",
-    monospace;
+  font: var(--font-size-code)/1.65 var(--font-code);
   tab-size: 2;
   white-space: pre;
   overflow: auto;
@@ -485,10 +565,7 @@ body {
   min-width: 0;
   min-height: 100px;
   overflow: hidden;
-  font:
-    12px/1.7 Consolas,
-    "Cascadia Code",
-    monospace;
+  font: var(--font-size-code)/1.65 var(--font-code);
 }
 .numbered-editor-gutter {
   flex: none;
@@ -689,16 +766,16 @@ body {
   }
 }
 .motion-panel {
-  animation: panel-enter 180ms cubic-bezier(0.2, 0, 0, 1);
+  animation: panel-enter var(--motion-standard) var(--motion-ease);
 }
 .MuiButton-root,
 .MuiIconButton-root,
 .MuiTab-root,
 .category-button {
   transition:
-    transform 160ms cubic-bezier(0.2, 0, 0, 1),
-    background-color 160ms cubic-bezier(0.2, 0, 0, 1),
-    box-shadow 180ms cubic-bezier(0.2, 0, 0, 1) !important;
+    transform var(--motion-quick) var(--motion-ease),
+    background-color var(--motion-quick) var(--motion-ease),
+    box-shadow var(--motion-standard) var(--motion-ease) !important;
 }
 .MuiButton-root:active,
 .MuiIconButton-root:active,
@@ -707,8 +784,8 @@ body {
 }
 .preview-row {
   transition:
-    background-color 180ms cubic-bezier(0.2, 0, 0, 1),
-    opacity 180ms cubic-bezier(0.2, 0, 0, 1);
+    background-color var(--motion-standard) var(--motion-ease),
+    opacity var(--motion-standard) var(--motion-ease);
 }
 .preview-row[data-selected="false"] {
   background-color: #aca4b416;
@@ -719,8 +796,8 @@ body {
 .MuiSwitch-switchBase,
 .MuiSwitch-thumb,
 .MuiSwitch-track {
-  transition-duration: 180ms !important;
-  transition-timing-function: cubic-bezier(0.2, 0, 0, 1) !important;
+  transition-duration: var(--motion-standard) !important;
+  transition-timing-function: var(--motion-ease) !important;
 }
 @container application (max-width: 700px) {
   .export-library-actions .MuiButton-root {
@@ -787,17 +864,21 @@ body {
     flex-shrink: 0;
   }
   .scan-form {
-    grid-template-columns: minmax(0, 1fr) max-content;
+    grid-template-columns: max-content minmax(0, 1fr);
     gap: 8px;
   }
   .scan-form > .scan-address {
+    grid-row: 1;
+    grid-column: 2;
+  }
+  .scan-form > .scan-mode {
+    grid-row: 1;
+    grid-column: 1;
+    width: 13.5rem;
+  }
+  .scan-form .scan-actions {
     grid-column: 1 / -1;
-  }
-  .scan-form .scan-mode {
-    width: 100%;
-  }
-  .library-workspace {
-    grid-template-columns: 180px minmax(0, 1fr);
+    justify-content: flex-end;
   }
   .brand-full {
     display: none;
@@ -812,36 +893,6 @@ body {
   }
   .history-footer {
     padding-inline: 12px 4px;
-  }
-  .library-dialog > .MuiDialog-container > .MuiDialog-paper {
-    margin: 6px;
-    width: calc(var(--app-viewport-width) - 12px);
-    height: calc(var(--app-viewport-height) - 12px);
-    max-height: calc(var(--app-viewport-height) - 12px);
-    border-radius: 10px;
-  }
-  .library-workspace {
-    grid-template-columns: 120px minmax(0, 1fr);
-  }
-  .library-toolbar {
-    padding: 10px !important;
-  }
-  .category-list {
-    padding-inline: 3px;
-  }
-  .category-list .category-button {
-    padding: 7px !important;
-  }
-  .rule-editor {
-    padding: 10px;
-    font-size: 12px;
-  }
-  .rule-reader .MuiButton-root {
-    min-width: 36px;
-    padding: 4px 6px;
-  }
-  .rule-reader .MuiButton-startIcon {
-    display: none;
   }
   .app-titlebar.MuiToolbar-root {
     padding-inline-start: 6px;
@@ -870,16 +921,20 @@ body {
     grid-template-columns: minmax(0, 1fr);
   }
 }
-@container application (max-width: 359px) {
-  .desktop-titlebar .titlebar-tools .MuiIconButton-root {
-    width: 31px;
-  }
+@container application (max-width: 490px) {
   .scan-form {
     grid-template-columns: minmax(0, 1fr);
   }
-  .scan-form .scan-actions {
-    grid-column: 1 / -1;
-    justify-content: flex-end;
+  .scan-form > .scan-mode,
+  .scan-form > .scan-address {
+    grid-row: auto;
+    grid-column: 1;
+    width: 100%;
+  }
+}
+@container application (max-width: 359px) {
+  .desktop-titlebar .titlebar-tools .MuiIconButton-root {
+    width: 31px;
   }
 }
 @container application (max-width: 310px) {
@@ -899,6 +954,34 @@ body {
   .window-buttons,
   .titlebar-zoom {
     margin-inline: 2px;
+  }
+}
+@container application (max-width: 275px) {
+  .app-titlebar.MuiToolbar-root {
+    display: grid;
+    grid-template: "brand tools" auto "zoom zoom" auto / minmax(0, 1fr) auto;
+    height: auto;
+    justify-items: start;
+    column-gap: 2px;
+  }
+  .app-titlebar.desktop-titlebar {
+    grid-template: "brand window" auto "zoom tools" auto / minmax(0, 1fr) auto;
+  }
+  .titlebar-brand {
+    width: 100%;
+  }
+  .window-buttons {
+    height: 32px;
+  }
+  .app-main {
+    padding-inline: 6px;
+  }
+}
+@container application (max-width: 218px) {
+  .app-titlebar.desktop-titlebar {
+    grid-template:
+      "brand window" auto "zoom zoom" auto "tools tools" auto / minmax(0, 1fr)
+      auto;
   }
 }
 @container application (max-height: 500px) and (min-width: 561px) {
@@ -927,17 +1010,17 @@ body {
   }
 }
 .motion-row {
-  animation: row-enter 160ms cubic-bezier(0.2, 0, 0, 1);
+  animation: row-enter var(--motion-quick) var(--motion-ease);
 }
 .motion-surface {
-  animation: panel-enter 180ms cubic-bezier(0.2, 0, 0, 1);
+  animation: panel-enter var(--motion-standard) var(--motion-ease);
 }
 .app-shell,
 .app-shell .MuiPaper-root {
   transition:
-    background-color 180ms cubic-bezier(0.2, 0, 0, 1),
-    color 180ms cubic-bezier(0.2, 0, 0, 1),
-    border-color 180ms cubic-bezier(0.2, 0, 0, 1);
+    background-color var(--motion-standard) var(--motion-ease),
+    color var(--motion-standard) var(--motion-ease),
+    border-color var(--motion-standard) var(--motion-ease);
 }
 @media (prefers-reduced-motion: reduce) {
   *,

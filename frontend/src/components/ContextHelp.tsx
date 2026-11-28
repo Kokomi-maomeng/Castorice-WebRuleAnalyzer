@@ -35,7 +35,7 @@ export default function ContextHelp({
       placement={alignEnd ? "bottom-end" : "bottom-start"}
       slotProps={{
         tooltip: {
-          sx: { fontSize: 12, maxWidth: 340, whiteSpace: "pre-line" },
+          sx: { whiteSpace: "pre-line" },
         },
       }}
     >

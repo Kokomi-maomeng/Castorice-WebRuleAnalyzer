@@ -1,7 +1,7 @@
 import NetworkOptions from "./NetworkOptions";
 import ScanNumberFields, { invalidScanField } from "./ScanNumberFields";
 import { APP_VERSION } from "../version";
-import { useEffect, useId, useState, type ReactNode } from "react";
+import { useEffect, useId, useState } from "react";
 import {
   Alert,
   Box,
@@ -26,7 +26,6 @@ import {
   DarkModeRounded,
   DeleteOutlineRounded,
   DevicesRounded,
-  LibraryBooksRounded,
   LightModeRounded,
   SaveRounded,
 } from "@mui/icons-material";
@@ -49,9 +48,7 @@ interface Props {
   selectedMode: ScanOptions["mode"];
   onSave: (v: Settings) => void;
   onClose: () => void;
-  onLibrary: () => void;
   notify: (s: string) => void;
-  children?: ReactNode;
 }
 export default function SettingsDialog(p: Props) {
   const modeID = useId();
@@ -102,12 +99,12 @@ export default function SettingsDialog(p: Props) {
       setBusy(false);
     }
   }
-  async function clear(path: string, message: string) {
+  async function clearSessions() {
     setBusy(true);
     setError("");
     try {
-      await api(path, "DELETE");
-      p.notify(message);
+      await api("/browser/sessions", "DELETE");
+      p.notify("残留浏览器会话已清理");
     } catch (e) {
       setError(errorMessage(e));
     } finally {
@@ -123,14 +120,14 @@ export default function SettingsDialog(p: Props) {
       onClose={p.onClose}
       slotProps={{ transition: { onExited: p.onExited } }}
     >
-      <DialogTitle id="software-settings-heading">
+      <DialogTitle id="software-settings-heading" className="dialog-heading">
         <Box component="span" id="software-settings-title">
           软件设置
         </Box>
         <IconButton
           aria-label="关闭设置"
           onClick={p.onClose}
-          sx={{ float: "right" }}
+          sx={{ ml: "auto", flexShrink: 0 }}
         >
           <CloseRounded />
         </IconButton>
@@ -141,6 +138,44 @@ export default function SettingsDialog(p: Props) {
             {tipText(error)}
           </Alert>
         )}
+        <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 650 }}>
+          浏览器与会话
+        </Typography>
+        <TextField
+          select
+          fullWidth
+          label="已检测到的浏览器"
+          value={
+            browsers.some((b) => b.path === draft.scan.browser_path)
+              ? draft.scan.browser_path
+              : ""
+          }
+          onChange={(e) => setScan("browser_path", e.target.value)}
+          disabled={p.browserManaged}
+          helperText={
+            p.browserManaged
+              ? "采集浏览器由服务管理员指定"
+              : browsers.length
+                ? "从运行采集服务的电脑选择"
+                : "未检测到浏览器，请安装 Chrome、Edge 或 Chromium"
+          }
+        >
+          <MenuItem value="">自动检测（Chrome / Edge / Chromium）</MenuItem>
+          {browsers.map((b) => (
+            <MenuItem key={b.path} value={b.path}>
+              {b.name} · {b.path}
+            </MenuItem>
+          ))}
+        </TextField>
+        <Button
+          sx={{ mt: 1 }}
+          disabled={busy}
+          startIcon={<DeleteOutlineRounded />}
+          onClick={() => void clearSessions()}
+        >
+          清理残留会话
+        </Button>
+        <Divider sx={{ my: 3 }} />
         <Stack direction="row" sx={{ mb: 1, alignItems: "center", gap: 0.5 }}>
           <Typography variant="subtitle1" sx={{ fontWeight: 650 }}>
             扫描参数
@@ -219,36 +254,6 @@ export default function SettingsDialog(p: Props) {
         </Box>
         <Divider sx={{ my: 3 }} />
         <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 650 }}>
-          浏览器与会话
-        </Typography>
-        <TextField
-          select
-          fullWidth
-          label="已检测到的浏览器"
-          value={
-            browsers.some((b) => b.path === draft.scan.browser_path)
-              ? draft.scan.browser_path
-              : ""
-          }
-          onChange={(e) => setScan("browser_path", e.target.value)}
-          disabled={p.browserManaged}
-          helperText={
-            p.browserManaged
-              ? "采集浏览器由服务管理员指定"
-              : browsers.length
-                ? "从运行采集服务的电脑选择"
-                : "未检测到浏览器，请安装 Chrome、Edge 或 Chromium"
-          }
-        >
-          <MenuItem value="">自动检测（Chrome / Edge / Chromium）</MenuItem>
-          {browsers.map((b) => (
-            <MenuItem key={b.path} value={b.path}>
-              {b.name} · {b.path}
-            </MenuItem>
-          ))}
-        </TextField>
-        <Divider sx={{ my: 3 }} />
-        <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 650 }}>
           外观、日志与导出
         </Typography>
         <Stack direction="row" sx={{ gap: 1.5, flexWrap: "wrap" }}>
@@ -262,7 +267,7 @@ export default function SettingsDialog(p: Props) {
                 theme: e.target.value as Settings["theme"],
               }))
             }
-            sx={{ width: 150 }}
+            sx={{ maxWidth: "100%", width: 150 }}
           >
             {Object.entries(themeChoices).map(([value, { label, Icon }]) => (
               <MenuItem key={value} value={value}>
@@ -283,7 +288,7 @@ export default function SettingsDialog(p: Props) {
             onChange={(e) =>
               setDraft((d) => ({ ...d, log_level: e.target.value }))
             }
-            sx={{ width: 170 }}
+            sx={{ maxWidth: "100%", width: 170 }}
           >
             {["DEBUG", "INFO", "WARN", "ERROR"].map((l) => (
               <MenuItem key={l} value={l}>
@@ -301,7 +306,7 @@ export default function SettingsDialog(p: Props) {
                 export_format: e.target.value as Settings["export_format"],
               }))
             }
-            sx={{ flex: 1, minWidth: 180 }}
+            sx={{ flex: "1 1 180px", minWidth: 0 }}
           >
             <MenuItem value="clash">Clash / Mihomo YAML</MenuItem>
             <MenuItem value="provider">Rule Provider</MenuItem>
@@ -313,41 +318,11 @@ export default function SettingsDialog(p: Props) {
             onChange={(e) =>
               setDraft((d) => ({ ...d, policy: e.target.value }))
             }
-            sx={{ width: 140 }}
+            sx={{ maxWidth: "100%", width: 140 }}
           />
         </Stack>
         <Divider sx={{ my: 3 }} />
-        <Typography variant="subtitle1" sx={{ mb: 1.5, fontWeight: 650 }}>
-          规则库与本地缓存
-        </Typography>
-        <Stack direction="row" sx={{ gap: 1, flexWrap: "wrap" }}>
-          <Button startIcon={<LibraryBooksRounded />} onClick={p.onLibrary}>
-            管理 / 更新规则库
-          </Button>
-          <Button
-            color="warning"
-            disabled={busy}
-            startIcon={<DeleteOutlineRounded />}
-            onClick={() =>
-              void clear(
-                "/rules/cache",
-                "缓存已清理，保留更新开关；已开启的来源会重新下载",
-              )
-            }
-          >
-            清理规则缓存
-          </Button>
-          <Button
-            disabled={busy}
-            startIcon={<DeleteOutlineRounded />}
-            onClick={() =>
-              void clear("/browser/sessions", "残留浏览器会话已清理")
-            }
-          >
-            清理残留会话
-          </Button>
-        </Stack>
-        <Box sx={{ mt: 2 }}>
+        <Box>
           {window.castoriceDesktop && (
             <>
               <Typography
@@ -380,7 +355,6 @@ export default function SettingsDialog(p: Props) {
           保存设置
         </Button>
       </DialogActions>
-      {p.children}
     </Dialog>
   );
 }
