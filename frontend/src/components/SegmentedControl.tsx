@@ -1,5 +1,5 @@
-import { useId, type CSSProperties } from "react";
-import { Box } from "@mui/material";
+import { useEffect, useId, useRef, useState, type CSSProperties } from "react";
+import { Box, Tooltip } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 
 interface Option<T> {
@@ -25,8 +25,31 @@ export default function SegmentedControl<T extends string>({
   disabled?: boolean;
 }) {
   const name = useId();
+  const group = useRef<HTMLDivElement>(null);
+  const [hint, setHint] = useState<{ value: T; pinned: boolean }>();
+  const pinned = hint?.pinned;
+  useEffect(() => {
+    if (!pinned) return;
+    function dismissOutside(event: PointerEvent) {
+      if (
+        event.target instanceof Node &&
+        !group.current?.contains(event.target)
+      )
+        setHint(undefined);
+    }
+    function dismissOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") setHint(undefined);
+    }
+    document.addEventListener("pointerdown", dismissOutside);
+    document.addEventListener("keydown", dismissOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", dismissOutside);
+      document.removeEventListener("keydown", dismissOnEscape);
+    };
+  }, [pinned]);
   return (
     <Box
+      ref={group}
       role="radiogroup"
       aria-label={label}
       className={
@@ -52,24 +75,60 @@ export default function SegmentedControl<T extends string>({
         "--segment-disabled": theme.palette.text.disabled,
       })}
     >
-      {options.map((option) => (
-        <label
-          key={option.value}
-          className="segmented-option"
-          title={option.hint}
-        >
-          <input
-            type="radio"
-            name={name}
-            value={option.value}
-            checked={option.value === value}
-            disabled={disabled || option.disabled}
-            aria-description={option.hint}
-            onChange={() => onChange(option.value)}
-          />
-          <span>{option.label}</span>
-        </label>
-      ))}
+      {options.map((option) => {
+        const label = (
+          <label
+            key={option.value}
+            className="segmented-option"
+            onClick={
+              option.hint
+                ? () => setHint({ value: option.value, pinned: true })
+                : undefined
+            }
+          >
+            <input
+              type="radio"
+              name={name}
+              value={option.value}
+              checked={option.value === value}
+              disabled={disabled || option.disabled}
+              aria-description={option.hint}
+              onChange={() => onChange(option.value)}
+            />
+            <span>{option.label}</span>
+          </label>
+        );
+        return option.hint ? (
+          <Tooltip
+            key={option.value}
+            title={<span>{option.hint}</span>}
+            placement="bottom-start"
+            enterDelay={350}
+            describeChild
+            disableInteractive
+            disableTouchListener
+            open={hint?.value === option.value}
+            onOpen={() =>
+              setHint((previous) =>
+                previous?.value === option.value
+                  ? previous
+                  : { value: option.value, pinned: false },
+              )
+            }
+            onClose={() =>
+              setHint((previous) =>
+                previous?.value === option.value && !previous.pinned
+                  ? undefined
+                  : previous,
+              )
+            }
+          >
+            {label}
+          </Tooltip>
+        ) : (
+          label
+        );
+      })}
     </Box>
   );
 }

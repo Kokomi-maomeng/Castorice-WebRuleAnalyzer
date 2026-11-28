@@ -1,29 +1,29 @@
-# Castorice-WebRuleAnalyzer v2.1
+# Castorice-WebRuleAnalyzer v2.2
 
 Web 分流规则分析器。输入网址，用独立 Chrome / Edge / Chromium 采集实际网络请求，查看域名与规则命中，导出 Clash/Mihomo、Rule Provider 或 sing-box 规则。
 
 ## 下载与运行
 
-Windows 版使用便携 ZIP。**解压到可写目录后双击 `Castorice-WebRuleAnalyzer.exe`**，需要 Edge WebView2 Runtime 和 Chrome、Edge 或 Chromium。发行页提供 Windows x64、Linux x64、Docker x64、macOS Intel 和 Apple 芯片包，以及各包的 SHA-256。 [v2.1 发行页](https://github.com/Kokomi-maomeng/Castorice-WebRuleAnalyzer/releases/tag/v2.1)
+Windows 版使用便携 ZIP。**解压到可写目录后双击 `Castorice-WebRuleAnalyzer.exe`**，需要 Edge WebView2 Runtime 和 Chrome、Edge 或 Chromium。发行页提供 Windows x64、Linux x64、Docker x64、macOS Intel 和 Apple 芯片包，以及各包的 SHA-256。 [v2.2 发行页](https://github.com/Kokomi-maomeng/Castorice-WebRuleAnalyzer/releases/tag/v2.2)
 
 软件数据存于 EXE 旁的 `data/`，导出文件存于 `exports/`。先关闭旧版再备份并迁移这两个目录。跨电脑迁移前请确认新电脑也具备系统组件和目录权限。 [用户运行说明](docs/用户运行说明.md) · [导出接入说明](docs/EXPORT-INTEGRATION.md)
 
 ## 工作区功能
 
 - 扫描历史支持直接打开、快速检索、范围选择和单条删除。完成状态与时间在同一行，弹窗退出后打开选中的记录。
-- 观察域名集中提供全选、排序方式、正倒序和选中计数。搜索从标题右侧展开，按住 Ctrl 可改变单条选择，按住 Shift 可选择连续范围。
+- 观察域名支持搜索、排序和范围选择。焦点在域名或导出预览条目中时，按 Ctrl+A（macOS 上为 ⌘A）可选中当前筛选的全部条目。文字输入和编辑框使用系统全选行为。
 - 导出范围与输出格式均可直接单选。条目可整行勾选，文件内容可按行分页或完整显示，也可点击页签旁的铅笔编辑后复制或保存。
-- 扫描参数集中在软件设置。标题栏可以直接打开规则库、扫描历史和网络诊断，也提供缩放与恢复 100%。Windows 桌面支持跟随系统主题。
+- 软件设置依次显示浏览器与会话、扫描参数、外观、日志和导出。标题栏可以打开规则库、扫描历史或网络诊断，也提供缩放与恢复 100%。
 
 [历次更新](CHANGELOG.md) · [历版验收记录](https://github.com/Kokomi-maomeng/Castorice-WebRuleAnalyzer/tree/main/docs)
 
 ## 操作
 
-1. 输入 URL 或域名，直接选择「快速」「深度」或「自行交互」，点击「开始采集」。快速观察首个页面，深度自动访问同源链接，自行交互由你在受控浏览器的当前标签页操作。
+1. 在网址左侧选择「快速」「深度」或「自行交互」，悬停或点击模式可查看说明。输入 URL 或域名并开始采集。快速观察首个页面，深度自动访问同源链接，自行交互由你在受控浏览器的当前标签页操作。
 2. 左侧显示本次实际观察的域名。点击一行可查看该主机的相关请求。也可通过复选框或 Ctrl、Shift 选择需导出的域名。
 3. 在“规则命中”核对目标、第三方依赖与具体命中规则；可直接打开分类原文。
-4. 开源规则库 → 规则库设置，开启需要的来源自动更新，或手动下载。首次下载需要网络与时间，下载完成后本地搜索可离线使用。
-5. 选择域名，预览并导出。默认使用「抓取结果」和精确 DOMAIN。选择「抓取结果+开源规则库」后可直接搜索已有分类，只有本地暂无可用分类时才会提示下载。
+4. 从标题栏打开「开源规则库」。在原文右侧的设置中下载、更新或清理规则库。空间不足时设置自动收起，使用「复制」右侧的按钮可展开。下载完成后可离线搜索本地规则。
+5. 选择域名，预览并导出。默认使用「抓取结果」和精确 DOMAIN。选择「抓取结果+开源规则库」后可直接搜索已有分类，只有本地暂无可用分类时才会提示下载。「重置工作区」可开始一轮新的工作，历史记录可在标题栏重新打开。
 
 规则原文中保留全部条目；自动匹配和转换支持 DOMAIN、DOMAIN-SUFFIX、DOMAIN-KEYWORD。IP、进程、逻辑、正则等保留在原文中，不伪装成域名。v2fly 原文保留 include，域名匹配使用经过有界递归解析的规则。
 
@@ -109,6 +109,6 @@ cd ../backend && CGO_ENABLED=0 go build -trimpath -o castorice ./cmd/castorice
 - 浏览器采集通过 HTTP(S) 与 WebSocket 保护代理，采集进程禁用 QUIC。独立网络诊断可检查 Alt-Svc、实际协商的 QUIC/HTTP/3 和响应状态。
 - 系统 DNS 含已知 Fake-IP 且其余均为公网地址时，自动模式使用固定 Cloudflare HTTPS DNS 重新验证公网地址；真实私网及其与公网混合的答案继续拒绝。不修改系统网络配置。
 - Windows 包没有代码签名。未在全新无 WebView2 的 Windows 10/11 安装上实测；第三方登录、支付等流程未执行。
-- 历史保存当时的匹配，重新匹配使用当前缓存。清缓存保留自动更新开关，已开启的来源会重新下载；外部仓库、网络及规则本身不由本项目保证。
+- 历史保存当时的匹配，重新匹配使用当前规则库。「清理规则库」保留自动更新开关，已开启的来源会重新下载。
 
 本项目采用 MIT。

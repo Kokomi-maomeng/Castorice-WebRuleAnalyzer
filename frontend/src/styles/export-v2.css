@@ -76,10 +76,7 @@
   min-width: 100%;
   gap: 2ch;
   padding: 12px;
-  font:
-    12px/1.7 Consolas,
-    "Cascadia Code",
-    monospace;
+  font: var(--font-size-code)/1.65 var(--font-code);
 }
 
 .content-preview .preview-text-grid .line-number {
@@ -122,15 +119,10 @@
   .export-preview-header .MuiTab-root {
     min-width: 0;
     padding-inline: 6px;
-    font-size: 12px;
   }
 
   .export-dialog .export-preview-header .export-summary {
     gap: 2px;
-  }
-
-  .export-summary .MuiChip-root {
-    font-size: 10px;
   }
 
   .export-summary .MuiChip-label {

@@ -215,12 +215,13 @@ export default function AnalysisPanel(p: Props) {
         overflow: "hidden",
       }}
     >
-      <Box className="analysis-heading">
-        <Typography variant="h6" noWrap>
-          实时抓取与分析
-        </Typography>
+      <Box className="analysis-heading panel-heading">
+        <Typography variant="h6">实时抓取与分析</Typography>
         <Chip
+          className="analysis-status"
+          role="status"
           size="small"
+          variant="outlined"
           label={
             recordingPaused
               ? "记录已暂停"
@@ -266,7 +267,6 @@ export default function AnalysisPanel(p: Props) {
                 <Typography
                   variant="body2"
                   color={tone === "info" ? "text.secondary" : tone + ".main"}
-                  noWrap
                 >
                   {message}
                 </Typography>
@@ -285,10 +285,12 @@ export default function AnalysisPanel(p: Props) {
       </Box>
       <Box className="analysis-tab-row" sx={{ borderColor: "divider" }}>
         <Tabs
+          aria-label="采集分析视图"
           value={p.tab}
           onChange={(_, value) => p.setTab(value)}
           variant="scrollable"
           scrollButtons="auto"
+          allowScrollButtonsMobile
           sx={{
             px: 1,
             "& .MuiTab-root": { px: 0.75, minWidth: 0 },
@@ -297,21 +299,29 @@ export default function AnalysisPanel(p: Props) {
           }}
         >
           <Tab
+            id="analysis-tab-flow"
+            aria-controls="analysis-flow"
             icon={<RouteRounded sx={{ fontSize: 18 }} />}
             iconPosition="start"
             label="抓取流程"
           />
           <Tab
+            id="analysis-tab-requests"
+            aria-controls="analysis-requests"
             icon={<HubRounded sx={{ fontSize: 18 }} />}
             iconPosition="start"
             label={`网络请求${t ? ` (${t.request_count})` : ""}`}
           />
           <Tab
+            id="analysis-tab-logs"
+            aria-controls="analysis-logs"
             icon={<ArticleRounded sx={{ fontSize: 18 }} />}
             iconPosition="start"
             label="运行日志"
           />
           <Tab
+            id="analysis-tab-matches"
+            aria-controls="analysis-matches"
             label={`规则命中${t ? ` (${t.matches.filter((m) => m.relation === "target").length})` : ""}`}
           />
         </Tabs>
@@ -325,14 +335,19 @@ export default function AnalysisPanel(p: Props) {
                 ? `${nextInfo}\n${recordedInfo}`
                 : scanInfo
             }
-            noWrap
           >
             {scanInfo}
           </Typography>
         )}
       </Box>
       {p.tab === 0 && (
-        <Box className="analysis-body motion-panel" sx={{ p: 2 }}>
+        <Box
+          className="analysis-body motion-panel"
+          sx={{ p: 2 }}
+          role="tabpanel"
+          id="analysis-flow"
+          aria-labelledby="analysis-tab-flow"
+        >
           {!t ? (
             <Stack
               sx={{
@@ -550,7 +565,12 @@ export default function AnalysisPanel(p: Props) {
         </Box>
       )}
       {p.tab === 1 && (
-        <Box className="analysis-body requests-body motion-panel">
+        <Box
+          className="analysis-body requests-body motion-panel"
+          role="tabpanel"
+          id="analysis-requests"
+          aria-labelledby="analysis-tab-requests"
+        >
           <Stack direction="row" sx={{ p: 1.5, gap: 1, flexWrap: "wrap" }}>
             <TextField
               label={p.filter.exactHost ? "精确主机" : "域名过滤"}
@@ -563,14 +583,14 @@ export default function AnalysisPanel(p: Props) {
                   page: 0,
                 })
               }
-              sx={{ flex: 2, minWidth: 140 }}
+              sx={{ flex: "2 1 140px", minWidth: 0 }}
             />
             <TextField
               select
               label="方法"
               value={p.filter.method}
               onChange={(e) => filter("method", e.target.value)}
-              sx={{ flex: 1, minWidth: 95 }}
+              sx={{ flex: "1 1 95px", minWidth: 0 }}
             >
               {[
                 "",
@@ -592,7 +612,7 @@ export default function AnalysisPanel(p: Props) {
               label="类型"
               value={p.filter.type}
               onChange={(e) => filter("type", e.target.value)}
-              sx={{ flex: 1, minWidth: 115 }}
+              sx={{ flex: "1 1 115px", minWidth: 0 }}
             >
               {[
                 "",
@@ -617,7 +637,7 @@ export default function AnalysisPanel(p: Props) {
               label="状态"
               value={p.filter.status}
               onChange={(e) => filter("status", e.target.value)}
-              sx={{ flex: 1, minWidth: 100 }}
+              sx={{ flex: "1 1 100px", minWidth: 0 }}
             >
               {[
                 ["", "全部"],
@@ -633,7 +653,13 @@ export default function AnalysisPanel(p: Props) {
               ))}
             </TextField>
           </Stack>
-          <TableContainer sx={{ flex: 1, minHeight: 0 }}>
+          <TableContainer
+            className="scroll-region"
+            role="region"
+            aria-label="网络请求列表"
+            tabIndex={0}
+            sx={{ flex: 1, minHeight: 120 }}
+          >
             <Table
               stickyHeader
               size="small"
@@ -721,6 +747,7 @@ export default function AnalysisPanel(p: Props) {
             </Table>
           </TableContainer>
           <TablePagination
+            className="requests-pager"
             component="div"
             count={p.total}
             page={Math.min(
@@ -730,6 +757,9 @@ export default function AnalysisPanel(p: Props) {
             onPageChange={(_, page) => p.setFilter({ ...p.filter, page })}
             rowsPerPage={50}
             rowsPerPageOptions={[50]}
+            getItemAriaLabel={(direction) =>
+              direction === "next" ? "下一页请求" : "上一页请求"
+            }
             labelDisplayedRows={({ from, to, count }) =>
               `${from}–${to} / ${count} 条`
             }
@@ -737,14 +767,23 @@ export default function AnalysisPanel(p: Props) {
         </Box>
       )}
       {p.tab === 2 && (
-        <Box className="analysis-body logs-body motion-panel" sx={{ p: 2 }}>
-          <Stack direction="row" sx={{ mb: 2, gap: 1, alignItems: "center" }}>
+        <Box
+          className="analysis-body logs-body motion-panel"
+          sx={{ p: 2 }}
+          role="tabpanel"
+          id="analysis-logs"
+          aria-labelledby="analysis-tab-logs"
+        >
+          <Stack
+            direction="row"
+            sx={{ mb: 2, gap: 1, alignItems: "center", flexWrap: "wrap" }}
+          >
             <TextField
               select
               label="日志级别"
               value={logFilter}
               onChange={(e) => setLogFilter(e.target.value)}
-              sx={{ width: 140 }}
+              sx={{ width: 140, maxWidth: "100%" }}
             >
               <MenuItem value="">默认（{p.logLevel}+）</MenuItem>
               {["DEBUG", "INFO", "WARN", "ERROR"].map((l) => (
@@ -786,7 +825,7 @@ export default function AnalysisPanel(p: Props) {
             </Tooltip>
           </Stack>
           <Box
-            className="scroll-region"
+            className="scroll-region analysis-log-list"
             tabIndex={0}
             role="region"
             aria-label="扫描日志列表"
@@ -795,15 +834,13 @@ export default function AnalysisPanel(p: Props) {
               borderRadius: 2,
               p: 1.5,
               flex: 1,
-              minHeight: 0,
+              minHeight: 100,
               overflow: "auto",
-              fontFamily: "Consolas, monospace",
-              fontSize: 12,
             }}
           >
             {filteredLogs.length ? (
               filteredLogs.map((l) => (
-                <Box key={l.id} sx={{ py: 0.5, display: "flex", gap: 1 }}>
+                <Box key={l.id} className="analysis-log-entry">
                   <Box
                     component="span"
                     sx={{ flexShrink: 0, color: "text.secondary" }}
@@ -825,10 +862,7 @@ export default function AnalysisPanel(p: Props) {
                   >
                     {l.level}
                   </Box>
-                  <Box
-                    component="span"
-                    sx={{ overflowWrap: "anywhere", minWidth: 0 }}
-                  >
+                  <Box component="span" className="analysis-log-message">
                     {l.message}
                   </Box>
                 </Box>
@@ -842,7 +876,14 @@ export default function AnalysisPanel(p: Props) {
         </Box>
       )}
       {p.tab === 3 && (
-        <Box className="analysis-body motion-panel">{p.matchContent}</Box>
+        <Box
+          className="analysis-body motion-panel"
+          role="tabpanel"
+          id="analysis-matches"
+          aria-labelledby="analysis-tab-matches"
+        >
+          {p.matchContent}
+        </Box>
       )}
       <Dialog
         aria-labelledby="request-detail-title"
@@ -854,12 +895,12 @@ export default function AnalysisPanel(p: Props) {
         fullWidth
         maxWidth="md"
       >
-        <DialogTitle id="request-detail-title">
-          请求详情
+        <DialogTitle id="request-detail-heading" className="dialog-heading">
+          <span id="request-detail-title">请求详情</span>
           <IconButton
             aria-label="关闭请求详情"
             onClick={() => setDetailOpen(false)}
-            sx={{ float: "right" }}
+            sx={{ ml: "auto", flexShrink: 0 }}
           >
             <CloseRounded />
           </IconButton>
@@ -891,7 +932,9 @@ export default function AnalysisPanel(p: Props) {
                   "任务 ID": detail.task_id,
                 }).map(([label, value]) => (
                   <TableRow key={label}>
-                    <TableCell sx={{ width: 160 }}>{label}</TableCell>
+                    <TableCell sx={{ width: "28%", maxWidth: 160 }}>
+                      {label}
+                    </TableCell>
                     <TableCell sx={{ overflowWrap: "anywhere" }}>
                       <code>{value}</code>
                     </TableCell>

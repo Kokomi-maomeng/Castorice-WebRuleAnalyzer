@@ -44,16 +44,7 @@
   block-size: 2px;
   pointer-events: none;
   border-radius: 2px;
-  animation: history-progress-enter 150ms ease-out both;
-}
-
-@keyframes history-progress-enter {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+  animation: panel-enter var(--motion-quick) var(--motion-ease) both;
 }
 
 .history-content {
@@ -74,7 +65,7 @@
     var(--history-action-size) var(--history-row-inset);
   align-items: center;
   border-radius: 12px;
-  transition: background-color 160ms ease-out;
+  transition: background-color var(--motion-quick) var(--motion-ease);
 }
 
 .history-record > .history-open {
@@ -88,7 +79,7 @@
   padding: 8px calc(var(--history-action-size) + var(--history-row-inset) + 4px);
   border-radius: inherit;
   text-align: start;
-  transition: background-color 160ms ease-out;
+  transition: background-color var(--motion-quick) var(--motion-ease);
 }
 
 .history-open.Mui-focusVisible {
@@ -173,5 +164,15 @@
 
   .history-toolbar > .MuiButton-root {
     padding-inline: 8px;
+  }
+}
+
+@container application (max-width: 290px) or (max-height: 250px) {
+  .history-body.MuiDialogContent-root {
+    overflow: auto;
+  }
+
+  .history-list-body {
+    min-block-size: 112px;
   }
 }

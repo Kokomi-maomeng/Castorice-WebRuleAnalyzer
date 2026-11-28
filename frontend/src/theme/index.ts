@@ -34,11 +34,12 @@ export const makeTheme = (dark: boolean, reducedMotion = false) =>
       divider: dark ? "#38343f" : "#eae6ef",
     },
     typography: {
-      fontFamily: '"Segoe UI", "Microsoft YaHei", system-ui, sans-serif',
+      fontFamily: "var(--font-ui, system-ui, sans-serif)",
       h4: { fontWeight: 700 },
       h5: { fontWeight: 650 },
       h6: { fontWeight: 650 },
       button: { textTransform: "none", fontWeight: 600 },
+      caption: { fontSize: "0.75rem", lineHeight: 1.5 },
       fontSize: 13,
     },
     shape: { borderRadius: 12 },
@@ -80,12 +81,12 @@ export const makeTheme = (dark: boolean, reducedMotion = false) =>
             "&[data-dialog-motion='enter'] > .MuiDialog-paper": {
               animation: reducedMotion
                 ? "none"
-                : "dialog-paper-enter 240ms cubic-bezier(0.2, 0, 0, 1)",
+                : "dialog-paper-enter var(--motion-enter) var(--motion-ease)",
             },
             "&[data-dialog-motion='exit'] > .MuiDialog-paper": {
               animation: reducedMotion
                 ? "none"
-                : "dialog-paper-exit 180ms cubic-bezier(0.3, 0, 1, 1) both",
+                : "dialog-paper-exit var(--motion-standard) var(--motion-exit-ease) both",
             },
           },
           paper: {
@@ -96,6 +97,48 @@ export const makeTheme = (dark: boolean, reducedMotion = false) =>
                 maxHeight: "calc(100% - 16px)",
                 "&.MuiDialog-paperFullWidth": { width: "calc(100% - 16px)" },
               },
+          },
+        },
+      },
+      MuiDialogContent: {
+        styleOverrides: {
+          root: {
+            minWidth: 0,
+            overflowWrap: "anywhere",
+            "@container application (max-width: 560px)": { paddingInline: 12 },
+          },
+        },
+      },
+      MuiDialogActions: {
+        defaultProps: { disableSpacing: true },
+        styleOverrides: {
+          root: {
+            gap: 6,
+            flexWrap: "wrap",
+            "@container application (max-width: 360px)": { padding: 6 },
+          },
+        },
+      },
+      MuiAlert: {
+        styleOverrides: {
+          message: { minWidth: 0, overflowWrap: "anywhere" },
+          root: {
+            "@container application (max-width: 480px)": {
+              flexWrap: "wrap",
+              "& .MuiAlert-message": { flex: "1 1 100px" },
+              "& .MuiAlert-action": { paddingBlock: 2 },
+            },
+          },
+        },
+      },
+      MuiTooltip: {
+        styleOverrides: {
+          tooltip: {
+            fontSize: "0.75rem",
+            lineHeight: 1.5,
+            borderRadius: 8,
+            maxWidth: "min(340px, calc(var(--app-viewport-width) - 20px))",
+            overflowWrap: "anywhere",
           },
         },
       },
@@ -120,8 +163,13 @@ export const makeTheme = (dark: boolean, reducedMotion = false) =>
           icon: {
             transition: reducedMotion
               ? "none"
-              : "transform 160ms cubic-bezier(0.2, 0, 0, 1)",
+              : "transform var(--motion-quick) var(--motion-ease)",
           },
+        },
+      },
+      MuiMenuItem: {
+        styleOverrides: {
+          root: { whiteSpace: "normal", overflowWrap: "anywhere" },
         },
       },
       MuiTableCell: {
@@ -130,6 +178,10 @@ export const makeTheme = (dark: boolean, reducedMotion = false) =>
           root: { borderColor: dark ? "#38343f" : "#efebf4" },
         },
       },
-      MuiChip: { styleOverrides: { root: { fontSize: 11, height: 25 } } },
+      MuiChip: {
+        styleOverrides: {
+          root: { fontSize: "0.75rem", minHeight: 24, maxWidth: "100%" },
+        },
+      },
     },
   });

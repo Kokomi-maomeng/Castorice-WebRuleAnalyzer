@@ -32,7 +32,9 @@ try {
   });
   report.layouts.push(metrics);
   assert(metrics.scrollWidth <= width && metrics.scrollHeight <= height, 'whole-page overflow: '+JSON.stringify(metrics));
-  assert(metrics.workspaceBottom <= height + 1 && metrics.exportBottom <= height + 1, 'action clipped: '+JSON.stringify(metrics));
+  await page.getByRole('button', { name: '预览与导出规则', exact: true }).scrollIntoViewIfNeeded();
+  const exportAction = await page.getByRole('button', { name: '预览与导出规则', exact: true }).boundingBox();
+  assert(exportAction && exportAction.y >= 0 && exportAction.y + exportAction.height <= height + 1, 'action unreachable: '+JSON.stringify(metrics));
   assert(metrics.actionsAligned, 'scan actions misaligned: '+JSON.stringify(metrics));
   await page.screenshot({ path: path.join(output, `layout-${width}x${height}.png`) });
  }
@@ -44,7 +46,7 @@ try {
  }
  await page.evaluate(() => { document.documentElement.style.fontSize = ''; });
  const before = await page.locator('.workspace').boundingBox();
- assert.equal(await page.getByRole('button', { name: '网络诊断', exact: true }).count(), 0);
+ assert.equal(await page.getByRole('button', { name: '网络诊断', exact: true }).count(), 1);
  const scanModes = page.getByRole('radiogroup', { name: '扫描模式' });
  const quick = scanModes.getByRole('radio', { name: '快速', exact: true });
  const depth = scanModes.getByRole('radio', { name: '深度', exact: true });
@@ -73,9 +75,12 @@ try {
  assert.deepEqual(await page.locator('.workspace').boundingBox(), before, 'settings changed workspace layout');
  await page.getByRole('button', { name: '软件设置', exact: true }).click();
  const settings = page.getByRole('dialog', { name: /软件设置/ });
- const policy = settings.getByLabel('默认策略组');
- await policy.fill('临时设置草稿');
- await settings.getByRole('button', { name: '管理 / 更新规则库' }).click();
+ assert(await settings.getByText('浏览器与会话').evaluate((heading) =>
+   heading.getBoundingClientRect().top < [...heading.parentElement.children].find(node => node.textContent.includes('扫描参数')).getBoundingClientRect().top));
+ assert.equal(await settings.getByRole('button', { name: /规则库|规则缓存/ }).count(), 0);
+ await settings.getByRole('button', { name: '关闭设置', exact: true }).click();
+ await settings.waitFor({ state: 'hidden' });
+ await page.getByRole('button', { name: '开源规则库', exact: true }).click();
  await page.getByRole('dialog', { name: /开源规则库/ }).waitFor();
  assert.equal(await page.getByRole('button', { name: '规则库术语说明', exact: true }).count(), 0);
  await page.getByRole('textbox', { name: '搜索规则分类' }).fill('Facebook');
@@ -85,7 +90,7 @@ try {
  await editor.waitFor();
  const raw = await editor.inputValue();
  assert(raw.includes('payload:') && raw.includes('DOMAIN-SUFFIX,facebook.com') && raw.includes('IP-CIDR'), 'original YAML incomplete');
- await page.getByRole('button', { name: '全选文本', exact: true }).click();
+ await page.getByRole('button', { name: '全选', exact: true }).click();
  assert.equal(await editor.evaluate(e => e.selectionEnd - e.selectionStart), raw.length);
  await page.getByRole('button', { name: '复制', exact: true }).click();
  assert((await page.evaluate(() => navigator.clipboard.readText())).replace(/\r\n/g, '\n') === raw.replace(/\r\n/g, '\n'), 'clipboard text changed beyond platform newline conversion');
@@ -95,17 +100,16 @@ try {
  assert.equal(await page.getByRole('button', { name: '下载', exact: true }).count(), 0);
  await editor.evaluate(e => { e.scrollTop = 0; });
  await page.screenshot({ path: path.join(output, 'facebook-original.png') });
- await page.getByRole('button', { name: '规则库设置', exact: true }).click();
  await page.getByLabel('自动更新到本地', { exact: true }).first().waitFor();
  assert.equal(await page.getByLabel('自动更新到本地', { exact: true }).count(), 2);
- await page.getByRole('button', { name: '完成', exact: true }).click();
+ await page.getByRole('button', { name: '收起规则库设置', exact: true }).click();
+ assert.equal(await page.getByLabel('自动更新到本地', { exact: true }).count(), 0);
+ await page.getByRole('button', { name: '展开规则库设置', exact: true }).click();
  await page.setViewportSize({ width: 390, height: 844 });
  await page.screenshot({ path: path.join(output, 'facebook-phone.png') });
  const editorRect = await editor.boundingBox();
  assert(editorRect && editorRect.height > 200 && editorRect.x + editorRect.width <= 391, 'phone reader clipped');
  await page.getByRole('button', { name: '关闭规则库', exact: true }).click();
- assert.equal(await policy.inputValue(), '临时设置草稿');
- await page.getByRole('button', { name: '关闭设置', exact: true }).click();
  report.ruleContent = true;
  assert.equal(errors.length, 0, 'browser errors');
  console.log(JSON.stringify(report));

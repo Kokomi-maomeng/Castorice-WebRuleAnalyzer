@@ -27,6 +27,7 @@ import type { DomainRecord, ScanTask } from "../types";
 import { copy } from "../services/api";
 import useRangeSelection from "../hooks/useRangeSelection";
 import { isExportable, time } from "../utils/format";
+import { selectAllInList } from "../utils/selection";
 import "../styles/domains-v2.css";
 
 const sortLabels = { name: "字母顺序", count: "请求次数", time: "发现时间" };
@@ -116,6 +117,9 @@ export default function DomainPanel(p: Props) {
     <Paper
       component="section"
       className="domain-panel motion-surface"
+      onKeyDown={(event) =>
+        selectAllInList(event, () => p.onSelect(selectableInView, true))
+      }
       sx={{
         border: 1,
         borderColor: "divider",
@@ -125,7 +129,10 @@ export default function DomainPanel(p: Props) {
         overflow: "hidden",
       }}
     >
-      <Box className="domain-heading">
+      <Box
+        className="domain-heading panel-heading"
+        data-search-open={searchOpen}
+      >
         <Typography variant="h6">观察到的域名</Typography>
         <Box className="domain-search" data-open={searchOpen}>
           <Box className="domain-search-field" aria-hidden={!searchOpen}>
@@ -223,7 +230,12 @@ export default function DomainPanel(p: Props) {
         </Box>
       </Box>
       <Divider />
-      <Box className="domain-results">
+      <Box
+        className="domain-results scroll-region"
+        role="region"
+        aria-label="观察到的域名列表"
+        tabIndex={0}
+      >
         {list.length === 0 ? (
           <Stack
             sx={{
@@ -263,6 +275,7 @@ export default function DomainPanel(p: Props) {
                   className="domain-request"
                   aria-label={d.hostname}
                   onClick={(e) => {
+                    e.currentTarget.focus({ preventScroll: true });
                     if (e.ctrlKey || e.metaKey || e.shiftKey) {
                       if (exportable) select(d.hostname, e.shiftKey);
                       return;
@@ -312,13 +325,14 @@ export default function DomainPanel(p: Props) {
                     className="domain-row-action"
                     checked={exportable && !p.excluded.has(d.hostname)}
                     disabled={!exportable}
-                    onChange={(e) =>
+                    onChange={(e) => {
+                      e.currentTarget.focus({ preventScroll: true });
                       select(
                         d.hostname,
                         e.nativeEvent instanceof MouseEvent &&
                           e.nativeEvent.shiftKey,
-                      )
-                    }
+                      );
+                    }}
                     slotProps={{
                       input: { "aria-label": `选择 ${d.hostname}` },
                     }}

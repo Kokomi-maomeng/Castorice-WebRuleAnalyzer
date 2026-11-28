@@ -1,0 +1,193 @@
+.library-dialog > .MuiDialog-container > .MuiDialog-paper {
+  width: calc(var(--app-viewport-width) - 48px);
+  max-width: 1440px;
+  height: calc(var(--app-viewport-height) - 48px);
+  max-height: calc(var(--app-viewport-height) - 48px);
+  margin: 24px;
+}
+
+.library-dialog .library-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 0;
+  overflow: auto;
+}
+
+.library-toolbar {
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+}
+
+.library-query {
+  flex: 1 1 160px;
+  min-width: 0;
+}
+
+.library-source-filter {
+  width: min(155px, 100%);
+}
+
+.library-workspace {
+  display: grid;
+  grid-template:
+    "categories toolbar" auto
+    "categories reader" minmax(0, 1fr)
+    / clamp(148px, 19%, 244px) minmax(0, 1fr);
+  flex: 1;
+  min-width: 0;
+  min-height: 250px;
+}
+
+.library-workspace[data-wide="true"][data-settings-open="true"] {
+  grid-template:
+    "categories toolbar settings" auto
+    "categories reader settings" minmax(0, 1fr)
+    / clamp(170px, 19%, 244px) minmax(0, 1fr) clamp(294px, 26%, 340px);
+}
+
+.library-workspace[data-wide="false"][data-settings-open="true"] {
+  grid-template:
+    "toolbar" auto
+    "settings" minmax(0, 1fr) / minmax(0, 1fr);
+}
+
+.library-workspace[data-wide="false"][data-settings-open="true"]
+  :is(.category-list, .rule-reader) {
+  display: none;
+}
+
+.category-list {
+  grid-area: categories;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 8px 8px;
+  border-inline-end-width: 1px;
+  border-inline-end-style: solid;
+}
+
+.rule-reader-toolbar {
+  grid-area: toolbar;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 6px 10px;
+  border-block-end-width: 1px;
+  border-block-end-style: solid;
+}
+
+.rule-reader-label {
+  flex: 1 1 86px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.rule-reader-actions {
+  display: flex;
+  gap: 2px;
+}
+
+.rule-settings-toggle {
+  margin-inline-start: auto;
+}
+
+.rule-reader {
+  grid-area: reader;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+}
+
+.rule-reader > :is(.MuiStack-root, .MuiAlert-root) {
+  flex-shrink: 0;
+}
+
+.library-settings {
+  grid-area: settings;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  border-inline-start-width: 1px;
+  border-inline-start-style: solid;
+  padding: 12px;
+}
+
+.library-settings > * {
+  flex: none;
+}
+
+.library-source {
+  border-width: 1px;
+  border-style: solid;
+  border-radius: 12px;
+  padding: 10px;
+}
+
+.library-source-heading,
+.library-source-actions {
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.library-source-heading {
+  justify-content: space-between;
+}
+
+.library-source-actions {
+  margin-block-start: 6px;
+}
+
+@container application (max-width: 650px) or (max-height: 520px) {
+  .library-dialog > .MuiDialog-container > .MuiDialog-paper {
+    width: calc(var(--app-viewport-width) - 12px);
+    height: calc(var(--app-viewport-height) - 12px);
+    max-height: calc(var(--app-viewport-height) - 12px);
+    margin: 6px;
+  }
+}
+
+@container application (max-width: 540px) {
+  .library-toolbar {
+    padding: 8px;
+  }
+
+  .library-workspace[data-settings-open="false"] {
+    grid-template:
+      "categories" clamp(64px, 24%, 136px)
+      "toolbar" auto
+      "reader" minmax(0, 1fr)
+      / minmax(0, 1fr);
+    min-height: 290px;
+  }
+
+  .category-list {
+    border-inline-end-width: 0;
+    border-block-end-width: 1px;
+    border-block-end-style: solid;
+  }
+
+  .category-list .category-button {
+    padding: 5px 6px;
+  }
+
+  .rule-reader .MuiButton-root,
+  .rule-reader-actions .MuiButton-root {
+    min-width: 36px;
+    padding: 4px 6px;
+  }
+
+  .rule-reader-actions .MuiButton-startIcon {
+    display: none;
+  }
+}

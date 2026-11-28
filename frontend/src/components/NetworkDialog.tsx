@@ -100,14 +100,14 @@ export default function NetworkDialog(p: {
       fullWidth
       maxWidth="sm"
     >
-      <DialogTitle id="network-diagnostic-heading">
+      <DialogTitle id="network-diagnostic-heading" className="dialog-heading">
         <Box component="span" id="network-diagnostic-title">
           网络诊断
         </Box>
         <IconButton
           aria-label="关闭网络诊断"
           onClick={p.onClose}
-          sx={{ float: "right" }}
+          sx={{ ml: "auto", flexShrink: 0 }}
         >
           <CloseRounded />
         </IconButton>
